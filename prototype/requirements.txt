@@ -1,0 +1,5 @@
+discord.py>=2.4
+django>=5.0
+openai[realtime]>=2.0
+pyyaml>=6.0
+python-dotenv>=1.0

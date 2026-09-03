@@ -82,14 +82,25 @@ class WorkingMemory:
 
     def strategy_in_cooldown(self, strategy) -> bool:
         """Hard, deterministic check (BLUEPRINT.md §10.5) -- not something left
-        to the intervention agent to remember and self-restrain from."""
+        to the intervention agent to remember and self-restrain from.
+
+        Uses total_message_count, NOT trigger_variables["message_count"] --
+        the latter is len(history) at compute time, which the management
+        cycle (§11) truncates every 8th message. Comparing against it meant
+        the "how long since this fired" gap could reset or even go negative
+        across a truncation, leaving a strategy stuck thinking it was still
+        in cooldown far longer than cooldown_messages actually specifies (a
+        real bug, found from a live report: participation_equality fired once
+        and then never again). total_message_count is monotonic and survives
+        truncation, same reason it's what the management-cycle-every-8 check
+        already used.
+        """
         if not strategy.cooldown_messages:
             return False
         last_fired = self.recent_actions.get(strategy.id)
         if last_fired is None:
             return False
-        current_count = self.trigger_variables.get("message_count", 0)
-        return (current_count - last_fired) < strategy.cooldown_messages
+        return (self.total_message_count - last_fired) < strategy.cooldown_messages
 
     def set_trigger_variables(self, variables: dict) -> None:
         self.trigger_variables = variables
@@ -120,6 +131,15 @@ class WorkingMemory:
     # --- read-side helpers, namespaced per role (BLUEPRINT.md §3 "role-scoped access") ---
 
     def intervention_view(self) -> dict:
+        """Unused since the intervention agent became stateful (BLUEPRINT.md
+        §10.1) -- kept for reference, not dead-code cleanup yet. persona/task
+        are now sent once, as constructor args, at RealtimeInterventionLLM.connect()
+        time (never re-read from WM per turn, since the session remembers them
+        itself); history/trigger_variables are read directly off wm's raw
+        attributes in decide(), not through this method, since what's needed
+        each turn is only the *new* increment + current dynamic state, not a
+        full reconstructed context the way the stateless main LLM needs via
+        main_view(). See BLUEPRINT.md §10.1 for the full reasoning."""
         return {
             "persona": self.intervention_persona,
             "task_knowledge": self.intervention_task_knowledge,

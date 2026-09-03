@@ -31,6 +31,12 @@ from .working_memory import WorkingMemory
 # recency-based, not relevance-ranked (deliberately not a real RAG pipeline).
 SUMMARY_RETRIEVAL_LIMIT = 50
 
+# BLUEPRINT.md §11.2: DM memory cycle cadence -- a separate, independently
+# tunable constant from the group's every-8 (they happen to share the same
+# value today, but there's no reason they must; a DM's pace may warrant a
+# different cadence, not yet decided).
+DM_MANAGEMENT_CYCLE_INTERVAL = 8
+
 
 class Orchestrator:
     def __init__(self, strategy_store, intervention_llm_factory, main_llm, bot_user_id, dispatch_fn, log_fn, persona_config, task_config, roster_fn=None, bot_display_name="MULCA", retrieve_log_fn=None, persistence_channel_id=None, snapshot_load_fn=None, snapshot_save_fn=None):
@@ -228,7 +234,10 @@ class Orchestrator:
 
             if strategy_id is not None:
                 wm.set_intervention_result(strategy_id, prompt_fragment)
-                wm.record_action(strategy_id, wm.trigger_variables.get("message_count", 0))
+                # total_message_count, not trigger_variables["message_count"] --
+                # see WorkingMemory.strategy_in_cooldown's docstring for why
+                # the latter breaks across a management-cycle truncation.
+                wm.record_action(strategy_id, wm.total_message_count)
                 path = "strategy"
             else:
                 wm.set_intervention_result(None, None)
@@ -288,6 +297,18 @@ class Orchestrator:
         # "Channel/instance scoping" section: DM content is private to the
         # individual user, and EpisodicLog has no access-control concept).
         if scope_key != "group":
+            # DM memory cycle (BLUEPRINT.md §11.2): simpler than the group's
+            # (no participant_roles_summary -- a DM has exactly one
+            # participant) and, critically, never logged anywhere -- a DM's
+            # summary lives only in that DM's own in-memory WM, same privacy
+            # boundary as everything else in this scope.
+            if message_count_for_cycle % DM_MANAGEMENT_CYCLE_INTERVAL == 0:
+                print(f"[MULCA debug] {scope_key} running DM management cycle at message #{message_count_for_cycle}")  # TODO: remove once live-tested
+                history_summary = await self._main_llm.run_dm_management_cycle(wm)
+                wm.apply_management_cycle(history_summary, wm.participant_roles_summary)
+                intervention_agent = await self._intervention_agent_for(scope_key)
+                intervention_agent.on_history_truncated(wm)
+                print(f"[MULCA debug] {scope_key} DM management cycle result: {history_summary!r}")  # TODO: remove once live-tested
             wm.clear_turn_output()
             return
 

@@ -73,6 +73,36 @@ class MainLLM:
             "participant_roles_summary": result["participant_roles_summary"],
         }
 
+    async def run_dm_management_cycle(self, wm) -> str:
+        """DM-specific, simpler version of run_management_cycle (BLUEPRINT.md
+        §11.2): a DM has exactly one participant, so there's no
+        participant_roles_summary to track -- just an updated history summary.
+        Plain-text response, not JSON-schema-constrained, since there's only
+        the one field to produce."""
+        history_text = "\n".join(f"{e.label()}: {e.content}" for e in wm.history)
+        response = await self._client.chat.completions.create(
+            model=MAIN_MODEL,
+            messages=[
+                {"role": "system", "content": (
+                    "You are producing an updated internal summary of an ongoing "
+                    "private one-on-one conversation, for another LLM to read -- "
+                    "not a human. Optimize for information density: concrete "
+                    "facts, names, numbers, and decisions, not a list of topics "
+                    "that were merely mentioned. Target roughly 150-200 words. "
+                    "Respond with only the updated summary text, nothing else."
+                )},
+                {"role": "user", "content": (
+                    f"Previous summary (empty if this is the first cycle):\n"
+                    f"{wm.history_summary or '(none yet)'}\n\n"
+                    f"New messages since then:\n{history_text}\n\n"
+                    "Produce an updated summary that incorporates the new "
+                    "messages into the previous summary -- earlier content that "
+                    "isn't repeated below must still be retained."
+                )},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+
     def _directive(self, view: dict) -> str:
         if view["forced_context"] is not None:
             return f"Forced intervention: {view['forced_context']}"
@@ -99,13 +129,29 @@ class MainLLM:
         # Retrieved EpisodicLog rows (BLUEPRINT.md §12's provide_summary) --
         # only present on the turn that strategy fires, cleared right after.
         retrieved_block = f"Retrieved conversation history:\n{view['retrieved_context']}\n\n" if view["retrieved_context"] else ""
+        # Strategy-sourced directives come from the intervention agent -- a
+        # lighter, faster model whose job is judgment (when/which strategy/why),
+        # not crafting the response. Framed explicitly as guidance to interpret,
+        # not a script to execute verbatim, so phrasing/tone/delivery stays this
+        # (more capable) model's call. forced_context is different -- it's
+        # deterministic orchestrator output (e.g. "you were addressed by X
+        # saying Y"), not the intervention agent's judgment, so it doesn't need
+        # the same framing.
+        directive_label = (
+            "High-level guidance from a lightweight judgment step -- this is the "
+            "rationale and rough target (why this applies now, and who/what if "
+            "relevant), not literal wording. Use your own judgment for exact "
+            "phrasing, tone, and delivery:"
+            if view["strategy_id"] is not None
+            else "Current directive:"
+        )
         system_prompt = (
             f"{view['persona']}\n\n"
             f"Task context:\n{view['task_knowledge']}\n\n"
             f"Available tools:\n{view['tools_description'] or 'none'}\n\n"
             f"{summary_block}"
             f"{retrieved_block}"
-            f"Current directive:\n{directive or 'Respond naturally as the ongoing conversation warrants.'}"
+            f"{directive_label}\n{directive or 'Respond naturally as the ongoing conversation warrants.'}"
         )
         stream = await self._client.chat.completions.create(
             model=MAIN_MODEL,

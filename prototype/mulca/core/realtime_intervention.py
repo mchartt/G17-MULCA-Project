@@ -13,6 +13,14 @@ would conflate unrelated conversations (BLUEPRINT.md §10.1's ownership split:
 the session is the intervention agent's own memory, WM stays authoritative for
 what the main LLM gets and what's persisted).
 
+Deliberately does NOT go through WorkingMemory.intervention_view() the way
+MainLLM.stream_reply() goes through main_view() -- persona/task_knowledge
+arrive as constructor args instead (sent once, at connect() time, since the
+session remembers them itself), and decide() reads wm.history/wm.trigger_variables/
+wm.strategy_in_cooldown(...) directly, since only the *new* increment plus
+current dynamic state is needed each turn, not a full reconstructed context.
+See BLUEPRINT.md §10.1 for why intervention_view() exists but is unused.
+
 Uses the GA (non-beta) Realtime API -- `client.realtime.connect(...)`, not
 `client.beta.realtime.connect(...)`. The Beta shape was deprecated by OpenAI on
 2026-05-12 and now hard-rejects connections with a
@@ -81,8 +89,15 @@ class RealtimeInterventionLLM:
                 f"{restored_note}\n\n"
                 f"{audience_note} For each new message, decide whether a "
                 "conversational strategy should fire right now. If yes, call the "
-                f"`{TOOL_NAME}` tool with the selected strategy id and a short "
-                "parameterized instruction for the main response generator, plus two "
+                f"`{TOOL_NAME}` tool with the selected strategy id and a short, "
+                "HIGH-LEVEL instruction for the main response generator: the "
+                "rationale (why this strategy applies right now) and, if relevant, "
+                "a rough target (e.g. which participant seems to need addressing) "
+                "-- not literal wording, a script, or a specific phrasing. The main "
+                "response generator is a more capable model whose job is deciding "
+                "exactly how to say it; treat your instruction as a suggestion it "
+                "will use its own judgment to act on, not a directive to execute "
+                "verbatim. Plus two "
                 "independent flags: needs_history true if answering well requires "
                 "looking up something from earlier in the conversation that isn't "
                 "already visible to you (e.g. a specific detail, or a request for a "
@@ -107,7 +122,15 @@ class RealtimeInterventionLLM:
                         "type": "object",
                         "properties": {
                             "strategy_id": {"type": "string", "enum": strategy_ids},
-                            "prompt_fragment": {"type": "string"},
+                            "prompt_fragment": {
+                                "type": "string",
+                                "description": (
+                                    "High-level rationale/target only -- why this "
+                                    "strategy applies now, and a rough target if "
+                                    "relevant. Not literal wording or a script; the "
+                                    "main response generator decides phrasing itself."
+                                ),
+                            },
                             "needs_history": {"type": "boolean"},
                             "needs_web_search": {"type": "boolean"},
                         },

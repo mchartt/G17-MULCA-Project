@@ -1,106 +1,28 @@
 # MULCA Architecture Blueprint
 
-Multi-User LLM-based Conversational Agent — a system instantiable with different
-personas/strategies/tasks to mediate a multi-user conversation (initial deployment:
-a Discord bot mediating a group task over text, audio to follow).
+A generic architecture for a Multi-User LLM-based Conversational Agent, to use with different team roles/conversational strategies/tasks. Initial deployment: maintain a non-offensive Discord group chat in a text channel, audio to follow.
 
-This document is the architecture; `prototype/` is the thin working implementation
-of it. Where the prototype simplifies or collapses part of the design below, that is
-called out explicitly rather than built as unused infrastructure.
+This document is the architecture; `prototype/` is the first working implementation
+of it.
 
-**Provenance note:** three reference diagrams were reviewed after the first draft
-of this document — a team suggestion diagram ("Suggestions — not mandatory") and
-two CoALA-generic/CoALA-adapted memory diagrams. They were non-mandatory but added
-real content not in the original brief (a forced-intervention bypass, a tools seam,
-a continuous audio-event channel, and an explicit decision-procedure mapping); those
-are folded into §1, §2, §3, §6 and §8 below, marked inline as diagram-sourced.
 
 ---
 
-## Channel/instance scoping — implemented
 
-Was flagged as an open conflict, then decided, and is now built:
-`Orchestrator` keys `WorkingMemory`/queue/intervention-agent by **scope**
-(`"group"`, or `"dm:<user_id>"` — `Orchestrator._scope_key`), not by raw
-Discord `channel_id`. §2, §5, and §6 below have been swept to match; remaining
-mentions of "per-channel" elsewhere in this document are describing the
-*original*, now-replaced model historically, not current behavior.
-
-**Decided channel model for one MULCA instance**: it registers to exactly
-**one text channel and one voice channel** (a fixed pair, configured at
-startup), and is additionally **open to receiving DMs** from any individual
-user. Separate groups get separate instances entirely (confirmed: 10 groups,
-10 Discord servers, one instance each) — an instance never needs to keep
-multiple *independent* group-contexts apart from each other.
-
-- **The one text channel + one voice channel share a single WM**, single
-  intervention-agent session, single queue for the whole instance — genuinely
-  one conversation, not per-channel state. This also fixes something the old
-  per-channel model silently broke: §10.1's "one intervention agent aware of
-  both text and audio streams" only actually holds if text and voice share one
-  session, which per-channel keying didn't give it.
-- **Each DM-ing user gets their own separate, private WM**, kept apart from
-  the group's shared WM (implemented: `Orchestrator._handle_conversation_event`
-  returns before the episodic-log write for any scope other than `"group"`).
-  **DM content is not written to the persisted episodic log** (§4.2) the way
-  group-channel content is — that's private information belonging to the
-  individual user. The `EpisodicLog` schema itself still has no
-  access-control concept — the exclusion is enforced entirely by the
-  orchestrator never calling `log_fn` for a DM scope, not by anything in the
-  model/table. Roster lookup is also skipped for DM scope (a roster has no
-  meaning for a 1:1 conversation).
-
-`channel_id` doesn't disappear in either case — it stays on every event as
-**dispatch-routing metadata** (which physical channel/DM a reply goes back
-to; also now doubles as the signal for "is this a DM, route to the private WM
-and skip episodic persistence"). Still genuinely open, not urgent until audio
-exists: for the shared text+voice pair, does a reply always go back to the
-*same* channel the triggering message came from, or does modality-based
-routing (text in → text out, audio in → audio out, regardless of which
-triggered it) matter later? Flagged, not decided.
-
----
-
-## Technical constraints (given, not up for redesign here)
-
-- Discord bot, hosted on a Django server, listening to both the audio stream and
-  the text channel (text built now, audio interface-only — §6).
-- **OpenAI streaming models** for generation — both LLMs stream tokens rather than
-  waiting for a complete response; the main LLM's dispatch to the channel adapter
-  (§2 step 6) should forward partial output as it streams, not buffer the full
-  completion first, so latency-sensitive turn-taking (§5) isn't made worse by
-  waiting on a full generation.
-- The audio path must use a **native multimodal audio-understanding model**, not a
-  speech-to-text → LLM → text-to-speech pipeline. This constrains
-  `AudioChannelAdapter` (§6): it wraps a model that understands audio directly, and
-  whatever it hands the orchestrator as `ConversationEvent.content` is a
-  representation *derived from* that native understanding, not a transcript
-  produced by a separate STT stage. This is the colleague's implementation detail,
-  but the constraint is recorded here since it affects what `content` is allowed to
-  be.
-- Code must be **documented and modular enough for students to extend** — e.g. add
-  a new persona, strategy, or task config without touching orchestrator/WM/LLM
-  code. This is why personas, strategies, and task knowledge are config files
-  (§1, §4) rather than inlined logic, and why the WM ownership contract (§2, §3)
-  is written down explicitly rather than left as implicit convention: a student
-  extending this later needs the contract on paper, not just working code to
-  reverse-engineer.
-
----
 
 ## 1. Conceptual model
 
 Four questions — *when*, *whom*, *what*, *how* — split across two LLMs:
 
-- **Intervention LLM** (lightweight, low-latency): decides *if/when* and *whom*.
-  Input: conversation history + precomputed trigger variables. Output: either
+- **Intervention LLM** (lightweight, low-latency): decides *when*, *to whom* and *how* to talk.
+  Input: conversation history + precomputed trigger variables + predefined conversational strategies. Output: either
   `None`, or a **selected strategy id** + a **parameterized prompt fragment** for
   the main LLM, plus two independent boolean flags, **`needs_history`** and
-  **`needs_web_search`** — orthogonal to which strategy fired (§12): does
-  answering well require looking something up, and from which source. Only
-  `needs_history` is currently acted on; `needs_web_search` is captured but
+  **`needs_web_search`** — orthogonal to which strategy fired (§12): are tools necessary (e.g. does
+  answering well require looking something up, and from which source). Only
+  `needs_history` is currently acted on to retrieve chat logs from database into working memory; `needs_web_search` is captured but
   not implemented — see §12 for exactly what does and doesn't exist yet.
-- **Main LLM**: generates the utterance (*what* + *how*), using the intervention
+- **Main LLM**: generates the utterance (*what*), using the intervention
   LLM's output as part of its own working memory. **Stateless** — every call
   gets its full context (persona, task, history, directive) freshly assembled
   by the orchestrator from WM; nothing persists in the main LLM itself between
@@ -122,13 +44,11 @@ condition (+ the variables it needs) and a prompt template. The intervention LLM
 *selects and parameterizes* from this set — it does not compose new strategies at
 runtime.
 
-**Selection mechanism (implemented, not in the original design pass):** all
-strategy files live in **one flat pool** (`config/strategies/*.yaml`) — there
+**Selection mechanism:** all
+strategy files live in (`config/strategies/*.yaml`) — per instantiation the user selects which ones are active. there
 is no folder-per-task or other automatic coupling between which task is active
 and which strategies apply. An explicit, independent list of active strategy
-ids is chosen at startup (alongside, not derived from, the persona/task
-choice) — this is the third of three independent assembly choices the reuse
-goal (§9) calls for. A strategy id that isn't in the pool fails loudly at load
+ids is chosen at startup. A strategy id that isn't in the pool fails loudly at load
 time rather than silently loading an empty set. Each strategy may also declare
 an optional `trigger_threshold` (e.g. `{variable: gini_index, min: 0.3}`),
 surfaced to the intervention LLM as a concrete number to reason against rather
@@ -139,43 +59,22 @@ must be judged purely from reading the conversation content directly (e.g. "is
 this message hostile," "has the topic drifted") — as opposed to
 variable-driven strategies like the Gini-index-based one below.
 
-*Where freeform composition could enter later without a redesign:* the
-intervention LLM's output contract is already "strategy id + free-text prompt
-fragment" rather than "strategy id only" — so a future version could let it
-synthesize the prompt fragment more freely, or even propose a novel strategy object
-matching the same schema, validated before use, without changing the orchestrator
-or main-LLM contract at all. Flagged, not built.
 
-**Static meta-strategy setting (diagram-sourced).** The suggestion diagram's
-startup path feeds the intervention LLM a "Conversational Strategy Static Info"
-value, e.g. *"intervene as little as possible."* This is not one of the fixed
-per-strategy trigger definitions (§ above) — it's a standing bias/threshold
-instruction that shapes *how eagerly* the intervention LLM fires across all
-strategies. In this blueprint it lives inside `intervention.persona` (§3) rather
-than as a new WM field, since it's boot-static and role-defining in the same way
-persona is; called out separately here only because the diagram drew it as its own
-box.
 
-**Forced-intervention bypass (diagram-sourced).** The suggestion diagram shows a
-second runtime path, "Forced intervention," that goes straight to the main LLM's
+
+**Forced-intervention bypass ** Sometimes a second, faster runtime path is necessary. "Forced intervention" goes straight to the main LLM's
 dynamic memory *without* going through the intervention LLM at all. This is a
 deliberate escape hatch for triggers that shouldn't be subject to the intervention
-LLM's judgment call — e.g. an explicit @mention of the bot, a moderator command, or
+LLM's judgment call — e.g. a moderator command or
 a hard safety rule. The orchestrator detects these with plain code (not an LLM
 call, same spirit as trigger-variable computation) and writes directly into the
 main LLM's WM, skipping strategy selection entirely. See §2 and §3 for where this
 sits in the write-ownership contract.
 
-**Where exactly the forced/judged line falls — revised after building §12's
-retrieval flags.** Originally, a literal Discord `@mention` was the one
-forced plain-code rule (exact string match, no ambiguity). **This was
+Note: The original forced intervention rule was a Discord `@mention` (exact string match, no ambiguity). **This was
 removed**: once the intervention agent also had to judge `needs_history`
 (§12), a bypass that skips the intervention agent entirely also skips that
-judgment — an `@mention`ed question needing chat-log context got a *worse*
-answer than the identical question asked without the `@mention`, purely
-because of which path it took. "Was I addressed" no longer needs resolving
-outside the intervention agent for text (folded into `respond_when_addressed`'s
-trigger instead); the latency cost of always asking it was confirmed
+judgment. The latency cost of always asking it was confirmed
 acceptable in testing. `forced_intervention.py` now defines one rule instead:
 literal `@mainllm` text, a deliberate debug/testing bypass to verify the main
 LLM/dispatch path independent of intervention-agent judgment — not a
@@ -221,11 +120,7 @@ Deterministic, non-LLM glue code (Django-hosted). Per incoming event, it:
    what the LLM picked. Otherwise writes the strategy id + prompt fragment into
    the main LLM's WM section, and records the firing for future cooldown checks.
 6. Calls the main LLM, dispatches its output back to the channel adapter as it
-   streams. **The bot's own reply is then appended to shared history too** —
-   an easy thing to miss (an early version of this prototype didn't do this,
-   which meant neither the intervention agent nor a later main-LLM call could
-   see what the bot itself had already said) — stated explicitly here so it
-   isn't lost again.
+   streams. **The bot's own reply is then appended to shared history too** so the bot doesn't keep acting because it does not realise it already acted.
 7. Writes an episodic log record regardless of outcome (§4.2), including the "no
    intervention" case — needed to evaluate false negatives later, not just fired
    strategies. The log records which path fired: intervention-LLM-selected,
@@ -295,15 +190,6 @@ static field only — no tool-calling loop, tool registry, or execution sandbox 
 designed here. It exists so the seam is visible in the WM contract; a tools
 subsystem is future scope.
 
-**Cross-session static memory — implemented, resolved by §11.1.** The
-diagram's example for the main LLM's "Static Memory" is *"yesterday's
-conversation"* — this speculative placeholder is now the concrete
-`WorkingMemorySnapshot` mechanism: `shared.history`/`history_summary` are
-seeded at boot from the *previous session's* saved state (`Orchestrator
-.load_group_snapshot()`), not from the episodic log directly as originally
-sketched here — see §11.1 for why a separate snapshot (not a live query
-against `EpisodicLog`) turned out to be the right mechanism.
-
 ---
 
 ## 4. Long-term memory (CoALA + 4th type + 2nd LLM)
@@ -319,12 +205,9 @@ existing artifacts, named:
 | Skills (procedural) | **`skills_memory`** | Explicit: `StrategyStore`, the strategy YAML pool, loaded at boot, static for the session (class name unchanged — no functional benefit to renaming it). Implicit: foundation model competence — not implemented, not modeled. | Matches the brief's own framing; nothing to add. |
 | Identity | **`identity_memory`** | Persona config (`intervention.persona`/`main.persona`, static, boot-time) **plus** `participant_roles_summary` (§11 — a brief per-participant role summary, produced every management cycle alongside `history_summary`). | Identity = who the LLM is + who it understands others to be, together — distinguished from Knowledge as **who** vs. **what's known about the task/world**. Persona/task stay separate config files specifically so they're swappable independently (the reuse axis, §9). |
 
-**Identity vs. "team role" — resolved.** Confirmed scope: the brief per-
+**Identity vs. "team role".** Confirmed scope: the brief per-
 participant summary the management cycle already produces
-(`participant_roles_summary`) **is** the intended "team role" semantics —
-no separate relational/rapport tracking ("how we relate to them," beyond a
-role summary) is being built. This also fully resolves what the presence
-roster (below) stops short of. One accepted limitation carried over from the
+(`participant_roles_summary`) **is** the intended "team role" semantics. One accepted limitation carried over from the
 presence roster: two participants sharing an identical display name would be
 conflated, since labels are keyed by display name, not stable id, for
 readability.
@@ -350,14 +233,79 @@ strategy_id (nullable), prompt_fragment (nullable),
 main_llm_output (nullable),
 ```
 
-(Corrects the original draft's schema sketch — `intervention_decision` became
-`intervention_path` with a third state, since forced and strategy-selected
-paths turned out to need distinguishing once both existed.)
-
 Logged even when `intervention_path == "none"`, so "the agent chose not to speak"
 is auditable too.
 
+## Channel/instance scoping
+
+`Orchestrator` keys `WorkingMemory`/queue/intervention-agent by **scope**
+(`"group"`, or `"dm:<user_id>"` — `Orchestrator._scope_key`), not by raw
+Discord `channel_id`. §2, §5, and §6 below have been swept to match; remaining
+mentions of "per-channel" elsewhere in this document are describing the
+*original*, now-replaced model historically, not current behavior.
+
+**Decided channel model for one MULCA instance**: it registers to exactly
+**one text channel and one voice channel** (a fixed pair, configured at
+startup), and is additionally **open to receiving DMs** from any individual
+user. Separate groups get separate instances entirely (confirmed: 10 groups,
+10 Discord servers, one instance each) — an instance never needs to keep
+multiple *independent* group-contexts apart from each other.
+
+- **The one text channel + one voice channel share a single WM**, single
+  intervention-agent session, single queue for the whole instance — genuinely
+  one conversation, not per-channel state. This also fixes something the old
+  per-channel model silently broke: §10.1's "one intervention agent aware of
+  both text and audio streams" only actually holds if text and voice share one
+  session, which per-channel keying didn't give it.
+- **Each DM-ing user gets their own separate, private WM**, kept apart from
+  the group's shared WM (implemented: `Orchestrator._handle_conversation_event`
+  returns before the episodic-log write for any scope other than `"group"`).
+  **DM content is not written to the persisted episodic log** (§4.2) the way
+  group-channel content is — that's private information belonging to the
+  individual user. The `EpisodicLog` schema itself still has no
+  access-control concept — the exclusion is enforced entirely by the
+  orchestrator never calling `log_fn` for a DM scope, not by anything in the
+  model/table. Roster lookup is also skipped for DM scope (a roster has no
+  meaning for a 1:1 conversation).
+
+`channel_id` doesn't disappear in either case — it stays on every event as
+**dispatch-routing metadata** (which physical channel/DM a reply goes back
+to; also now doubles as the signal for "is this a DM, route to the private WM
+and skip episodic persistence"). Still genuinely open, not urgent until audio
+exists: for the shared text+voice pair, does a reply always go back to the
+*same* channel the triggering message came from, or does modality-based
+routing (text in → text out, audio in → audio out, regardless of which
+triggered it) matter later? Flagged, not decided.
+
 ---
+
+## Technical constraints 
+
+- Discord bot, hosted on a Django server, listening to both the audio stream and
+  the text channel (text built now, audio interface-only — §6).
+- **OpenAI streaming models** for generation — both LLMs stream tokens rather than
+  waiting for a complete response; the main LLM's dispatch to the channel adapter
+  (§2 step 6) should forward partial output as it streams, not buffer the full
+  completion first, so latency-sensitive turn-taking (§5) isn't made worse by
+  waiting on a full generation.
+- The audio path must use a **native multimodal audio-understanding model**, not a
+  speech-to-text → LLM → text-to-speech pipeline. This constrains
+  `AudioChannelAdapter` (§6): it wraps a model that understands audio directly, and
+  whatever it hands the orchestrator as `ConversationEvent.content` is a
+  representation *derived from* that native understanding, not a transcript
+  produced by a separate STT stage. This is the colleague's implementation detail,
+  but the constraint is recorded here since it affects what `content` is allowed to
+  be.
+- Code must be **documented and modular enough for students to extend** — e.g. add
+  a new persona, strategy, or task config without touching orchestrator/WM/LLM
+  code. This is why personas, strategies, and task knowledge are config files
+  (§1, §4) rather than inlined logic, and why the WM ownership contract (§2, §3)
+  is written down explicitly rather than left as implicit convention: a student
+  extending this later needs the contract on paper, not just working code to
+  reverse-engineer.
+
+---
+
 
 ## 5. Concurrency / timing model (prototype)
 
@@ -390,7 +338,7 @@ trigger-variable volatility is observed.
 
 ---
 
-## 6. Audio interface seam (for the colleague's component — not designed here)
+## 6. Audio interface seam (TODO)
 
 The orchestrator never talks to Discord directly. It consumes `ConversationEvent`
 objects from a **channel adapter**, and dispatches replies through the same
@@ -409,14 +357,13 @@ class ConversationEvent:
     # render and every dispatched-to-Discord string should call, never speaker_id directly
 ```
 
-`speaker_display_name`/`.label()` didn't exist in the original draft of this
-seam — added once it became clear that showing raw platform IDs to an LLM (and
+`speaker_display_name`/`.label()` added once it became clear that showing raw platform IDs to an LLM (and
 in turn to users, in dispatched replies) was actively unhelpful. `AudioChannelAdapter`
 should populate it the same way (whatever display name is available for the
 speaking participant), for the same reason.
 
 - `TextChannelAdapter` (built in the prototype): Discord message → `ConversationEvent(modality="text", content=message.content, ...)`.
-- `AudioChannelAdapter` (colleague's component, **not built here**): must consume
+- `AudioChannelAdapter` (TODO): must consume
   the native multimodal audio-understanding model's output and emit the same
   `ConversationEvent` shape — `content` populated with whatever text
   representation the orchestrator/LLMs need (e.g. a transcript, or a semantic
@@ -433,7 +380,7 @@ speaking participant), for the same reason.
   assembly, or how the audio model decides an utterance boundary — all internal to
   `AudioChannelAdapter`.
 
-**Continuous event channel, in addition to discrete turns (diagram-sourced).** The
+**Continuous event channel, in addition to discrete turns ** The
 suggestion diagram's purple "Continuous Dispatching" block sends high-frequency
 signals — every 200ms or on-event — separate from the discrete "End of turn
 Dispatching" this blueprint's orchestrator loop otherwise runs on: raw audio,
@@ -465,7 +412,7 @@ See `prototype/README.md` for the concrete interface file and where to plug in.
 
 ---
 
-## 7. Open questions / risks not already flagged in the brief
+## 7. Open questions / risks 
 
 1. **Trigger-variable staleness under load** (§5) — compounds if the group is
    fast-moving; may need per-message vs. per-cycle variable versioning.
@@ -475,16 +422,17 @@ See `prototype/README.md` for the concrete interface file and where to plug in.
    intervention LLM call) could steer the main LLM off-persona. Prototype accepts
    this risk; a schema/length/keyword check on `prompt_fragment` before relay is a
    cheap future guard.
-2b. **Episodic log growth vs. WM history growth are separate concerns** — the
-   blueprint persists episodic logs to SQLite but says nothing about *trimming*
-   `shared.history` in WM. For a prototype session this is fine; for a long-running
-   deployment, WM history needs a truncation/summarization policy or the main LLM's
-   prompt grows unbounded.
-3. **Multi-channel / multi-guild identity** — superseded by the "Open
-   conflicts" section at the top of this document, which now states the
-   intended model explicitly (group channels share one WM per instance; DMs
-   get their own, non-persisted, per-user WM) rather than leaving it implicit.
-   Not yet implemented either way.
+2b. **Episodic log growth vs. WM history growth**
+   The management cycle (§11) truncates `wm.history` to a short raw tail
+   (last 5 events) plus a running condensed summary every 8th message, so it
+   no longer grows unboundedly — see §11 for the mechanism. Still genuinely
+   open: `EpisodicLog` itself (the persisted table) has no trimming/retention
+   policy and grows forever; that's a separate, not-yet-designed concern
+   (noted in `prototype/README.md`'s queue of not-yet-implemented items).
+3. **Multi-channel / multi-guild identity — resolved and implemented.** Group
+   channels share one WM per instance; DMs get their own, non-persisted,
+   per-user WM. See "Channel/instance scoping" further below for the actual
+   mechanism (`Orchestrator._scope_key`).
 4. **Cost/latency accounting** — every message triggers an intervention LLM call
    (§5); no discussion yet of what happens if that call itself is slow relative to
    Discord's typing-indicator expectations. Not blocking for the prototype, worth
@@ -507,13 +455,9 @@ See `prototype/README.md` for the concrete interface file and where to plug in.
 
 ---
 
-## 8. Mapping onto the reference CoALA diagrams
+## 8. Mapping onto the CoALA reference
 
-The two CoALA-style reference diagrams (generic agent, and the adapted
-two-LLM version) reframe one thing worth stating explicitly, since it doesn't
-change any decision above but does change the vocabulary: in CoALA terms, the
-**decision procedure is the Intervention LLM**, not the orchestrator. The
-orchestrator is the non-LLM runtime substrate that hosts the decision procedure's
+The orchestrator is the non-LLM runtime substrate that hosts the decision procedure's
 execution loop (event intake, trigger-variable computation, WM reads/writes,
 dispatch) — CoALA doesn't name that substrate separately because its reference
 agents assume a single control loop; MULCA's two-LLM split makes the substrate
@@ -606,16 +550,26 @@ Instead:
   (unchanged from §2) — the orchestrator periodically pushes computed variables
   into the live session rather than the session deriving them itself.
 
-**Implementation reality check (learned live, not anticipated in design):**
-OpenAI deprecated the Beta Realtime API (`client.beta.realtime.connect`,
-model `gpt-4o-realtime-preview`) on 2026-05-12, in favor of a GA endpoint
-(`client.realtime.connect`, model `gpt-realtime`) with several small schema
-renames (`modalities` → `output_modalities`, a new required `type: "realtime"`
-field on the session object). This was discovered via the first live
-connection attempt, not caught in advance — worth remembering as a general
-lesson for anything built against a fast-moving API: verify against the
-actual installed SDK/live endpoint before trusting documentation-shaped code,
-even code that looks internally consistent.
+**Why the intervention agent doesn't use WM's role-scoped view, unlike the main
+LLM.** §3 describes both LLMs reading WM through a namespaced view method
+(`intervention_view()` / `main_view()`) so persona/task/history never leak
+across roles. That's still exactly true for the main LLM — `main_view()` is
+real and used every call. It is **not** true for the intervention agent
+anymore: `intervention_view()` exists in `working_memory.py` but is never
+called by anything. This is a direct consequence of the ownership split
+above, not an oversight to fix: persona/task are sent **once**, as
+constructor arguments, at `connect()` time — never re-read from WM per turn,
+because the session already remembers them; there's nothing for a per-turn
+"view" to assemble for those fields. History/trigger variables/cooldown state
+*are* read every turn, but directly off `wm`'s raw attributes
+(`wm.history`, `wm.trigger_variables`, `wm.strategy_in_cooldown(...)`) rather
+than through a view method — because what's needed each turn is only the
+*new* increment plus current dynamic state, not a full reconstructed context
+the way the stateless main LLM needs. The view-method abstraction was built
+for a symmetric "both LLMs get their whole context handed to them fresh"
+model; the intervention agent stopped fitting that model the moment it became
+stateful, and the code (correctly) reflects that asymmetry even though the
+unused method was never removed.
 
 **Signaling path is unchanged in shape, only in mechanism**: the intervention
 agent's *output* always goes to the orchestrator, never directly to the main LLM
@@ -765,13 +719,7 @@ history window has been compacted several times over a long session.
 **Mechanism**: a **separate call/method, `MainLLM.run_management_cycle(wm)`**,
 not folded into the per-turn `decide()` call — keeping the per-turn decision
 path single-purpose and fast was the explicit reason for this split, not a
-stylistic preference. **Revised mid-build, moved off the intervention agent
-after a live quality issue**: it was originally `RealtimeInterventionLLM
-.run_management_cycle()`, relying on the persistent session's own
-accumulated memory to regenerate a fresh, complete summary each cycle. Live
-testing showed this degraded to topic lists on dense factual content
-(handled conversational/personal content fine — a specific personal reminder
-correctly survived a cycle boundary) — the intervention agent is meant to be
+stylistic preference. the intervention agent is meant to be
 lightweight/fast for judgment calls, not scoped for dense synthesis. Moved to
 the main LLM, which is stateless (§1) and has no session memory to fall back
 on, so it now **revises** the existing `history_summary`/
@@ -786,8 +734,7 @@ guarantee as a separate event type would, with less plumbing — deliberately
 chosen over the more "architecturally pure" separate-event-type option for
 exactly that reason.
 
-**A subtlety the implementation had to handle, that survived the model
-switch**: `RealtimeInterventionLLM` tracks `_sent_history_count`, an absolute
+Note: `RealtimeInterventionLLM` tracks `_sent_history_count`, an absolute
 index into `wm.history`, to know which items it has already pushed to its own
 session for `decide()`'s judgment. Truncating `wm.history` out from under
 that counter would silently break the next `decide()` call's slice math --
@@ -799,8 +746,7 @@ cycle — the events remaining after truncation were already sent before the
 truncation happened, so this just re-points the counter at the new (shorter)
 list length, not a resend.
 
-**Scope, as decided** (this is the actual agreed scope — resist the urge to
-expand it silently when building):
+**Scope**:
 1. Update a running conversation-history summary in WM.
 2. Update a summary of participants and their roles (`identity_memory`, §4 —
    the presence roster is not this; this is the actual role semantics that
@@ -808,8 +754,8 @@ expand it silently when building):
 3. Room to discover more needs once built — deliberately left open rather
    than speculatively designed now.
 
-**Scope restriction, decided**: the management cycle applies only to the
-`"group"` scope — it must never run for a `"dm:<user_id>"` WM. DM content
+**Scope restriction**: the management cycle applies only to the
+`"group"` (channel) scope — it must never run for a `"dm:<user_id>"` WM. DM content
 already can't reach the persisted episodic log (per "Channel/instance
 scoping" above); it shouldn't get folded into any summary either, group-level
 or otherwise. When building the every-8th-message trigger, gate it on
@@ -874,11 +820,7 @@ guessing — not by DM, ever, since DM state is never persisted at all
   each shutdown, purely to seed the next boot. The log answers "what happened
   and why"; the snapshot answers "what should I remember right now."
 
-**A real limitation found while building this — fixed.** The *intervention
-agent's own session* didn't originally see the restored `history_summary`
-after a restart (`decide()` only ever sends raw new history items + trigger
-variables, never the summary itself; only the main LLM read it). Fixed:
-`RealtimeInterventionLLM` now accepts `restored_history_summary`/
+**Note:** It does not store memory when running in autoreload mode (debugging mode where it restarts the server when files are updated). `RealtimeInterventionLLM` now accepts `restored_history_summary`/
 `restored_participant_roles_summary` at construction and includes them in the
 session's initial `instructions` at `connect()` time, once, not per-turn.
 `Orchestrator._intervention_agent_for` supplies these from `wm` when creating
@@ -893,6 +835,45 @@ the session's `instructions` payload.
 despite the episodic log having a full record. Falling back to reconstructing
 from recent `EpisodicLog` rows when no snapshot exists is the natural answer,
 not built.
+
+### 11.2 DM memory management (implemented)
+
+**Built as sketched above**: `MainLLM.run_dm_management_cycle(wm)` — a
+simpler sibling of `run_management_cycle`, dropping `participant_roles_summary`
+entirely (a DM has exactly one participant, so there's nothing to track).
+Plain-text response, not JSON-schema-constrained, since there's only one
+field to produce. Wired into the orchestrator's existing DM early-return
+branch (where the episodic-log skip already lived): every
+`DM_MANAGEMENT_CYCLE_INTERVAL` (8, matching the group's cadence — same value
+today, but a separate, independently-tunable constant, since there's no
+reason a DM's pace must match the group's), `wm.apply_management_cycle()`
+truncates that DM's history the same way the group's does (last-5 raw tail +
+running summary), and `on_history_truncated()` re-syncs the intervention
+agent's own `_sent_history_count` for that DM's session, same as the group
+path. **Never logged anywhere** — the DM's summary lives only in that DM's
+own in-memory WM, same privacy boundary as everything else in this scope; the
+early-return this is nested inside is the same one that already skips
+`EpisodicLog` for DMs.
+
+Verified via a mocked test: a DM's history truncates correctly at the
+configured interval while a group message processed in the *same* run leaves
+the group's WM and the episodic log completely untouched (0 DM-originated log
+rows) — the concern being tested was specifically whether reusing the same
+shared `MainLLM` instance for both group and DM summarization could leak
+private content across scopes. It can't, structurally: `MainLLM` is fully
+stateless per call (each call builds its request fresh from whichever `wm`
+object is passed in; nothing accumulates on `self` between calls), and `wm`
+is always the scope-specific instance from `Orchestrator._wms`. The DM's
+content does still leave the process over the network to OpenAI for
+summarization — no different from what already happens generating a DM's
+replies — it just never touches `EpisodicLog` or the group's `WorkingMemory`.
+
+Left as documented above, still not decided: the cadence (currently just
+matches the group's 8, arbitrarily) and whether the main LLM is even the
+right choice here long-term (chosen for consistency with the proven group
+pattern, not because the lighter-model quality issue that motivated moving
+the group's version to the main LLM was re-tested for this simpler,
+roles-free case).
 
 ---
 
@@ -954,10 +935,10 @@ returns two independent booleans alongside the strategy id (§1):
   "provide_summary"` (forced true regardless of what the model reports, same
   deterministic-override spirit as the cooldown veto), the orchestrator runs
   the exact retrieval described above and populates `wm.retrieved_context`.
-  **This is still the same recency-window retrieval, not real RAG** — adding
+  **This is still the same recency-window retrieval, not RAG yet ** — adding
   the flag did not add relevance ranking; see the previous paragraph's
   limitation, which applies here identically.
-- **`needs_web_search`** — **captured only, not implemented at all.** The
+- **`needs_web_search`** — **captured only, not implemented yet.** The
   intervention agent is instructed to set this when a question needs current
   information from outside the conversation, but nothing reads the flag or
   performs a search. No web search capability exists anywhere in this
@@ -1012,3 +993,5 @@ leaving `provide_summary`'s retrieval to brute-force a recency window forever
 as the log grows? This is the actual fix for this section's recency-vs-relevance
 limitation (a well-consolidated log needs less blunt windowing) — flagged for
 a future pass, not scoped now.
+
+

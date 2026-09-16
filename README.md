@@ -6,6 +6,9 @@ voice/audio extension in progress) built on Django, using two LLMs — a
 lightweight intervention agent that judges *when* and *why* to speak, and a
 main LLM that decides *what* to say and *how* to say it.
 
+conda activate main
+python manage.py run_discord_bot
+
 ## Architecture at a glance
 
 **Two LLMs, four concerns.** The intervention agent owns **when** (is a

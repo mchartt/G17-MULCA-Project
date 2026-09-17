@@ -50,6 +50,11 @@ def build_discord_client(
     client = discord.Client(intents=intents)
     sessions: dict[str, tuple[MucaWsClient, ReplyDispatcher]] = {}
     client.mulca_sessions = sessions
+    # discord.py runs on_message concurrently, so two messages for the same
+    # scope arriving before the first connect() resolves would otherwise both
+    # see "no existing session" and each stand up a duplicate one -- this
+    # lock makes check-then-create-then-store atomic across those calls.
+    sessions_lock = asyncio.Lock()
 
     async def _session_for(
         scope: str,
@@ -57,23 +62,24 @@ def build_discord_client(
         is_dm: bool,
         channel: discord.abc.Messageable,
     ) -> MucaWsClient:
-        existing = sessions.get(scope)
-        if existing is not None:
-            return existing[0]
+        async with sessions_lock:
+            existing = sessions.get(scope)
+            if existing is not None:
+                return existing[0]
 
-        muca_client = MucaWsClient(
-            muca_server_url,
-            conversation_id=scope,
-            is_dm=is_dm,
-        )
-        dispatcher = ReplyDispatcher(channel)
-        muca_client.on_assistant_text = dispatcher.on_delta
+            muca_client = MucaWsClient(
+                muca_server_url,
+                conversation_id=scope,
+                is_dm=is_dm,
+            )
+            dispatcher = ReplyDispatcher(channel)
+            muca_client.on_assistant_text = dispatcher.on_delta
 
-        await muca_client.connect()
-        asyncio.create_task(muca_client.receive_loop())
+            await muca_client.connect()
+            asyncio.create_task(muca_client.receive_loop())
 
-        sessions[scope] = (muca_client, dispatcher)
-        return muca_client
+            sessions[scope] = (muca_client, dispatcher)
+            return muca_client
 
     @client.event
     async def on_ready() -> None:

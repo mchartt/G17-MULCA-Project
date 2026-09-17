@@ -1,10 +1,19 @@
-# MULCA prototype (text bot)
+# MULCA prototype (Discord adapter)
 
-Implements the architecture in `../BLUEPRINT.md`: orchestrator + shared working
-memory + a stateful, persistent intervention agent + main LLM, running against
-a Discord text channel. Audio is out of scope here — see **"Where audio plugs
-in"** below for the exact seam a colleague's `AudioChannelAdapter` needs to
-conform to.
+The orchestrator/working-memory/intervention-and-main-LLM implementation
+originally in this repo (`mulca/`) has been **ported to
+[`MUCA-Server`](../../MUCA-Server)** and deleted here — see that repo's
+`README.md` for its current status. What's left in this repo is
+`mulca_discord/`: a thin Discord client that speaks MUCA-Server's WebSocket
+protocol (connect, push the roster, stream `user_text`, render
+`assistant_text` deltas back into Discord messages) and holds no cognition
+logic of its own. See **"Running it"** below for how to run the two
+together.
+
+The "Implementation status" section right below is a historical record of
+the design work that produced the now-ported implementation; treat any path
+it references under `mulca/`, `core/`, or `bot/` as describing MUCA-Server's
+`muca_server/cognition/` and `muca_server/agents/`, not anything in this repo.
 
 ## Implementation status (accurate as of this section's last edit — check git history if this drifts)
 
@@ -145,71 +154,76 @@ reached yet. Uses the GA Realtime API (`client.realtime.connect`, model
 
 ## Running it
 
+Two processes, two repos: MUCA-Server (the cognition server) and this repo's
+`mulca_discord` (the Discord client of it).
+
+**1. MUCA-Server** (`../../MUCA-Server`), in its own terminal:
+
 ```bash
-python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
+cd ../../MUCA-Server
+pip install -e ".[server,openai,dev]"
 
-cp .env.example .env
-# fill in DISCORD_BOT_TOKEN and OPENAI_API_KEY in .env
-# MULCA_CHANNEL_IDS is optional -- comma-separated channel IDs to restrict to
+# .env in MUCA-Server/, not this repo:
+#   OPENAI_API_KEY=...
+#   MUCA_SERVER_HOST=0.0.0.0   # optional, this is the default
+#   MUCA_SERVER_PORT=8000      # optional, this is the default
 
-python manage.py migrate
-python manage.py run_discord_bot --autoreload
+python -m muca_server.run_server
 ```
 
-`--autoreload` restarts the bot automatically on code changes during active
-dev/debugging (Django's autoreload utility, same mechanism `runserver` uses).
-Omit it for a run where clean-shutdown persistence (§11.1) matters — on
-Windows the autoreloader's child-subprocess model was found to swallow
-Ctrl+C before the shutdown-save code runs (see the "Startup/shutdown
-persistence" entry above).
+`run_server.py` is the composition root: it's what currently hardcodes the
+active task (`general_moderation`) and strategy set — see that file to change
+either.
 
-The bot needs the "Message Content" privileged intent enabled in the Discord
-developer portal (`discord_adapter.py` requests `intents.message_content = True`).
+**2. This adapter**, in a second terminal:
+
+```bash
+pip install -r requirements.txt   # includes -e ../../MUCA-Server
+
+cp .env.example .env
+# fill in DISCORD_BOT_TOKEN
+# MUCA_SERVER_URL=ws://localhost:8000/   -- optional, this is the default
+# MULCA_CHANNEL_IDS is optional -- comma-separated channel IDs to restrict to
+
+python -m mulca_discord
+```
+
+The bot needs the "Message Content" and "Server Members" privileged intents
+enabled in the Discord developer portal (`discord_client.py` requests
+`intents.message_content = True` and `intents.members = True`, the latter for
+the roster lookup that seeds silent participants).
+
+No `manage.py`/Django step anymore — cognition state (working memory,
+episodic log) now lives in MUCA-Server's process, not a local DB. See
+MUCA-Server's own README for what's persisted today (currently in-memory
+only; DB-backed storage is still open there).
 
 ## Where audio plugs in
 
-Two things an `AudioChannelAdapter` module needs to do — both are already
-consumed by `core/orchestrator.py`, no orchestrator changes required to add it:
-
-1. **Per-utterance events.** For each completed utterance, construct a
-   `core.events.ConversationEvent(speaker_id=..., modality="audio",
-   content=<text/semantic representation from the native multimodal audio
-   model>, timestamp=..., channel_id=...)` and call
-   `await orchestrator.enqueue(event)` — the exact same call
-   `discord_adapter.py`'s `on_message` makes for text. `content` must come from
-   the audio model's own understanding of the utterance, not a separate
-   speech-to-text stage (BLUEPRINT.md "Technical constraints").
-2. **Continuous activity signal (optional for a first pass).** For
-   started/stopped-speaking events between utterances, construct a
-   `core.events.SpeechActivityEvent` and push it through the same
-   `orchestrator.enqueue()` path. The orchestrator currently no-ops on these
-   (`core/orchestrator.py::_consume`, the `SpeechActivityEvent` branch) — hook
-   in real trigger-variable updates there when needed, without touching the
-   `ConversationEvent` path.
-
-Both event types funnel into the **same per-scope `asyncio.Queue`** as text
-events (`Orchestrator._queue_for`, keyed by `_scope_key` — see "Channel/instance
-scoping" above), so audio and text events for the same scope are always
-processed one at a time, in arrival order — this is what rules out races
-between the two streams once both are live (see `core/orchestrator.py`'s
-module docstring and BLUEPRINT.md §5/§6).
-
-Dispatch (bot speaking back) is not yet defined for audio — `core/main_llm.py`
-only yields text chunks. Wiring text-to-speech-out (or a native audio-output
-model) is the colleague's side to design against this same `stream_reply()`
-text-chunk generator; not designed here.
+Audio is not implemented on either side yet (confirmed against both repos).
+The seam this section used to describe (`AudioChannelAdapter` calling
+`Orchestrator.enqueue()`) now belongs to MUCA-Server's protocol/session
+layer — see `MUCA-Server/muca_server/protocol/incoming.py`'s
+`AudioStreamMessage`/`PlaybackFrameMessage` and
+`muca_server/agents/conversation.py`'s `route_user_audio`/
+`route_playback_frame` for where that already exists structurally. This repo
+has no audio path at all: `mulca_discord` only ever sends `user_text`.
 
 ## Layout
 
 ```
-mulca/
-  core/            framework-agnostic: WM, orchestrator, both LLM wrappers, strategies, events
-  bot/             Django app: episodic log model + Discord text adapter
-  config/          personas / tasks / strategies YAML (BLUEPRINT.md §1, §4 "Skills")
-    strategies/    one flat pool -- which subset is active is chosen independently
-                   in run_discord_bot.py's ACTIVE_STRATEGY_IDS, not derived from
-                   which task is loaded (persona/task/strategies are three
-                   separate choices, per BLUEPRINT.md §9's reuse goal)
-
+mulca_discord/
+  discord_client.py   Discord-side glue: bot-author filtering, MULCA_CHANNEL_IDS
+                       gate, DM detection, roster-from-channel.members lookup --
+                       one MucaWsClient + ReplyDispatcher per scope ("group" or
+                       "dm:<user_id>"), lazily created on first use
+  muca_client.py       One WebSocket session against MUCA-Server for one scope:
+                       connect, stand up the intervention observer, push the
+                       roster, stream user_text, read assistant_text back
+  dispatch.py          Turns assistant_text deltas into one throttled Discord
+                       message per reply (ported from the old dispatch_fn)
+  __main__.py           Entrypoint: `python -m mulca_discord`
 ```
+
+Cognition (working memory, strategies, both LLMs, episodic log) lives in
+`MUCA-Server/muca_server/cognition/` and `muca_server/agents/` now, not here.

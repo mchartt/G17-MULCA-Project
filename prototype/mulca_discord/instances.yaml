@@ -1,0 +1,11 @@
+# One entry per MULCA instance (one text channel + one paired voice channel
+# + that team's participant roster). voice_channel_id can be omitted/null
+# until audio is actually built -- the instance still works text-only.
+#
+# Fill in real Discord IDs (right-click a channel/user with Developer Mode
+# enabled in Discord -> Copy ID) before running against a real server.
+instances:
+  - name: team-alpha
+    text_channel_id: 1543265278899519570
+    voice_channel_id: null
+    participant_ids: [1543272432796700828, 153532335998894089]

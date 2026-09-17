@@ -2,9 +2,12 @@
 The Discord half of the adapter.
 
 Everything here is unchanged in spirit from the old (deleted) discord_adapter
-module: bot-author filtering, the MULCA_CHANNEL_IDS gate, DM detection, the
-roster-from-channel.members lookup. What changed is what it's wired to -- a
-MucaWsClient session per scope instead of an in-process Orchestrator.
+module: bot-author filtering, DM detection, the roster-from-channel.members
+lookup. What changed is what it's wired to -- a MucaWsClient session per
+scope instead of an in-process Orchestrator, and scoping is now driven by
+the configured MulcaInstance list (instances.py) instead of a flat
+MULCA_CHANNEL_IDS allowlist, so a text channel and its paired voice channel
+share one scope/one memory once voice exists, not just one channel each.
 """
 
 from __future__ import annotations
@@ -15,13 +18,10 @@ import logging
 import discord
 
 from .dispatch import ReplyDispatcher
+from .instances import MulcaInstance, instance_for_channel
 from .muca_client import MucaWsClient
 
 logger = logging.getLogger(__name__)
-
-
-def _scope_key(message: discord.Message, *, is_dm: bool) -> str:
-    return f"dm:{message.author.id}" if is_dm else "group"
 
 
 async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
@@ -32,12 +32,13 @@ async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
 def build_discord_client(
     *,
     muca_server_url: str,
-    channel_ids: set[str] | None,
+    instances: list[MulcaInstance],
 ) -> discord.Client:
     """
-    `sessions` maps scope ("group", or "dm:<user_id>") to its MucaWsClient +
-    ReplyDispatcher, both created lazily on first use for that scope, exactly
-    as the old Orchestrator keyed its WM/session per scope.
+    `sessions` maps scope (a MulcaInstance's conversation_id, or
+    "dm:<user_id>") to its MucaWsClient + ReplyDispatcher, both created
+    lazily on first use for that scope, exactly as the old Orchestrator
+    keyed its WM/session per scope.
     """
 
     intents = discord.Intents.default()
@@ -103,12 +104,19 @@ def build_discord_client(
             return
 
         is_dm = isinstance(message.channel, discord.DMChannel)
-        # A DM is never in the registered-channels set -- it's a different
-        # Discord object entirely -- and should always be let through.
-        if not is_dm and channel_ids and str(message.channel.id) not in channel_ids:
-            return
 
-        scope = _scope_key(message, is_dm=is_dm)
+        if is_dm:
+            # Permissive by design (BLUEPRINT.md: "open to DMs from any
+            # individual user") -- not gated on any instance's
+            # participant_ids, which document team membership, not access.
+            scope = f"dm:{message.author.id}"
+        else:
+            instance = instance_for_channel(instances, message.channel.id)
+            if instance is None:
+                # Not a channel any configured MulcaInstance owns.
+                return
+            scope = instance.conversation_id
+
         muca_client = await _session_for(scope, is_dm=is_dm, channel=message.channel)
 
         if not is_dm:

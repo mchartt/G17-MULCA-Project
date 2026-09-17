@@ -16,6 +16,7 @@ import os
 from dotenv import load_dotenv
 
 from .discord_client import build_discord_client, close_all_sessions
+from .instances import load_instances
 
 
 def main() -> None:
@@ -24,12 +25,11 @@ def main() -> None:
 
     discord_token = os.environ["DISCORD_BOT_TOKEN"]
     muca_server_url = os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/")
-    channel_ids_raw = os.environ.get("MULCA_CHANNEL_IDS", "").strip()
-    channel_ids = {c.strip() for c in channel_ids_raw.split(",") if c.strip()} or None
+    instances = load_instances()
 
     client = build_discord_client(
         muca_server_url=muca_server_url,
-        channel_ids=channel_ids,
+        instances=instances,
     )
 
     try:

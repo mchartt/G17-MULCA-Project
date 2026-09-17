@@ -5,7 +5,7 @@ seeding (compute_trigger_variables, on the MUCA-Server side) so a quiet
 participant is visible before their first message.
 """
 
-from mulca_discord.discord_client import _roster, _scope_key
+from mulca_discord.discord_client import _roster
 
 
 class FakeMember:
@@ -18,16 +18,6 @@ class FakeMember:
 class FakeChannel:
     def __init__(self, members: list[FakeMember]) -> None:
         self.members = members
-
-
-class FakeAuthor:
-    def __init__(self, id: int) -> None:
-        self.id = id
-
-
-class FakeMessage:
-    def __init__(self, author_id: int) -> None:
-        self.author = FakeAuthor(author_id)
 
 
 async def test_roster_lists_every_present_member_by_id():
@@ -60,11 +50,3 @@ async def test_roster_is_empty_without_a_members_list():
     roster = await _roster(ChannelWithNoMembers())
 
     assert roster == {}
-
-
-def test_scope_key_is_group_for_a_channel_message():
-    assert _scope_key(FakeMessage(1), is_dm=False) == "group"
-
-
-def test_scope_key_is_per_user_for_a_dm():
-    assert _scope_key(FakeMessage(42), is_dm=True) == "dm:42"

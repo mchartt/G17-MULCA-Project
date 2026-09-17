@@ -4,7 +4,12 @@ up one MULCA bot's persistent memory, and how a raw channel id resolves back
 to the instance (and therefore the conversation_id/DB file) that owns it.
 """
 
-from mulca_discord.instances import MulcaInstance, instance_for_channel, load_instances
+from mulca_discord.instances import (
+    MulcaInstance,
+    instance_for_channel,
+    instance_for_participant,
+    load_instances,
+)
 
 
 def test_conversation_id_is_derived_from_the_instance_name_not_a_channel_id():
@@ -78,3 +83,23 @@ def test_load_instances_is_empty_for_a_config_with_no_instances(tmp_path):
     config.write_text("instances: []\n", encoding="utf-8")
 
     assert load_instances(config) == []
+
+
+def test_instance_for_participant_finds_the_instance_that_lists_them():
+    alpha = MulcaInstance(
+        name="team-alpha", text_channel_id=111, participant_ids=frozenset({1, 2})
+    )
+    beta = MulcaInstance(
+        name="team-beta", text_channel_id=333, participant_ids=frozenset({3})
+    )
+
+    assert instance_for_participant([alpha, beta], 1) is alpha
+    assert instance_for_participant([alpha, beta], 3) is beta
+
+
+def test_instance_for_participant_is_none_for_an_unrecognized_user():
+    alpha = MulcaInstance(
+        name="team-alpha", text_channel_id=111, participant_ids=frozenset({1})
+    )
+
+    assert instance_for_participant([alpha], 999) is None

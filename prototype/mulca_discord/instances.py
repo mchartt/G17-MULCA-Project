@@ -34,13 +34,14 @@ class MulcaInstance:
     text_channel_id: int
     voice_channel_id: int | None = None
 
-    # Documents team membership and (once there are per-instance bot tokens)
-    # is what a DM's own bot naturally scopes to -- not a hard allowlist:
-    # a DM is still handled from anyone, per BLUEPRINT.md's "open to DMs
-    # from any individual user." The live channel.members roster (see
-    # discord_client.py's _roster()) is still what actually drives
-    # participation trigger variables; this is instance ownership, not a
-    # substitute for that.
+    # Documents team membership. Not a hard allowlist on whether a DM gets
+    # handled at all -- a DM is still answered from anyone, per
+    # BLUEPRINT.md's "open to DMs from any individual user" -- but it does
+    # gate whether that DM gets one-way read access to this instance's group
+    # memory (instance_for_participant(), used by discord_client.py's DM
+    # handling). The live channel.members roster (see discord_client.py's
+    # _roster()) is still what actually drives participation trigger
+    # variables for the group itself; this is a separate concern.
     participant_ids: frozenset[int] = field(default_factory=frozenset)
 
     @property
@@ -83,6 +84,24 @@ def instance_for_channel(
 ) -> MulcaInstance | None:
     for instance in instances:
         if instance.owns_channel(channel_id):
+            return instance
+
+    return None
+
+
+def instance_for_participant(
+    instances: list[MulcaInstance],
+    user_id: int,
+) -> MulcaInstance | None:
+    """
+    Which instance (if any) recognizes this Discord user as a participant --
+    what a DM from them gets one-way read access to. None if they aren't
+    listed anywhere, which is the normal case for someone MULCA has never
+    been introduced to.
+    """
+
+    for instance in instances:
+        if user_id in instance.participant_ids:
             return instance
 
     return None

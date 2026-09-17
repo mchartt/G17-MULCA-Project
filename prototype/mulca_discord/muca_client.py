@@ -39,10 +39,16 @@ class MucaWsClient:
         *,
         conversation_id: str,
         is_dm: bool,
+        linked_conversation_id: str | None = None,
     ) -> None:
         self._url = url
         self._conversation_id = conversation_id
         self._is_dm = is_dm
+        # For a DM only: the group conversation_id its sender is a
+        # recognized participant of (instances.py), so MUCA-Server can give
+        # this DM one-way read access to that group's memory. None if the
+        # sender isn't recognized as belonging to any instance.
+        self._linked_conversation_id = linked_conversation_id
         self._connection: ClientConnection | None = None
 
         # Set by the caller before receive_loop() starts consuming.
@@ -56,6 +62,7 @@ class MucaWsClient:
                 event="connect",
                 conversation_id=self._conversation_id,
                 is_dm=self._is_dm,
+                linked_conversation_id=self._linked_conversation_id,
             )
         )
         await self._send(

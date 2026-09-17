@@ -8,4 +8,8 @@ instances:
   - name: team-alpha
     text_channel_id: 1543265278899519570
     voice_channel_id: null
-    participant_ids: [1543272432796700828, 153532335998894089]
+    # Only Mats (153532335998894089) is a recognized participant right now,
+    # deliberately -- for live-testing the linked-DM-memory behavior: a DM
+    # from Mats should get read access to team-alpha's group memory, a DM
+    # from Disco Duck (1543272432796700828, left out on purpose) should not.
+    participant_ids: [153532335998894089]

@@ -18,7 +18,7 @@ import logging
 import discord
 
 from .dispatch import ReplyDispatcher
-from .instances import MulcaInstance, instance_for_channel
+from .instances import MulcaInstance, instance_for_channel, instance_for_participant
 from .muca_client import MucaWsClient
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,7 @@ def build_discord_client(
         *,
         is_dm: bool,
         channel: discord.abc.Messageable,
+        linked_conversation_id: str | None = None,
     ) -> MucaWsClient:
         async with sessions_lock:
             existing = sessions.get(scope)
@@ -72,6 +73,7 @@ def build_discord_client(
                 muca_server_url,
                 conversation_id=scope,
                 is_dm=is_dm,
+                linked_conversation_id=linked_conversation_id,
             )
             dispatcher = ReplyDispatcher(channel)
             muca_client.on_assistant_text = dispatcher.on_delta
@@ -104,12 +106,19 @@ def build_discord_client(
             return
 
         is_dm = isinstance(message.channel, discord.DMChannel)
+        linked_conversation_id: str | None = None
 
         if is_dm:
-            # Permissive by design (BLUEPRINT.md: "open to DMs from any
-            # individual user") -- not gated on any instance's
-            # participant_ids, which document team membership, not access.
+            # Answering is permissive by design (BLUEPRINT.md: "open to DMs
+            # from any individual user") -- participant_ids doesn't gate
+            # that. It does gate one-way read access to a group's memory:
+            # a recognized participant's DM gets it, a stranger's doesn't.
             scope = f"dm:{message.author.id}"
+            linked_instance = instance_for_participant(
+                instances, message.author.id
+            )
+            if linked_instance is not None:
+                linked_conversation_id = linked_instance.conversation_id
         else:
             instance = instance_for_channel(instances, message.channel.id)
             if instance is None:
@@ -117,7 +126,12 @@ def build_discord_client(
                 return
             scope = instance.conversation_id
 
-        muca_client = await _session_for(scope, is_dm=is_dm, channel=message.channel)
+        muca_client = await _session_for(
+            scope,
+            is_dm=is_dm,
+            channel=message.channel,
+            linked_conversation_id=linked_conversation_id,
+        )
 
         if not is_dm:
             roster = await _roster(message.channel)

@@ -10,6 +10,7 @@ same as it never sees "Discord" at all elsewhere in this adapter.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,12 +18,16 @@ import yaml
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "instances.yaml"
 
+# Points at a different instances file, e.g. a personal, git-ignored
+# instances.local.yaml with your own test server's channel ids.
+INSTANCES_ENV_VAR = "MULCA_INSTANCES"
+
 
 @dataclass(frozen=True, slots=True)
 class MulcaInstance:
     """
-    One bot's scope: a text channel, its paired voice channel (once audio
-    exists -- None until then), and the participants who belong to it.
+    One bot's scope: a text channel, its paired voice channel (None for a
+    text-only instance), and the participants who belong to it.
 
     A stable `name` (not either channel id) is what conversation_id derives
     from, so text and voice share one scope/one memory once voice is added --
@@ -43,6 +48,9 @@ class MulcaInstance:
     # _roster()) is still what actually drives participation trigger
     # variables for the group itself; this is a separate concern.
     participant_ids: frozenset[int] = field(default_factory=frozenset)
+
+    # Also post what MULCA says in the voice channel to the text channel.
+    post_voice_transcripts: bool = False
 
     @property
     def conversation_id(self) -> str:
@@ -73,9 +81,19 @@ def load_instances(path: Path = DEFAULT_CONFIG_PATH) -> list[MulcaInstance]:
                 int(participant_id)
                 for participant_id in entry.get("participant_ids", [])
             ),
+            post_voice_transcripts=bool(
+                entry.get("post_voice_transcripts", False),
+            ),
         )
         for entry in data.get("instances", [])
     ]
+
+
+def configured_instances_path() -> Path:
+    """The instances file to use: $MULCA_INSTANCES if set, else the default."""
+
+    override = os.environ.get(INSTANCES_ENV_VAR)
+    return Path(override) if override else DEFAULT_CONFIG_PATH
 
 
 def instance_for_channel(

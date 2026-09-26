@@ -87,3 +87,63 @@ async def test_a_second_reply_starts_a_fresh_buffer():
     await dispatcher.on_delta("", True)
 
     assert [m.content for m in channel.sent] == ["First", "Second"]
+
+
+async def test_a_spoken_replys_transcript_is_not_posted_by_default():
+    channel = FakeChannel()
+    dispatcher = ReplyDispatcher(channel)
+
+    await dispatcher.on_delta("I said this out loud", False, "audio")
+    await dispatcher.on_delta("", True, "audio")
+
+    assert channel.sent == []
+
+
+async def test_a_spoken_replys_transcript_is_posted_when_asked_for():
+    channel = FakeChannel()
+    dispatcher = ReplyDispatcher(channel, post_voice_transcripts=True)
+
+    await dispatcher.on_delta("out loud", False, "audio")
+    await dispatcher.on_delta("", True, "audio")
+
+    assert len(channel.sent) == 1
+    assert channel.sent[0].content.endswith("out loud")
+
+
+async def test_a_written_and_a_spoken_reply_stream_into_separate_messages():
+    channel = FakeChannel()
+    dispatcher = ReplyDispatcher(channel, post_voice_transcripts=True)
+
+    await dispatcher.on_delta("written", False, "text")
+    await dispatcher.on_delta("spoken", False, "audio")
+    await dispatcher.on_delta("", True, "text")
+    await dispatcher.on_delta("", True, "audio")
+
+    assert len(channel.sent) == 2
+    assert channel.sent[0].content == "written"
+    assert channel.sent[1].content.endswith("spoken")
+
+
+async def test_a_blank_delta_never_sends_an_empty_message():
+    channel = FakeChannel()
+    dispatcher = ReplyDispatcher(channel)
+
+    await dispatcher.on_delta("   ", False)
+    await dispatcher.on_delta("", True)
+
+    assert channel.sent == []
+
+
+async def test_a_reply_longer_than_discord_allows_continues_in_a_new_message():
+    from mulca_discord.dispatch import DISCORD_MESSAGE_LIMIT
+
+    channel = FakeChannel()
+    dispatcher = ReplyDispatcher(channel)
+    words = "word " * 900  # 4500 characters
+
+    await dispatcher.on_delta(words, False)
+    await dispatcher.on_delta("", True)
+
+    assert len(channel.sent) == 3
+    assert all(len(m.content) <= DISCORD_MESSAGE_LIMIT for m in channel.sent)
+    assert "".join(m.content for m in channel.sent).split() == words.split()

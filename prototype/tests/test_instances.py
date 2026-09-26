@@ -103,3 +103,21 @@ def test_instance_for_participant_is_none_for_an_unrecognized_user():
     )
 
     assert instance_for_participant([alpha], 999) is None
+
+
+def test_mulca_instances_points_at_another_file(tmp_path, monkeypatch):
+    from mulca_discord.instances import DEFAULT_CONFIG_PATH, configured_instances_path
+
+    local = tmp_path / "instances.local.yaml"
+    local.write_text(
+        "instances:\n  - name: mulca-test\n    text_channel_id: 1\n    voice_channel_id: 2\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("MULCA_INSTANCES", raising=False)
+    assert configured_instances_path() == DEFAULT_CONFIG_PATH
+
+    monkeypatch.setenv("MULCA_INSTANCES", str(local))
+    [instance] = load_instances(configured_instances_path())
+    assert instance.name == "mulca-test"
+    assert instance.voice_channel_id == 2

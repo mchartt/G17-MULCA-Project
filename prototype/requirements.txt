@@ -1,4 +1,10 @@
-discord.py>=2.4,<3
+# [voice]: PyNaCl (voice transport) and davey (Discord's end-to-end voice
+# encryption, DAVE) -- both needed to join a voice channel.
+discord.py[voice]>=2.7,<3
+# Per-user voice receive for discord.py (only pre-releases are published).
+discord-ext-voice-recv==0.5.2a179
 websockets>=13,<16
 python-dotenv>=1.0,<2
+pyyaml>=6,<7
+numpy>=1.26,<3
 -e ../../MUCA-Server

@@ -5,10 +5,9 @@ originally in this repo (`mulca/`) has been **ported to
 [`MUCA-Server`](../../MUCA-Server)** and deleted here — see that repo's
 `README.md` for its current status. What's left in this repo is
 `mulca_discord/`: a thin Discord client that speaks MUCA-Server's WebSocket
-protocol (connect, push the roster, stream `user_text`, render
-`assistant_text` deltas back into Discord messages) and holds no cognition
-logic of its own. See **"Running it"** below for how to run the two
-together.
+protocol (MUCA-Server's `docs/PROTOCOL.md`) -- text channels, DMs, and a
+voice channel per instance -- and holds no cognition logic of its own. See
+**"Running it"** below for how to run the two together.
 
 The "Implementation status" section right below is a historical record of
 the design work that produced the now-ported implementation; treat any path
@@ -122,7 +121,8 @@ this file.
   not just WM) — a new idea from live testing, not designed in detail yet.
 - Audio, entirely (§6, §10.2–§10.4) — no `AudioChannelAdapter`, no VAD, no
   turntaking/floor-claim policy, no self-interrupt reflex. Purely a
-  documented seam so far.
+  documented seam so far. *(Since built, on MUCA-Server's Unity-derived
+  turn taking: see "Voice" below.)*
 - Strategy YAML schema validation at boot (§7.5) — not built.
 - `main.tools_description` tool-calling loop — still a placeholder, no
   tool-calling exists (§3).
@@ -161,10 +161,11 @@ Two processes, two repos: MUCA-Server (the cognition server) and this repo's
 
 ```bash
 cd ../../MUCA-Server
-pip install -e ".[server,openai,dev]"
+pip install -e ".[server,openai,storage,dev]"
 
 # .env in MUCA-Server/, not this repo:
 #   OPENAI_API_KEY=...
+#   MUCA_DB_DIR=...            # optional; default MUCA-Server/data/
 #   MUCA_SERVER_HOST=0.0.0.0   # optional, this is the default
 #   MUCA_SERVER_PORT=8000      # optional, this is the default
 
@@ -173,56 +174,86 @@ python -m muca_server.run_server
 
 `run_server.py` is the composition root: it's what currently hardcodes the
 active task (`general_moderation`) and strategy set — see that file to change
-either.
+either. Memory (working-memory snapshots, the episodic log) persists there,
+one SQLite file per conversation, e.g. `data/instance_team-alpha.db`.
 
 **2. This adapter**, in a second terminal:
 
 ```bash
-pip install -r requirements.txt   # includes -e ../../MUCA-Server
+pip install -r requirements-dev.txt   # includes -e ../../MUCA-Server
 
 cp .env.example .env
 # fill in DISCORD_BOT_TOKEN
 # MUCA_SERVER_URL=ws://localhost:8000/   -- optional, this is the default
-# MULCA_CHANNEL_IDS is optional -- comma-separated channel IDs to restrict to
 
 python -m mulca_discord
 ```
 
+Which channels the bot answers in is configured in `mulca_discord/instances.yaml`:
+each instance is one text channel, optionally one voice channel, and the
+participants who belong to it. Anything not listed there is ignored; DMs are
+always answered, privately.
+
 The bot needs the "Message Content" and "Server Members" privileged intents
 enabled in the Discord developer portal (`discord_client.py` requests
 `intents.message_content = True` and `intents.members = True`, the latter for
-the roster lookup that seeds silent participants).
+the roster lookup that seeds silent participants). For voice it also needs
+the Connect and Speak permissions in the instance's voice channel.
 
-No `manage.py`/Django step anymore — cognition state (working memory,
-episodic log) now lives in MUCA-Server's process, not a local DB. See
-MUCA-Server's own README for what's persisted today (currently in-memory
-only; DB-backed storage is still open there).
+If MUCA-Server restarts, the bot reconnects on the next message (or voice
+tick) and the server restores the conversation's memory.
 
-## Where audio plugs in
+## Voice
 
-Audio is not implemented on either side yet (confirmed against both repos).
-The seam this section used to describe (`AudioChannelAdapter` calling
-`Orchestrator.enqueue()`) now belongs to MUCA-Server's protocol/session
-layer — see `MUCA-Server/muca_server/protocol/incoming.py`'s
-`AudioStreamMessage`/`PlaybackFrameMessage` and
-`muca_server/agents/conversation.py`'s `route_user_audio`/
-`route_playback_frame` for where that already exists structurally. This repo
-has no audio path at all: `mulca_discord` only ever sends `user_text`.
+Set `voice_channel_id` on an instance and MULCA joins that voice channel
+whenever someone is in it, and leaves when it empties. Text and voice share
+one MUCA-Server session (`instance:<name>`), so they share one memory: what
+was said out loud is known in the text channel and vice versa.
+
+- **Listening** (`voice/capture.py`, `voice/synchronizer.py`): each user's
+  audio arrives separately (discord-ext-voice-recv); Discord's end-to-end
+  voice encryption (DAVE) is undone with discord.py's own DAVE session. Every
+  100 ms the user holding the floor (loudest, with a 400 ms hang time) is
+  sent up as one `audio_stream` frame -- also when nobody speaks, so the
+  server always knows the playback state. This is the Unity package's
+  UserAudioSynchronizerBasic, ported.
+- **Speaking** (`voice/player.py`): spoken replies (`state_update.audio`)
+  play in real time; `isNotifying`/`playbackTimeMs` are reported back exactly
+  as the Unity client's AssistantAudioPusher does, and what was played is
+  echoed as `playback_frame` for the intervention agent. Talking over MULCA
+  stops it (the server sends `clearAudioQueue`).
+- **Transcripts**: a spoken reply is not posted to the text channel unless
+  the instance sets `post_voice_transcripts: true`.
+
+No ffmpeg needed: audio goes in and out as raw PCM.
+
+To try it on your own test server, follow
+[`TRYING_ON_DISCORD.md`](TRYING_ON_DISCORD.md): setup, a preflight check
+(`python -m mulca_discord.preflight --voice-test 10`), and a step-by-step
+trial.
+
+**Not verified against a live Discord voice channel yet** -- the pieces are
+unit-tested with synthetic audio, and MUCA-Server's voice path was verified
+live against OpenAI (`MUCA-Server/scripts/smoke_client.py`). The first live
+run should confirm per-user receive works with DAVE on (the likeliest place
+for trouble: `voice/capture.py`'s `_undo_dave`).
 
 ## Layout
 
 ```
 mulca_discord/
-  discord_client.py   Discord-side glue: bot-author filtering, MULCA_CHANNEL_IDS
-                       gate, DM detection, roster-from-channel.members lookup --
-                       one MucaWsClient + ReplyDispatcher per scope ("group" or
-                       "dm:<user_id>"), lazily created on first use
+  discord_client.py    Discord-side glue: bot-author filtering, instance
+                       scoping, DM detection, rosters, joining/leaving voice
+  sessions.py          One MUCA-Server session per scope ("instance:<name>" or
+                       "dm:<user_id>"), opened lazily, reopened when lost
   muca_client.py       One WebSocket session against MUCA-Server for one scope:
-                       connect, stand up the intervention observer, push the
-                       roster, stream user_text, read assistant_text back
-  dispatch.py          Turns assistant_text deltas into one throttled Discord
-                       message per reply (ported from the old dispatch_fn)
-  __main__.py           Entrypoint: `python -m mulca_discord`
+                       the handshake, user_text, audio_stream, playback_frame;
+                       assistant_text / state_update back
+  dispatch.py          Turns assistant_text deltas into throttled Discord
+                       messages (split at Discord's 2000-character limit)
+  instances.py/.yaml   Which text + voice channels make up each instance
+  voice/               The voice channel: capture, floor, playback, bridge
+  __main__.py          Entrypoint: `python -m mulca_discord`
 ```
 
 Cognition (working memory, strategies, both LLMs, episodic log) lives in

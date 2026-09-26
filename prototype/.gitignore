@@ -3,3 +3,8 @@
 __pycache__/
 *.pyc
 db.sqlite3
+
+# Personal test config and trial output.
+instances.local.yaml
+voice-test/
+voice-debug/

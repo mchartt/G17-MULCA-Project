@@ -1,13 +1,21 @@
 # MULCA — Multi-User LLM-based Conversational Agent
 
 A Discord bot instantiable with different personas/strategies/tasks to
-mediate a multi-user conversation. Currently: a text-based prototype (with a
-voice/audio extension in progress) built on Django, using two LLMs — a
-lightweight intervention agent that judges *when* and *why* to speak, and a
-main LLM that decides *what* to say and *how* to say it.
+mediate a multi-user conversation, in text channels, DMs and voice channels.
+It uses two LLMs — a lightweight intervention agent that judges *when* and
+*why* to speak, and a main LLM that decides *what* to say and *how* to say
+it. Both, and everything else cognitive, run in
+[MUCA-Server](https://github.com/rivaPolimi/MUCA-Server); this repo is the
+Discord client of it (`prototype/mulca_discord`).
 
-conda activate main
-python manage.py run_discord_bot
+```bash
+# terminal 1, in MUCA-Server/
+python -m muca_server.run_server
+# terminal 2, in MULCA/prototype/
+python -m mulca_discord
+```
+
+See [`prototype/README.md`](prototype/README.md) for setup.
 
 ## Architecture at a glance
 

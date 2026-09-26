@@ -7,15 +7,15 @@ implemented, see `README.md`.
 ## Instantiating with different personas/tasks/strategies
 
 Persona, task, and which strategies are active are **three independent
-choices**, all made in one place: `mulca/bot/management/commands/run_discord_bot.py`.
+choices**, all made in one place: MUCA-Server's `muca_server/run_server.py`.
 Nothing here derives from anything else — picking a task doesn't
 automatically pick strategies for it, and vice versa.
 
 - **`TASK_ID`** (a constant near the top of the file) picks which
-  `mulca/config/tasks/*.yaml` file loads. Set it to the filename without
+  MUCA-Server's `muca_server/cognition/config/tasks/*.yaml` file loads. Set it to the filename without
   `.yaml`.
 - **`ACTIVE_STRATEGY_IDS`** (a list, same file) picks which strategies from
-  the full pool (`mulca/config/strategies/*.yaml`) are actually switched on.
+  the full pool (MUCA-Server's `muca_server/cognition/config/strategies/*.yaml`) are actually switched on.
   An id in the list that doesn't match any file fails loudly at boot.
 - **Persona** is not yet a swap-by-constant choice — see "Adding a persona"
   below for the current (hardcoded-filename) mechanism.
@@ -23,7 +23,7 @@ automatically pick strategies for it, and vice versa.
 **Current catalog, as of this writing** (check the actual files/constants if
 this drifts — this list is a snapshot, not a live source of truth):
 
-| Kind | Available | Currently active (`run_discord_bot.py`) |
+| Kind | Available | Currently active (`run_server.py`) |
 |---|---|---|
 | Task | `general_moderation`, `consensus_ranking` | `general_moderation` |
 | Strategy | `participation_equality`, `respond_when_addressed`, `non_offensive`, `provide_summary`, `keep_on_topic` | all except `keep_on_topic` (which only makes sense paired with `consensus_ranking` — see its file's own comment) |
@@ -38,9 +38,9 @@ actually holds up.
 ## Adding a strategy
 
 Strategies are the fixed, config-defined behaviors the intervention agent can
-select. All of them live as flat YAML files in `mulca/config/strategies/`.
+select. All of them live as flat YAML files in MUCA-Server's `muca_server/cognition/config/strategies/`.
 
-1. Create a new file there, e.g. `mulca/config/strategies/my_strategy.yaml`:
+1. Create a new file there, e.g. MUCA-Server's `muca_server/cognition/config/strategies/my_strategy.yaml`:
 
    ```yaml
    id: my_strategy
@@ -66,7 +66,7 @@ select. All of them live as flat YAML files in `mulca/config/strategies/`.
      comment in `respond_when_addressed.yaml` for why some strategies
      deliberately have none).
 
-2. **Add the id to `ACTIVE_STRATEGY_IDS` in `mulca/bot/management/commands/run_discord_bot.py`.**
+2. **Add the id to `ACTIVE_STRATEGY_IDS` in MUCA-Server's `muca_server/run_server.py`.**
    A strategy sitting in the pool but not in that list has zero effect — this
    is intentional (BLUEPRINT.md §9: persona/task/strategies are three
    independent choices), but it's the one step that's easy to forget. An id
@@ -91,12 +91,13 @@ select. All of them live as flat YAML files in `mulca/config/strategies/`.
 ## Adding a persona
 
 Persona files are plain YAML with one `persona:` key holding a text block —
-see `mulca/config/personas/intervention_default.yaml` and `main_default.yaml`.
+see MUCA-Server's `muca_server/cognition/config/personas/intervention_default.yaml` and `main_default.yaml`.
 
 Unlike strategies/tasks, persona loading is **not** yet a swap-by-constant
-pattern — `load_persona_config()` in `run_discord_bot.py` hardcodes which two
-files it reads. To add an alternative persona, create the new YAML file, then
-edit `load_persona_config()` to point at it (or generalize it to a
+pattern — `build_app()` in `run_server.py` hardcodes which two files it
+reads (`load_persona("main_default")`, `load_persona("intervention_default")`).
+To add an alternative persona, create the new YAML file, then point those
+calls at it (or generalize them to a
 `PERSONA_ID`-style constant, matching how `TASK_ID` already works, if you're
 adding more than one alternative). This asymmetry is a known gap, not a
 design choice worth preserving — improving it is a reasonable first PR.
@@ -104,10 +105,10 @@ design choice worth preserving — improving it is a reasonable first PR.
 ## Adding a task
 
 Task files are plain YAML with one `description:` key — see
-`mulca/config/tasks/general_moderation.yaml` and `consensus_ranking.yaml`.
+MUCA-Server's `muca_server/cognition/config/tasks/general_moderation.yaml` and `consensus_ranking.yaml`.
 
 This one *is* a clean swap: create the new file, then set `TASK_ID` in
-`run_discord_bot.py` to its filename (without `.yaml`). Remember: activating a
+`run_server.py` to its filename (without `.yaml`). Remember: activating a
 task doesn't activate any strategies for it — those are independent
 (`ACTIVE_STRATEGY_IDS`, see above). `keep_conversation_on_topic` only makes
 sense alongside `consensus_ranking`, for example, but nothing enforces that
@@ -119,7 +120,7 @@ This is the one extension point that touches Python, not just config —
 trigger variables are plain deterministic code, never an LLM call
 (BLUEPRINT.md §2 step 3, "why" explained there).
 
-1. Add the computation to `mulca/core/trigger_variables.py`'s
+1. Add the computation to MUCA-Server's `muca_server/cognition/trigger_variables.py`'s
    `compute_trigger_variables()`, and include it in the returned dict.
 2. That's it for making it *available* — the whole dict is always sent to the
    intervention agent every cycle. To make a specific strategy's catalog
@@ -160,15 +161,15 @@ trigger variables are plain deterministic code, never an LLM call
 - **WM field ownership** (BLUEPRINT.md §3's table): each field has exactly
   one designated writer. If you add a new WM field, document who writes it
   and when in the same style as the existing ones in
-  `core/working_memory.py`'s docstring/table — don't just add an attribute.
-- **The orchestrator's per-cycle step order** (`core/orchestrator.py`,
+  MUCA-Server's `muca_server/cognition/working_memory.py`'s docstring/table — don't just add an attribute.
+- **The orchestrator's per-cycle step order** (MUCA-Server's `muca_server/cognition/policy.py` (`CoalaPolicy`),
   BLUEPRINT.md §2): steps have invariants that depend on order (e.g. forced
   context and strategy output are mutually exclusive by construction because
   step 4 short-circuits step 5, not because of a runtime check). Reordering
   steps can silently break an invariant that isn't re-verified anywhere.
-- **The `"group"` vs `"dm:<user_id>"` scope split** (BLUEPRINT.md's
+- **The `"instance:<name>"` vs `"dm:<user_id>"` scope split** (BLUEPRINT.md's
   "Channel/instance scoping" section): DM content must never reach the
-  persisted episodic log or the startup/shutdown snapshot — this is a privacy
-  requirement, not just a routing detail. If you touch persistence
-  (`experience_memory.py`, `WorkingMemorySnapshot`), check the scope before
-  writing.
+  persisted episodic log or the snapshot — this is a privacy requirement,
+  not just a routing detail. If you touch persistence (MUCA-Server's
+  `muca_server/cognition/memory/`, `CoalaPolicy`), check `is_private`
+  before writing.

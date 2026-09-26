@@ -1,6 +1,9 @@
 # One entry per MULCA instance (one text channel + one paired voice channel
 # + that team's participant roster). voice_channel_id can be omitted/null
-# until audio is actually built -- the instance still works text-only.
+# for a text-only instance. With a voice channel, MULCA joins it whenever
+# someone is in it, listens, and answers out loud; text and voice share one
+# memory. post_voice_transcripts: true also posts what it says out loud to
+# the text channel.
 #
 # Fill in real Discord IDs (right-click a channel/user with Developer Mode
 # enabled in Discord -> Copy ID) before running against a real server.
@@ -8,6 +11,7 @@ instances:
   - name: team-alpha
     text_channel_id: 1543265278899519570
     voice_channel_id: null
+    post_voice_transcripts: false
     # Only Mats (153532335998894089) is a recognized participant right now,
     # deliberately -- for live-testing the linked-DM-memory behavior: a DM
     # from Mats should get read access to team-alpha's group memory, a DM

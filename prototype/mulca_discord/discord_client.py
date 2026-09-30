@@ -247,6 +247,12 @@ def build_discord_client(
                 post_voice_transcripts=(
                     instance.post_voice_transcripts if instance else False
                 ),
+                # A text message triggers a real cognitive turn -- unlike
+                # voice's continuous frames, resending it on a reconnect
+                # risks two independent replies to the same message (see
+                # SessionRegistry.run's docstring). Drop it instead; the
+                # next message reopens the session normally.
+                retry_once=False,
             )
         except ConnectionError:
             logger.exception(

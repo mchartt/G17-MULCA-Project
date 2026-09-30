@@ -116,10 +116,21 @@ class SessionRegistry:
         *,
         reply_channel,
         post_voice_transcripts: bool = False,
+        retry_once: bool = True,
     ) -> ScopeSession:
         """
         Run `action` on the scope's session; if the session turns out to be
-        gone, reopen it once and run it again.
+        gone, reopen it once and run it again -- unless `retry_once` is
+        False, since a websocket send can raise a connection error even
+        after the bytes already reached the server (the disconnect can be
+        detected slightly after the write succeeds), and retrying an action
+        that triggers a real cognitive turn (a user's text message) risks
+        running that turn twice on two independent sessions, not just
+        resending an inert frame. Continuous, harmless-to-repeat actions
+        (voice frames) should keep the default; a one-shot, turn-triggering
+        action should pass retry_once=False and let MucaConnectionLost
+        propagate, so the caller's existing "log and drop this one message"
+        handling applies instead of silently duplicating it.
         """
 
         session = await self.get(
@@ -131,6 +142,9 @@ class SessionRegistry:
         try:
             await action(session.client)
         except MucaConnectionLost:
+            if not retry_once:
+                raise
+
             logger.info("Reopening the session for %s", scope.conversation_id)
             session = await self.get(
                 scope,

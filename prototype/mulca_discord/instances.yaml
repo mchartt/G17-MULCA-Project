@@ -10,7 +10,7 @@
 instances:
   - name: team-alpha
     text_channel_id: 1543265278899519570
-    voice_channel_id: null
+    voice_channel_id: 1543265278899519571
     post_voice_transcripts: false
     # Only Mats (153532335998894089) is a recognized participant right now,
     # deliberately -- for live-testing the linked-DM-memory behavior: a DM

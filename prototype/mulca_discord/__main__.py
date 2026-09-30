@@ -12,16 +12,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 
 from .discord_client import build_discord_client, close_all_sessions
 from .instances import configured_instances_path, load_instances
+from .singleton import AlreadyRunning, acquire_singleton_lock
 
 
 def main() -> None:
     load_dotenv()
     logging.basicConfig(level=logging.INFO)
+
+    try:
+        # Held for the rest of the process's life -- see singleton.py for
+        # why this matters (two processes on one bot token both answer
+        # every message, silently, with no error from Discord itself).
+        _lock = acquire_singleton_lock()  # noqa: F841
+    except AlreadyRunning as exc:
+        logging.error(str(exc))
+        sys.exit(1)
 
     discord_token = os.environ["DISCORD_BOT_TOKEN"]
     muca_server_url = os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/")

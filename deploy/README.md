@@ -46,9 +46,12 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
    Deploy tokens and create one with only `read_registry`. A group token can pull every
    project's images in the group, which matters: Swarmpit keeps one login per registry
    address, and both images are on `registry.gitlab.com`. Then at
-   https://swarm.i3lab.group/#/registries link `https://registry.gitlab.com` (type GitLab, or
-   Registry v2) with that token's username and value. Without this, the services sit at
-   "no such image".
+   https://swarm.i3lab.group/#/registries link a **Registry v2** registry: URL
+   `https://registry.gitlab.com`, with auth, and the token's username and value. Not the
+   GitLab type: that one wants a personal access token with full API access. Leave "Public"
+   off unless other Swarmpit users must manage this stack (it shares the login with every
+   Swarmpit user, not the images with the world). Without a registry login, the services sit
+   at "no such image".
 
 4. **Secrets** (Swarmpit: Secrets > New secret):
 

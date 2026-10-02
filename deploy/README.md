@@ -4,10 +4,10 @@ MULCA (the Discord bot) and MUCA-Server run as one Docker Swarm stack, deployed 
 Swarmpit at https://swarm.i3lab.group. Swarmpit doesn't build images. GitLab does: each repo
 has a GitLab copy whose pipeline builds its image into that project's container registry.
 
-| Repo        | GitLab project                                  | Image                                                  |
-| ----------- | ----------------------------------------------- | ------------------------------------------------------ |
-| MUCA-Server | https://gitlab.com/PietroAmmaturo/MUCA-Server   | `registry.gitlab.com/pietroammaturo/muca-server`       |
-| MULCA       | https://gitlab.com/PietroAmmaturo/MULCA         | `registry.gitlab.com/pietroammaturo/mulca`             |
+| Repo        | GitLab project                              | Image                                         |
+| ----------- | ------------------------------------------- | --------------------------------------------- |
+| MUCA-Server | https://gitlab.com/i3lab/muca/muca-server   | `registry.gitlab.com/i3lab/muca/muca-server`  |
+| MULCA       | https://gitlab.com/i3lab/muca/mulca         | `registry.gitlab.com/i3lab/muca/mulca`        |
 
 The team's code stays on GitHub. The GitLab copies aren't mirrors (that's a paid GitLab
 feature), so they only change when you push to them.
@@ -37,13 +37,15 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
 ## Once, before the first deploy
 
 1. **Remotes** (on each machine that deploys): in each repo,
-   `git remote add gitlab https://gitlab.com/PietroAmmaturo/<MUCA-Server|MULCA>.git`.
+   `git remote add gitlab https://gitlab.com/i3lab/muca/<muca-server|mulca>.git`.
 
 2. **Job token access.** MULCA's pipeline clones MUCA-Server. In MUCA-Server on GitLab, open
-   Settings > CI/CD > Job token permissions and add `PietroAmmaturo/MULCA`.
+   Settings > CI/CD > Job token permissions and add `i3lab/muca/mulca`.
 
-3. **Registry login for the swarm.** In each GitLab project, open Settings > Repository >
-   Deploy tokens and create one with only `read_registry`. Then at
+3. **Registry login for the swarm.** In the `i3lab/muca` group, open Settings > Repository >
+   Deploy tokens and create one with only `read_registry`. A group token can pull every
+   project's images in the group, which matters: Swarmpit keeps one login per registry
+   address, and both images are on `registry.gitlab.com`. Then at
    https://swarm.i3lab.group/#/registries link `https://registry.gitlab.com` (type GitLab, or
    Registry v2) with that token's username and value. Without this, the services sit at
    "no such image".

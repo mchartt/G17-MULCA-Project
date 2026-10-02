@@ -9,7 +9,7 @@
 # Each build is tagged with its commit (what a rollback should name) and with
 # its branch (always the branch's newest build, what the stack follows).
 variables:
-  MUCA_SERVER_PROJECT: PietroAmmaturo/MUCA-Server
+  MUCA_SERVER_PROJECT: i3lab/muca/muca-server
   # The MUCA-Server branch this build pairs with. Override it when running a
   # pipeline by hand (Build > Pipelines > Run pipeline).
   MUCA_SERVER_REF: gitlab-deployment

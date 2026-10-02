@@ -8,7 +8,7 @@ version: "3.8"
 
 services:
   muca-server:
-    image: registry.gitlab.com/pietroammaturo/muca-server:gitlab-deployment
+    image: registry.gitlab.com/i3lab/muca/muca-server:gitlab-deployment
     environment:
       MUCA_LOG_LEVEL: INFO
     secrets:
@@ -39,7 +39,7 @@ services:
       #     - node.hostname == <node-name>
 
   mulca-discord:
-    image: registry.gitlab.com/pietroammaturo/mulca:gitlab-deployment
+    image: registry.gitlab.com/i3lab/muca/mulca:gitlab-deployment
     environment:
       MUCA_SERVER_URL: ws://muca-server:8000/
     secrets:

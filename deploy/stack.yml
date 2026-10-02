@@ -31,12 +31,12 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-      # muca-data is a volume on whichever node runs this service. If the
-      # service is rescheduled onto another node, it starts there with an
-      # empty database. Pin it to one node to keep conversation memory:
-      # placement:
-      #   constraints:
-      #     - node.hostname == <node-name>
+      # muca-data is a volume on whichever node runs this service, so it
+      # stays pinned to one node: rescheduled onto another, it would start
+      # there with an empty database.
+      placement:
+        constraints:
+          - node.hostname == i3lab
 
   mulca:
     image: registry.gitlab.com/i3lab/muca/mulca:gitlab-deployment
@@ -59,6 +59,11 @@ services:
       restart_policy:
         condition: any
         delay: 5s
+      # Not i3lab-vm-1, which also hosts the GitLab runner: the bot exited
+      # there at startup without logging anything.
+      placement:
+        constraints:
+          - node.hostname == i3lab
 
 networks:
   muca:

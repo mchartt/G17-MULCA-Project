@@ -71,10 +71,11 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
 - **Only one bot.** Two processes on the same bot token both answer every message. The stack
   runs exactly one `mulca` and stops the old container before starting the new one.
   Don't also run the bot locally with the production token while the stack is up.
-- **Conversation memory lives on one node.** MUCA-Server's SQLite files are in the `muca-data`
-  volume, which is local to whichever node runs the service. If Swarm moves the service to
-  another node, it starts with empty memory. Uncomment the `placement` constraint in
-  `stack.yml` and set a node name to prevent that.
+- **Both services run on the node `i3lab`** (`placement` in `stack.yml`). MUCA-Server's SQLite
+  files are in the `muca-data` volume, which is local to the node that runs it, so moving it
+  to another node would start with empty memory. The bot exited at startup on `i3lab-vm-1`,
+  which also hosts the GitLab runner. If the node's name ever changes, the services sit at
+  "no suitable node" until the constraint is updated.
 - **MUCA-Server isn't exposed outside the swarm.** MULCA reaches it as
   `ws://muca-server:8000/` on the stack's own network. Uncomment `ports` in `stack.yml` only
   if a client outside the swarm (e.g. the Unity app) needs to connect directly.

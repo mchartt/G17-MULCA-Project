@@ -35,7 +35,12 @@ build-image:
     # Docker daemons have built in (i3lab's runner shares its host's daemon,
     # where the dind service above can't start), so build in a current
     # BuildKit container. Named per job: that daemon is shared.
-    - docker buildx create --name "ci-$CI_JOB_ID" --driver docker-container --use
+    #
+    # Pinned to v0.16.0, the last BuildKit with runc 1.1: the runc 1.2+ in
+    # newer ones fails every RUN step on that host ("can't mask dir
+    # /proc/acpi ... invalid argument"). Unpin once the host is upgraded.
+    - docker buildx create --name "ci-$CI_JOB_ID" --driver docker-container
+      --driver-opt image=moby/buildkit:v0.16.0 --use
     - docker buildx build
       --build-context muca-server=muca-server
       --label "muca-server.commit=$MUCA_SERVER_COMMIT"

@@ -1,14 +1,14 @@
-# MULCA + MUCA-Server as one Docker Swarm stack.
+# MULCA + MUCA-Server as one Docker Swarm stack. Paste it into Swarmpit as-is.
 #
-# Don't paste this file into Swarmpit as-is: Swarmpit doesn't substitute the
-# ${...} image names. build-and-push.sh writes a filled-in copy to
-# deploy/out/stack.yml. `docker stack deploy` does substitute them, from the
-# environment.
+# The images are built by each project's GitLab pipeline. Each service follows
+# its branch's newest build: Swarmpit's autoredeploy label makes it check the
+# registry and redeploy when that tag points at a new image. To pin or roll
+# back, replace the branch tag with a commit tag from the registry.
 version: "3.8"
 
 services:
   muca-server:
-    image: ${MUCA_SERVER_IMAGE}
+    image: registry.gitlab.com/pietroammaturo/muca-server:gitlab-deployment
     environment:
       MUCA_LOG_LEVEL: INFO
     secrets:
@@ -23,6 +23,8 @@ services:
     # ports:
     #   - "8000:8000"
     deploy:
+      labels:
+        swarmpit.service.deployment.autoredeploy: "true"
       replicas: 1
       update_config:
         order: stop-first
@@ -37,7 +39,7 @@ services:
       #     - node.hostname == <node-name>
 
   mulca-discord:
-    image: ${MULCA_DISCORD_IMAGE}
+    image: registry.gitlab.com/pietroammaturo/mulca:gitlab-deployment
     environment:
       MUCA_SERVER_URL: ws://muca-server:8000/
     secrets:
@@ -46,6 +48,8 @@ services:
     networks:
       - muca
     deploy:
+      labels:
+        swarmpit.service.deployment.autoredeploy: "true"
       # Exactly one, and stop the old container before starting its
       # replacement: two processes on one bot token both answer every
       # message. The in-process singleton lock can't see across containers.

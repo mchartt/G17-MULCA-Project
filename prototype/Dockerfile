@@ -4,7 +4,7 @@
 #
 #   docker buildx build --build-context muca-server=../../MUCA-Server .
 #
-# deploy/build-and-push.sh does this for you.
+# The GitLab pipeline (.gitlab-ci.yml) does this for you.
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \

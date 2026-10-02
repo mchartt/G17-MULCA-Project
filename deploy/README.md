@@ -1,53 +1,64 @@
 # Deploying to the swarm
 
 MULCA (the Discord bot) and MUCA-Server run as one Docker Swarm stack, deployed through
-Swarmpit at https://swarm.i3lab.group. Swarmpit doesn't build images. It pulls them from a
-registry, so you build and push them from your machine and then paste the stack file into Swarmpit.
+Swarmpit at https://swarm.i3lab.group. Swarmpit doesn't build images. GitLab does: each repo
+has a GitLab copy whose pipeline builds its image into that project's container registry.
 
-## Prerequisites
+| Repo        | GitLab project                                  | Image                                                  |
+| ----------- | ----------------------------------------------- | ------------------------------------------------------ |
+| MUCA-Server | https://gitlab.com/PietroAmmaturo/MUCA-Server   | `registry.gitlab.com/pietroammaturo/muca-server`       |
+| MULCA       | https://gitlab.com/PietroAmmaturo/MULCA         | `registry.gitlab.com/pietroammaturo/mulca`             |
 
-- Docker running locally (Docker Desktop on Windows), with `buildx` (included).
-- MUCA-Server checked out beside this repo (`../MUCA-Server`), the same layout
-  `prototype/requirements.txt` expects. Set `MUCA_SERVER_DIR` if yours is elsewhere.
-- A container registry the swarm can pull from, and `docker login <registry host>` done once.
-  With GitHub's registry, `REGISTRY=ghcr.io/<your-github-user>` (lowercase) and a classic
-  personal access token with `write:packages` as the password.
+The team's code stays on GitHub. The GitLab copies aren't mirrors (that's a paid GitLab
+feature), so they only change when you push to them.
 
 ## Every deploy
 
-1. From Git Bash, in this repo:
+Push the `gitlab-deployment` branch to GitLab, in whichever repo changed:
 
-   ```sh
-   REGISTRY=ghcr.io/<owner> ./deploy/build-and-push.sh
-   ```
+```sh
+git push origin gitlab-deployment   # GitHub, for the team
+git push gitlab gitlab-deployment   # GitLab: builds and pushes the image
+```
 
-   This builds both images for `linux/amd64`, pushes them, and writes `deploy/out/stack.yml`
-   with the exact image tags, one commit hash per repo (`-dirty` if that repo had uncommitted
-   changes). Commit before deploying, so you know what's running.
+Each pipeline tags its image twice: with the commit (`:<8-char hash>`) and with the branch
+(`:gitlab-deployment`). The stack follows the branch tag, and Swarmpit's autoredeploy picks up
+the new image by itself within a few minutes. Nothing to do in Swarmpit.
 
-2. In Swarmpit: **Stacks**, then the `mulca` stack, then **Edit**. On the first deploy, use
-   **New stack** and name it `mulca`. Replace the compose file with the contents of
-   `deploy/out/stack.yml` and deploy.
+MULCA's image includes MUCA-Server's source, taken from MUCA-Server's GitLab project at the
+`gitlab-deployment` branch when MULCA's pipeline runs. So after a MUCA-Server change that MULCA
+depends on (the protocol, the audio helpers), push MUCA-Server first, then re-run MULCA's
+pipeline (Build > Pipelines > Run pipeline). Each MULCA image records the MUCA-Server commit it
+was built with, as the `muca-server.commit` label.
 
-Rolling back means pasting an older `out/stack.yml`, or editing the tags back to an older commit.
+To pin or roll back, replace `:gitlab-deployment` in the stack with a commit tag from the
+project's Deploy > Container registry, and update the stack in Swarmpit.
 
 ## Once, before the first deploy
 
-- **Secrets** (Swarmpit: **Secrets**, then **New secret**). The stack expects both to exist:
+1. **Remotes** (on each machine that deploys): in each repo,
+   `git remote add gitlab https://gitlab.com/PietroAmmaturo/<MUCA-Server|MULCA>.git`.
 
-  | Secret name               | Value                  |
-  | ------------------------- | ---------------------- |
-  | `muca_openai_api_key`     | the OpenAI API key     |
-  | `mulca_discord_bot_token` | the Discord bot token  |
+2. **Job token access.** MULCA's pipeline clones MUCA-Server. In MUCA-Server on GitLab, open
+   Settings > CI/CD > Job token permissions and add `PietroAmmaturo/MULCA`.
 
-  The containers receive them as `OPENAI_API_KEY` and `DISCORD_BOT_TOKEN`. Keys never go in
-  the stack file.
+3. **Registry login for the swarm.** In each GitLab project, open Settings > Repository >
+   Deploy tokens and create one with only `read_registry`. Then at
+   https://swarm.i3lab.group/#/registries link `https://registry.gitlab.com` (type GitLab, or
+   Registry v2) with that token's username and value. Without this, the services sit at
+   "no such image".
 
-- **Registry access**. GHCR images are private by default, so the swarm needs a login to pull
-  them. Without one, the services sit at "no such image". At
-  https://swarm.i3lab.group/#/registries, link a registry of type **Registry v2**:
-  URL `https://ghcr.io`, your GitHub username, and a classic personal access token with only
-  `read:packages` as the password. Keep the `write:packages` token you push with on your machine.
+4. **Secrets** (Swarmpit: Secrets > New secret):
+
+   | Secret name               | Value                  |
+   | ------------------------- | ---------------------- |
+   | `muca_openai_api_key`     | the OpenAI API key     |
+   | `mulca_discord_bot_token` | the Discord bot token  |
+
+   The containers receive them as `OPENAI_API_KEY` and `DISCORD_BOT_TOKEN`. Keys never go in
+   the stack file.
+
+5. **The stack.** Stacks > New stack, name it `mulca`, and paste `deploy/stack.yml`.
 
 ## Things to know
 
@@ -62,6 +73,10 @@ Rolling back means pasting an older `out/stack.yml`, or editing the tags back to
   `ws://muca-server:8000/` on the stack's own network. Uncomment `ports` in `stack.yml` only
   if a client outside the swarm (e.g. the Unity app) needs to connect directly.
 - **Channels and rosters** come from `prototype/mulca_discord/instances.yaml`, built into the
-  image. Changing them means a rebuild and redeploy.
-- **Build without pushing** (to check the images build): `PUSH=0 REGISTRY=local ./deploy/build-and-push.sh`.
-  If the swarm's nodes are ARM, set `PLATFORM=linux/arm64`.
+  image. Changing them means a push and a new build.
+- **Building locally**, to check an image builds before pushing:
+
+  ```sh
+  docker build -t muca-server ../MUCA-Server
+  docker buildx build --build-context muca-server=../MUCA-Server -t mulca prototype
+  ```

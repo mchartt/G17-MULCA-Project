@@ -38,7 +38,7 @@ services:
       #   constraints:
       #     - node.hostname == <node-name>
 
-  mulca-discord:
+  mulca:
     image: registry.gitlab.com/i3lab/muca/mulca:gitlab-deployment
     environment:
       MUCA_SERVER_URL: ws://muca-server:8000/

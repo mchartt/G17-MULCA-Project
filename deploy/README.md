@@ -63,12 +63,13 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
    The containers receive them as `OPENAI_API_KEY` and `DISCORD_BOT_TOKEN`. Keys never go in
    the stack file.
 
-5. **The stack.** Stacks > New stack, name it `mulca`, and paste `deploy/stack.yml`.
+5. **The stack.** Stacks > New stack, name it `muca`, and paste `deploy/stack.yml`. Swarm
+   names services `<stack>_<service>`, so they show up as `muca_muca-server` and `muca_mulca`.
 
 ## Things to know
 
 - **Only one bot.** Two processes on the same bot token both answer every message. The stack
-  runs exactly one `mulca-discord` and stops the old container before starting the new one.
+  runs exactly one `mulca` and stops the old container before starting the new one.
   Don't also run the bot locally with the production token while the stack is up.
 - **Conversation memory lives on one node.** MUCA-Server's SQLite files are in the `muca-data`
   volume, which is local to whichever node runs the service. If Swarm moves the service to

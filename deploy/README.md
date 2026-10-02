@@ -79,7 +79,11 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
   `ws://muca-server:8000/` on the stack's own network. Uncomment `ports` in `stack.yml` only
   if a client outside the swarm (e.g. the Unity app) needs to connect directly.
 - **Channels and rosters** come from `prototype/mulca_discord/instances.yaml`, built into the
-  image. Changing them means a push and a new build.
+  image. Changing them means a push and a new build. The entries are a priority list: the bot
+  runs as the first one whose text channel it can see (team-alpha, else team-beta), and the
+  `muca_mulca` logs say which (`Running as instance …`). Discord allows a bot in only one
+  voice channel per server, so two teams at once need a second bot account, with its own
+  token, secret and `mulca` service.
 - **Building locally**, to check an image builds before pushing:
 
   ```sh

@@ -191,8 +191,11 @@ python -m mulca_discord
 
 Which channels the bot answers in is configured in `mulca_discord/instances.yaml`:
 each instance is one text channel, optionally one voice channel, and the
-participants who belong to it. Anything not listed there is ignored; DMs are
-always answered, privately.
+participants who belong to it. The list is in priority order: the bot runs as
+the first instance whose text channel it can see, and ignores the rest. So
+one config serves whichever team's server the bot was invited to, and two
+teams at once need two bot accounts. Anything not listed there is ignored; DMs
+are always answered, privately.
 
 The bot needs the "Message Content" and "Server Members" privileged intents
 enabled in the Discord developer portal (`discord_client.py` requests

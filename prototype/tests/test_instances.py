@@ -6,6 +6,7 @@ to the instance (and therefore the conversation_id/DB file) that owns it.
 
 from mulca_discord.instances import (
     MulcaInstance,
+    first_available_instance,
     instance_for_channel,
     instance_for_participant,
     load_instances,
@@ -48,6 +49,33 @@ def test_instance_for_channel_is_none_for_an_unconfigured_channel():
     alpha = MulcaInstance(name="team-alpha", text_channel_id=111)
 
     assert instance_for_channel([alpha], 999) is None
+
+
+def test_first_available_instance_prefers_the_first_one_listed():
+    alpha = MulcaInstance(name="team-alpha", text_channel_id=111)
+    beta = MulcaInstance(name="team-beta", text_channel_id=333)
+
+    assert first_available_instance([alpha, beta], lambda _: True) is alpha
+
+
+def test_first_available_instance_skips_one_whose_text_channel_is_not_visible():
+    alpha = MulcaInstance(name="team-alpha", text_channel_id=111)
+    beta = MulcaInstance(name="team-beta", text_channel_id=333)
+
+    assert first_available_instance([alpha, beta], {333}.__contains__) is beta
+
+
+def test_first_available_instance_needs_only_the_text_channel_visible():
+    alpha = MulcaInstance(name="team-alpha", text_channel_id=111, voice_channel_id=222)
+    beta = MulcaInstance(name="team-beta", text_channel_id=333)
+
+    assert first_available_instance([alpha, beta], {111}.__contains__) is alpha
+
+
+def test_first_available_instance_is_none_when_nothing_is_visible():
+    alpha = MulcaInstance(name="team-alpha", text_channel_id=111)
+
+    assert first_available_instance([alpha], lambda _: False) is None
 
 
 def test_load_instances_parses_the_yaml_shape(tmp_path):

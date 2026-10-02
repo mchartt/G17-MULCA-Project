@@ -5,8 +5,9 @@ Everything here is unchanged in spirit from the old (deleted) discord_adapter
 module: bot-author filtering, DM detection, the roster-from-channel.members
 lookup. What changed is what it's wired to -- a MUCA-Server session per
 scope (sessions.py) instead of an in-process Orchestrator, and scoping is
-driven by the configured MulcaInstance list (instances.py): an instance's
-text channel and its paired voice channel share one scope, one memory.
+driven by one MulcaInstance (instances.py), the first configured one whose
+text channel this bot can see: its text channel and its paired voice channel
+share one scope, one memory.
 
 Voice: whenever someone is in an instance's voice channel, MULCA is there
 too, listening (voice/). It leaves when the channel empties.
@@ -20,6 +21,7 @@ import discord
 
 from .instances import (
     MulcaInstance,
+    first_available_instance,
     instance_for_channel,
     instance_for_participant,
 )
@@ -70,6 +72,12 @@ def build_discord_client(
     registry = registry or SessionRegistry(muca_server_url)
     client.mulca_sessions = registry
     client.mulca_voice = {}
+
+    # The instance this bot runs as (see first_available_instance), or none
+    # if it can't see any configured text channel. Chosen in on_ready, the
+    # first point where get_channel knows this bot's channels; every event
+    # handler below reads this, not `instances`.
+    active: list[MulcaInstance] = []
 
     def instance_roster(instance: MulcaInstance) -> dict[int, str]:
         """Everyone in the instance's text channel or its voice channel."""
@@ -144,7 +152,45 @@ def build_discord_client(
             client.user.id,
         )
 
+        chosen = first_available_instance(
+            instances,
+            lambda channel_id: client.get_channel(channel_id) is not None,
+        )
+
+        # on_ready fires again after a full reconnect; if the choice changed
+        # (e.g. the bot lost access to a channel), leave the old voice channel.
+        for previous in active:
+            if previous != chosen:
+                await leave_voice(previous)
+        active[:] = [chosen] if chosen is not None else []
+
         for instance in instances:
+            if instance is chosen:
+                continue
+            visible = client.get_channel(instance.text_channel_id) is not None
+            logger.info(
+                "Not running as %s: %s",
+                instance.name,
+                "an earlier instance comes first"
+                if visible
+                else f"text channel {instance.text_channel_id} not visible",
+            )
+
+        if chosen is None:
+            logger.warning(
+                "None of the %d configured instances' text channels is "
+                "visible to this bot; only DMs will be answered",
+                len(instances),
+            )
+        else:
+            logger.info(
+                "Running as instance %s (text channel %s, voice channel %s)",
+                chosen.name,
+                chosen.text_channel_id,
+                chosen.voice_channel_id,
+            )
+
+        for instance in active:
             if instance.voice_channel_id is not None:
                 try:
                     await sync_voice(instance)
@@ -162,7 +208,7 @@ def build_discord_client(
             if channel is not None
         }
 
-        for instance in instances:
+        for instance in active:
             if instance.voice_channel_id not in touched:
                 continue
 
@@ -207,7 +253,7 @@ def build_discord_client(
             # that. It does gate one-way read access to a group's memory:
             # a recognized participant's DM gets it, a stranger's doesn't.
             linked_instance = instance_for_participant(
-                instances, message.author.id
+                active, message.author.id
             )
             scope = Scope(
                 conversation_id=f"dm:{message.author.id}",
@@ -219,9 +265,9 @@ def build_discord_client(
                 ),
             )
         else:
-            instance = instance_for_channel(instances, message.channel.id)
+            instance = instance_for_channel(active, message.channel.id)
             if instance is None:
-                # Not a channel any configured MulcaInstance owns.
+                # Not a channel the active MulcaInstance owns.
                 return
             scope = Scope(conversation_id=instance.conversation_id)
 

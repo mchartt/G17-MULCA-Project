@@ -11,6 +11,7 @@ same as it never sees "Discord" at all elsewhere in this adapter.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -102,6 +103,28 @@ def instance_for_channel(
 ) -> MulcaInstance | None:
     for instance in instances:
         if instance.owns_channel(channel_id):
+            return instance
+
+    return None
+
+
+def first_available_instance(
+    instances: list[MulcaInstance],
+    channel_exists: Callable[[int], bool],
+) -> MulcaInstance | None:
+    """
+    The instance this bot runs as: the first one, in config order, whose
+    text channel it can see. instances.yaml is a priority list, so one image
+    serves whichever team's server its bot account was invited to -- and a
+    bot that can see several still runs only one, since Discord allows a bot
+    in only one voice channel per server anyway.
+
+    Only the text channel counts: an instance whose voice channel isn't
+    visible still runs, text-only, rather than falling through to the next.
+    """
+
+    for instance in instances:
+        if channel_exists(instance.text_channel_id):
             return instance
 
     return None

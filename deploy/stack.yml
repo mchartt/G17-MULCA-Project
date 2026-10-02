@@ -1,0 +1,71 @@
+# MULCA + MUCA-Server as one Docker Swarm stack.
+#
+# Don't paste this file into Swarmpit as-is: Swarmpit doesn't substitute the
+# ${...} image names. build-and-push.sh writes a filled-in copy to
+# deploy/out/stack.yml. `docker stack deploy` does substitute them, from the
+# environment.
+version: "3.8"
+
+services:
+  muca-server:
+    image: ${MUCA_SERVER_IMAGE}
+    environment:
+      MUCA_LOG_LEVEL: INFO
+    secrets:
+      - source: muca_openai_api_key
+        target: OPENAI_API_KEY
+    volumes:
+      - muca-data:/data
+    networks:
+      - muca
+    # Only needed if clients outside the swarm (e.g. the Unity app) connect
+    # to MUCA-Server directly. MULCA reaches it over the stack's network.
+    # ports:
+    #   - "8000:8000"
+    deploy:
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      # muca-data is a volume on whichever node runs this service. If the
+      # service is rescheduled onto another node, it starts there with an
+      # empty database. Pin it to one node to keep conversation memory:
+      # placement:
+      #   constraints:
+      #     - node.hostname == <node-name>
+
+  mulca-discord:
+    image: ${MULCA_DISCORD_IMAGE}
+    environment:
+      MUCA_SERVER_URL: ws://muca-server:8000/
+    secrets:
+      - source: mulca_discord_bot_token
+        target: DISCORD_BOT_TOKEN
+    networks:
+      - muca
+    deploy:
+      # Exactly one, and stop the old container before starting its
+      # replacement: two processes on one bot token both answer every
+      # message. The in-process singleton lock can't see across containers.
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
+networks:
+  muca:
+    driver: overlay
+
+volumes:
+  muca-data:
+
+# Create these once in Swarmpit (Secrets > New secret) before deploying.
+secrets:
+  muca_openai_api_key:
+    external: true
+  mulca_discord_bot_token:
+    external: true

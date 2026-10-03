@@ -41,11 +41,15 @@ build-image:
     # /proc/acpi ... invalid argument"). Unpin once the host is upgraded.
     - docker buildx create --name "ci-$CI_JOB_ID" --driver docker-container
       --driver-opt image=moby/buildkit:v0.16.0 --use
+    # --provenance/--sbom off: push one plain image manifest, like
+    # muca-server's, not an OCI index with attestations -- Swarmpit's
+    # autoredeploy didn't pick up new builds in that format.
     - docker buildx build
       --build-context muca-server=muca-server
       --label "muca-server.commit=$MUCA_SERVER_COMMIT"
       -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
       -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+      --provenance=false --sbom=false
       --push
       prototype
     - echo "Built with MUCA-Server $MUCA_SERVER_REF at $MUCA_SERVER_COMMIT"

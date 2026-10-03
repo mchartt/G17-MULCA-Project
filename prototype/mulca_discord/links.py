@@ -8,9 +8,11 @@ channel's id ("channel:<id>"), so it survives renaming the channel, swapping
 its voice channel, or unlinking and linking it again later. Who takes part
 isn't configured either: it's whoever can see the channel.
 
-LinkStore keeps the links, each bot's paused state and where each user last
-spoke (what a DM from them gets read access to) in a small SQLite file, on a
-volume, so all of it survives a redeploy.
+LinkStore keeps the links, the bots added with /mulca bot add (with their
+tokens, unencrypted -- the file is readable only by the bot's own user), each
+bot's paused state and where each user last spoke (what a DM from them gets
+read access to) in a small SQLite file, on a volume, so all of it survives a
+redeploy.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
@@ -61,6 +63,15 @@ CREATE TABLE IF NOT EXISTS last_link_by_user (
 
 def configured_db_path() -> Path:
     return Path(os.environ.get(DB_PATH_ENV_VAR) or DEFAULT_DB_PATH)
+
+
+@dataclass(frozen=True, slots=True)
+class BotRecord:
+    """A bot added with /mulca bot add. Never log or show `token`."""
+
+    bot_id: int
+    name: str
+    token: str = field(repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +120,9 @@ class LinkStore:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
 
         self._db = sqlite3.connect(path)
+        if str(path) != ":memory:":
+            # It holds bot tokens: only the bot's own user may read it.
+            os.chmod(path, 0o600)
         self._db.executescript(_SCHEMA)
         self._db.execute(
             "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
@@ -257,6 +271,46 @@ class LinkStore:
                 "is_primary = excluded.is_primary",
                 (bot_id, name, int(is_primary), time.time()),
             )
+
+    def add_bot(self, record: BotRecord, *, added_by: int | None = None) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT INTO bots (bot_id, name, is_primary, token, added_by, added_at) "
+                "VALUES (?, ?, 0, ?, ?, ?) "
+                "ON CONFLICT (bot_id) DO UPDATE SET name = excluded.name, "
+                "token = excluded.token",
+                (record.bot_id, record.name, record.token, added_by, time.time()),
+            )
+
+    def remove_bot(self, bot_id: int) -> None:
+        with self._db:
+            self._db.execute("DELETE FROM bots WHERE bot_id = ?", (bot_id,))
+
+    def added_bots(self) -> list[BotRecord]:
+        """The bots added with /mulca bot add, which this process starts."""
+
+        return [
+            BotRecord(bot_id=row[0], name=row[1], token=row[2])
+            for row in self._db.execute(
+                "SELECT bot_id, name, token FROM bots "
+                "WHERE is_primary = 0 AND token IS NOT NULL ORDER BY added_at"
+            )
+        ]
+
+    def has_bot(self, bot_id: int) -> bool:
+        return (
+            self._db.execute(
+                "SELECT 1 FROM bots WHERE bot_id = ? AND (is_primary = 1 OR token IS NOT NULL)",
+                (bot_id,),
+            ).fetchone()
+            is not None
+        )
+
+    def has_token(self, token: str) -> bool:
+        return (
+            self._db.execute("SELECT 1 FROM bots WHERE token = ?", (token,)).fetchone()
+            is not None
+        )
 
     def is_paused(self, bot_id: int) -> bool:
         row = self._db.execute(

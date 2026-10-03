@@ -9,6 +9,9 @@ Discord's "/" menu).
   on the bots in the server it's used in.
 - /mulca link|unlink: members with Manage Server -- which channels a bot
   serves (links.py), with no code or config file involved.
+- /mulca bot add|remove|list: members with Manage Server -- more bot
+  accounts, run by this same process. These act on the whole deployment,
+  not just the server they're used in (see deploy/README.md, Security).
 
 The decisions are plain functions over BotManager (control, format_status,
 restart_message), so they're testable without Discord; the command
@@ -18,11 +21,13 @@ callbacks only translate interactions to and from them.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 import discord
 from discord import app_commands
 
-from .links import Link
+from .links import BotRecord, Link
 from .permissions import missing_permissions
 from .runtime import BotManager, BotRuntime, BotStatus, RestartOutcome
 
@@ -224,9 +229,207 @@ async def unlink_channel(manager: BotManager, channel_id: int) -> str:
     )
 
 
+# -- bots -------------------------------------------------------------------
+
+# What a MULCA bot needs in a channel: View Channel, Send Messages, Read
+# Message History, Connect, Speak, Use Voice Activity.
+BOT_PERMISSIONS = discord.Permissions(
+    view_channel=True,
+    send_messages=True,
+    read_message_history=True,
+    connect=True,
+    speak=True,
+    use_voice_activation=True,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TokenProbe:
+    """What a bot token belongs to, checked with Discord before saving it."""
+
+    bot_id: int
+    name: str
+    application_id: int
+    missing_intents: tuple[str, ...]
+    public: bool
+
+
+async def probe_token(token: str) -> TokenProbe:
+    """Log in with `token` (no gateway connection) and read its app's setup."""
+
+    client = discord.Client(intents=discord.Intents.none())
+    try:
+        await client.login(token)
+        app = await client.application_info()
+        flags = app.flags
+        missing = []
+        if not (flags.gateway_message_content or flags.gateway_message_content_limited):
+            missing.append("Message Content Intent")
+        if not (flags.gateway_guild_members or flags.gateway_guild_members_limited):
+            missing.append("Server Members Intent")
+        return TokenProbe(
+            bot_id=client.user.id,
+            name=client.user.name,
+            application_id=app.id,
+            missing_intents=tuple(missing),
+            public=app.bot_public,
+        )
+    finally:
+        await client.close()
+
+
+def invite_url(application_id: int) -> str:
+    return discord.utils.oauth_url(
+        application_id,
+        permissions=BOT_PERMISSIONS,
+        scopes=("bot",),
+    )
+
+
+async def add_bot(
+    manager: BotManager,
+    token: str,
+    *,
+    added_by: int | None = None,
+    probe: Callable[[str], Awaitable[TokenProbe]] = probe_token,
+) -> str:
+    """/mulca bot add: check the token, save it, start the bot."""
+
+    token = token.strip()
+    if token == manager.primary_token:
+        return "That's the main MULCA bot's token: it's already running."
+
+    try:
+        info = await probe(token)
+    except discord.LoginFailure:
+        return (
+            "Discord rejected that token. Copy it again: Developer Portal → "
+            "your application → Bot → Reset Token."
+        )
+    except Exception as exc:
+        logger.warning("Could not check a bot token: %s", type(exc).__name__)
+        return "Couldn't check that token with Discord right now. Try again in a minute."
+
+    running = manager.bot_by_id(info.bot_id)
+    if running is not None:
+        return f"**{info.name}** is already part of MULCA, and running."
+
+    if info.missing_intents:
+        return (
+            f"**{info.name}** needs these turned on first, in the Developer "
+            f"Portal (your application → Bot): {', '.join(info.missing_intents)}. "
+            "Then run /mulca bot add again."
+        )
+
+    manager.store.add_bot(
+        BotRecord(bot_id=info.bot_id, name=info.name, token=token),
+        added_by=added_by,
+    )
+    state = await manager.start_bot(
+        BotRecord(bot_id=info.bot_id, name=info.name, token=token),
+    )
+
+    lines = [
+        f"Added **{info.name}** ({state}).",
+        f"Invite it to a server: {invite_url(info.application_id)}",
+        f"Then link channels to it: `/mulca link bot:{info.name}`.",
+    ]
+    if not info.public:
+        lines.append(
+            "Its application isn't public, so only its owner can use that invite "
+            "link (or turn on Public Bot in the Developer Portal)."
+        )
+    return "\n".join(lines)
+
+
+async def remove_bot(manager: BotManager, target: str, *, force: bool = False) -> str:
+    """/mulca bot remove: stop an added bot and forget its token."""
+
+    wanted = target.strip().lower()
+    records = [
+        record
+        for record in manager.store.added_bots()
+        if record.name.lower() == wanted or str(record.bot_id) == wanted
+    ]
+    if not records:
+        if manager.primary.name.lower() == wanted or str(manager.primary.user_id) == wanted:
+            return "The main MULCA bot can't be removed; its token is the stack's secret."
+        return f"No added bot called {target!r}. `/mulca bot list` shows them."
+
+    record = records[0]
+    links = manager.store.links_for(record.bot_id)
+    if links and not force:
+        channels = ", ".join(f"<#{link.text_channel_id}>" for link in links)
+        return (
+            f"**{record.name}** still serves {channels}. Unlink them first, "
+            "or run this again with `force: True` to unlink them for you."
+        )
+
+    runtime = manager.bot_by_id(record.bot_id)
+    for link in links:
+        if runtime is not None:
+            await runtime.unlink(link)
+        manager.store.remove(link.text_channel_id)
+
+    await manager.stop_bot(record.bot_id)
+    manager.store.remove_bot(record.bot_id)
+
+    return (
+        f"Removed **{record.name}**: stopped, and its token deleted. "
+        "To also remove it from your Discord server, kick it there."
+    )
+
+
+def list_bots(manager: BotManager) -> str:
+    """/mulca bot list: every bot of this deployment. Never their tokens."""
+
+    primary = manager.primary
+    lines = [
+        f"**{primary.name}** (main, id {primary.user_id}): "
+        + ("stopped" if primary.paused else "online")
+        + f", {len(manager.store.links_for(primary.user_id))} link(s)"
+    ]
+    for record in manager.store.added_bots():
+        runtime = manager.bot_by_id(record.bot_id)
+        state = manager.states.get(record.bot_id, "not running")
+        if runtime is not None and runtime.paused:
+            state = "stopped"
+        lines.append(
+            f"**{record.name}** (id {record.bot_id}): {state}, "
+            f"{len(manager.store.links_for(record.bot_id))} link(s)"
+        )
+
+    return "\n".join(lines)
+
+
 # ----------------------------------------------------------------------
 # Discord glue
 # ----------------------------------------------------------------------
+
+
+class AddBotModal(discord.ui.Modal, title="Add a MULCA bot"):
+    """The token goes in a form, never in a message anyone else could see."""
+
+    token = discord.ui.TextInput(
+        label="Bot token",
+        placeholder="Developer Portal → your application → Bot → Reset Token",
+        style=discord.TextStyle.short,
+        min_length=50,
+        max_length=100,
+    )
+
+    def __init__(self, manager: BotManager) -> None:
+        super().__init__()
+        self._manager = manager
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await add_bot(
+            self._manager,
+            self.token.value,
+            added_by=interaction.user.id,
+        )
+        await interaction.followup.send(reply, ephemeral=True)
 
 
 class MulcaGroup(app_commands.Group):
@@ -398,6 +601,47 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
     @app_commands.autocomplete(bot=bot_choices)
     async def start(interaction: discord.Interaction, bot: str | None = None) -> None:
         await run_control(interaction, "start", bot)
+
+    # -- /mulca bot ... --------------------------------------------------
+
+    bots = app_commands.Group(
+        name="bot",
+        description="MULCA's bot accounts (for the whole deployment).",
+        parent=mulca,
+    )
+
+    async def added_bot_choices(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        return [
+            app_commands.Choice(name=record.name, value=str(record.bot_id))
+            for record in manager.store.added_bots()
+            if current.lower() in record.name.lower()
+        ][:25]
+
+    @bots.command(name="add", description="Add another bot account (its token goes in a private form).")
+    async def bot_add(interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(AddBotModal(manager))
+
+    @bots.command(name="remove", description="Stop an added bot and delete its token.")
+    @app_commands.describe(
+        bot="The added bot.",
+        force="Also unlink the channels it still serves.",
+    )
+    @app_commands.autocomplete(bot=added_bot_choices)
+    async def bot_remove(
+        interaction: discord.Interaction,
+        bot: str,
+        force: bool = False,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await remove_bot(manager, bot, force=force)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @bots.command(name="list", description="Every MULCA bot account, and what it's doing.")
+    async def bot_list(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(list_bots(manager), ephemeral=True)
 
     tree.add_command(mulca)
 

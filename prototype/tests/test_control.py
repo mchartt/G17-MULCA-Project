@@ -579,14 +579,17 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
 
     commands = {command.name: command for command in tree.get_commands()}
     assert set(commands) == {"restart", "mulca"}
-    assert {sub.name for sub in commands["mulca"].commands} == {
+    subcommands = {sub.name: sub for sub in commands["mulca"].commands}
+    assert set(subcommands) == {
         "status",
         "restart",
         "stop",
         "start",
         "link",
         "unlink",
+        "bot",
     }
+    assert {sub.name for sub in subcommands["bot"].commands} == {"add", "remove", "list"}
     # Hidden from everyone without Manage Server, and never in DMs.
     assert commands["mulca"].default_permissions == discord.Permissions(manage_guild=True)
     assert commands["mulca"].guild_only

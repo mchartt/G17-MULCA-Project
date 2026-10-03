@@ -225,8 +225,14 @@ per server):
 | `/mulca start [bot]` | Manage Server | Undoes `/mulca stop`. |
 | `/mulca link [text] [voice] [bot] [transcripts]` | Manage Server | Makes MULCA serve a text channel (default: this one), and optionally a voice channel with it. Linking a linked channel again updates it. One voice channel per bot per server. |
 | `/mulca unlink [channel]` | Manage Server | Stops MULCA serving a channel. Its memory is kept; linking it again brings it back. |
+| `/mulca bot add` | Manage Server | Adds another bot account: its token goes in a private form, it starts at once, and the reply has its invite link. Needed for two voice groups talking at once in one server. |
+| `/mulca bot remove bot [force]` | Manage Server | Stops an added bot and deletes its token. Refused while it still serves channels, unless `force` (which unlinks them). |
+| `/mulca bot list` | Manage Server | Every bot of this deployment and what it's doing. Never shows tokens. |
 
-`/mulca` is hidden from members without Manage Server. If the commands don't
+`/mulca` is hidden from members without Manage Server. Only the main bot (the one
+whose token is `DISCORD_BOT_TOKEN`) registers commands, and it controls the added bots
+too, so it must be in every server where the commands are needed. `/mulca bot ...`
+acts on the whole deployment, not just the server it's used in. If the commands don't
 appear at all, the bot was invited without the `applications.commands`
 scope: invite it again with scopes `bot` and `applications.commands`.
 

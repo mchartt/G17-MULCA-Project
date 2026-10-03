@@ -70,6 +70,33 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
    `/mulca link` (optionally with a `voice` channel). Repeat for every channel. Invite the bot
    with the scopes `bot` and `applications.commands`, or the commands won't appear.
 
+## More bots
+
+Discord lets a bot be in one voice channel per server at a time, so two groups talking at
+once in one server need two bots. To add one:
+
+1. Create it in the [Developer Portal](https://discord.com/developers/applications): New
+   Application, then on its **Bot** page turn on **Message Content Intent** and **Server
+   Members Intent**, and **Reset Token** to copy its token.
+2. In Discord, run `/mulca bot add` and paste the token into the form. MULCA checks it, starts
+   the bot, and replies with an invite link.
+3. Invite it with that link, then `/mulca link bot:<its name>` in the channels it should serve.
+
+All bots run inside the one `mulca` service. `/mulca bot list` shows them, and
+`/mulca bot remove` stops one and deletes its token.
+
+## Security
+
+- **Added bots' tokens are stored unencrypted** in the `mulca-data` volume on `i3lab`
+  (`/data/mulca.db`, readable only by the container's own user). Anyone with root on that node
+  can read them. Back the volume up somewhere equally private.
+- **Every Manage Server admin of every server the main bot is in can add and remove bots for
+  the whole deployment**, not just their own server: `/mulca bot ...` isn't scoped to a server.
+  So keep the main bot only in servers whose admins you trust. Every other `/mulca` command
+  acts only on its own server's channels.
+- **Only the main bot carries the commands.** An added bot alone in a server gives that server
+  no `/restart` and no `/mulca`; invite the main bot there too.
+
 ## Things to know
 
 - **Commands in Discord.** `/restart` in a MULCA channel restarts it, keeping its memory, and

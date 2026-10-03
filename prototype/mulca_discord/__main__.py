@@ -51,7 +51,23 @@ def main() -> None:
         muca_server_url=muca_server_url,
         store=store,
     )
-    install_commands(BotManager([client.mulca_runtime]))
+    # The primary bot (this token, a Swarm secret) carries the slash
+    # commands; bots added with /mulca bot add run beside it, in this process.
+    manager = BotManager(
+        [client.mulca_runtime],
+        store=store,
+        client_factory=lambda: build_discord_client(
+            muca_server_url=muca_server_url,
+            store=store,
+            is_primary=False,
+        ),
+        primary_token=discord_token,
+    )
+    install_commands(manager)
+
+    async def shutdown() -> None:
+        await manager.stop_added_bots()
+        await client.close()
 
     async def run() -> None:
         # Swarm stops a container with SIGTERM: log out and close the
@@ -61,15 +77,17 @@ def main() -> None:
         with suppress(NotImplementedError):
             asyncio.get_running_loop().add_signal_handler(
                 signal.SIGTERM,
-                lambda: asyncio.ensure_future(client.close()),
+                lambda: asyncio.ensure_future(shutdown()),
             )
 
-        # One event loop for the bot and its MUCA-Server sessions, so the
+        # One event loop for the bots and their MUCA-Server sessions, so the
         # sessions can still be closed (with a disconnect) on the way out.
         async with client:
+            await manager.start_added_bots()
             try:
                 await client.start(discord_token)
             finally:
+                await manager.stop_added_bots()
                 await close_all_sessions(client)
 
     try:

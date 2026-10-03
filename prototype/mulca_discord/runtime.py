@@ -12,15 +12,17 @@ still logged in so commands keep working) and its sessions restarted
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 import discord
 
-from .links import Link, LinkStore, link_for_channel
+from .links import BotRecord, Link, LinkStore, link_for_channel
 from .permissions import missing_permissions
 from .sessions import RESTART_WAIT_SECONDS, Scope, SessionRegistry
 
@@ -518,16 +520,134 @@ class BotRuntime:
 # ----------------------------------------------------------------------
 
 
+ClientFactory = Callable[[], discord.Client]
+
+# How long /mulca bot add waits for a new bot to come online.
+BOT_READY_TIMEOUT_SECONDS = 30.0
+
+# Waits before restarting an added bot that crashed, doubling up to the last.
+BOT_RETRY_DELAYS_SECONDS = (5.0, 300.0)
+
+
 class BotManager:
     """
-    The bots this process runs. One today; several later, all controlled
-    through the primary bot's slash commands.
+    The bots this process runs: the primary one (its token is a Swarm
+    secret; it carries the slash commands) and those added with /mulca bot
+    add, each in its own supervised task -- one bot that fails never stops
+    the others.
     """
 
-    def __init__(self, bots: list[BotRuntime]) -> None:
+    def __init__(
+        self,
+        bots: list[BotRuntime],
+        *,
+        store: LinkStore | None = None,
+        client_factory: ClientFactory | None = None,
+        primary_token: str | None = None,
+    ) -> None:
         if not bots:
             raise ValueError("a BotManager needs at least one bot")
         self.bots = bots
+        self.store = store
+        self.primary_token = primary_token
+        self._client_factory = client_factory
+
+        # Added bots: what each is doing ("online", "failed: ...", ...).
+        self.states: dict[int, str] = {}
+        self._tasks: dict[int, asyncio.Task[None]] = {}
+        self._ready: dict[int, asyncio.Event] = {}
+
+    # -- added bots --------------------------------------------------------
+
+    async def start_added_bots(self) -> None:
+        """At startup: every bot added with /mulca bot add."""
+
+        if self.store is None:
+            return
+
+        for record in self.store.added_bots():
+            await self.start_bot(record, wait=False)
+
+    async def start_bot(self, record: BotRecord, *, wait: bool = True) -> str:
+        """Start an added bot; with `wait`, until it's online or has failed."""
+
+        if record.bot_id in self._tasks:
+            return self.states.get(record.bot_id, "starting")
+
+        self.states[record.bot_id] = "starting"
+        self._ready[record.bot_id] = asyncio.Event()
+        task = asyncio.create_task(
+            self._supervise(record),
+            name=f"bot-{record.bot_id}",
+        )
+        self._tasks[record.bot_id] = task
+        task.add_done_callback(lambda _: self._tasks.pop(record.bot_id, None))
+
+        if wait:
+            ready = asyncio.create_task(self._ready[record.bot_id].wait())
+            await asyncio.wait(
+                {ready, task},
+                timeout=BOT_READY_TIMEOUT_SECONDS,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            ready.cancel()
+
+        return self.states[record.bot_id]
+
+    async def stop_bot(self, bot_id: int) -> None:
+        task = self._tasks.get(bot_id)
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        self.states.pop(bot_id, None)
+
+    async def stop_added_bots(self) -> None:
+        for bot_id in list(self._tasks):
+            await self.stop_bot(bot_id)
+
+    async def _supervise(self, record: BotRecord) -> None:
+        delay, maximum = BOT_RETRY_DELAYS_SECONDS
+
+        while True:
+            client = self._client_factory()
+            runtime: BotRuntime = client.mulca_runtime
+
+            async def online(_runtime: BotRuntime) -> None:
+                self.states[record.bot_id] = "online"
+                self._ready[record.bot_id].set()
+
+            runtime.after_ready.append(online)
+            self.bots.append(runtime)
+            try:
+                async with client:
+                    await client.start(record.token)
+                return
+            except discord.LoginFailure:
+                self.states[record.bot_id] = (
+                    "failed: Discord rejected its token (reset it in the "
+                    "Developer Portal, then /mulca bot add the new one)"
+                )
+                logger.error("Bot %s: its token was rejected", record.name)
+                return
+            except discord.PrivilegedIntentsRequired:
+                self.states[record.bot_id] = (
+                    "failed: turn on the Message Content and Server Members "
+                    "intents (Developer Portal, Bot page), then /mulca bot add it again"
+                )
+                logger.error("Bot %s: privileged intents are off", record.name)
+                return
+            except Exception:
+                logger.exception("Bot %s crashed; restarting in %.0f s", record.name, delay)
+                self.states[record.bot_id] = f"restarting in {delay:.0f} s after an error"
+            finally:
+                with suppress(Exception):
+                    await runtime.close()
+                if runtime in self.bots:
+                    self.bots.remove(runtime)
+
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, maximum)
 
     @property
     def primary(self) -> BotRuntime:

@@ -1,6 +1,6 @@
 # Trying MULCA on Discord
 
-This guide takes you from nothing to MULCA talking in a Discord voice channel. It uses a private test server, so the shared `instances.yaml` stays untouched.
+This guide takes you from nothing to MULCA talking in a Discord voice channel. It uses a private test server, linked to your own bot from Discord, so nobody else's setup is touched.
 
 ## 1. One-time setup (about 15 min)
 
@@ -9,32 +9,21 @@ This guide takes you from nothing to MULCA talking in a Discord voice channel. I
    - On the **Bot** page, choose *Reset Token* and copy the token.
    - On the same page, turn on **Message Content Intent** and **Server Members Intent**.
 3. **Invite the bot.** Go to **OAuth2 → URL Generator**.
-   - Scope: `bot`.
+   - Scopes: `bot` and `applications.commands` (for `/restart` and `/mulca`).
    - Permissions: View Channels, Send Messages, Read Message History, Connect, Speak, Use Voice Activity.
    - Open the generated URL and add the bot to the test server.
-4. **Copy the IDs.** Turn on *User Settings → Advanced → Developer Mode*. Then right-click each of these and choose *Copy ID*: the text channel, the voice channel, and yourself.
-5. **Optional:** a second person, or a second account in a browser, for the multi-person steps.
+4. **Optional:** a second person, or a second account in a browser, for the multi-person steps.
 
 ## 2. Configuration
-
-Create `mulca_discord/instances.local.yaml` (git-ignored):
-
-```yaml
-instances:
-  - name: mulca-test
-    text_channel_id: 111111111111111111   # #mulca-test
-    voice_channel_id: 222222222222222222  # MULCA voice
-    participant_ids: [333333333333333333] # you
-    post_voice_transcripts: true          # show what MULCA says out loud
-```
 
 Create `.env`:
 
 ```bash
 DISCORD_BOT_TOKEN=...
-MULCA_INSTANCES=mulca_discord/instances.local.yaml
 MULCA_VOICE_DEBUG_DIR=voice-debug
 ```
+
+Which channels MULCA serves is set from Discord once the bot runs (step 3), and kept in `data/mulca.db` (git-ignored).
 
 ## 3. Start
 
@@ -44,19 +33,21 @@ MULCA_VOICE_DEBUG_DIR=voice-debug
    cd ../../MUCA-Server && python -m muca_server.run_server
    ```
 
-2. **Run the preflight check,** while you sit in `MULCA voice`:
+2. **Start the bot:**
+
+   ```bash
+   python -m mulca_discord
+   ```
+
+3. **Link the channels.** In `#mulca-test`, type `/mulca link`, set `voice` to `MULCA voice` and `transcripts` to True (to see what MULCA says out loud), and send it. Only you see the reply.
+
+4. **Optional: run the preflight check.** Stop the bot (Ctrl+C) first, since both would use the same bot account. Then, while you sit in `MULCA voice`:
 
    ```bash
    python -m mulca_discord.preflight --voice-test 10
    ```
 
-   Every line should say PASS. Talk while it records, then listen to `voice-test/<your id>.wav`. **If it isn't clearly your voice, stop here** and see [Troubleshooting](#5-troubleshooting).
-
-3. **Start the bot:**
-
-   ```bash
-   python -m mulca_discord
-   ```
+   Every line should say PASS. Talk while it records, then listen to `voice-test/<your id>.wav`. **If it isn't clearly your voice, stop here** and see [Troubleshooting](#5-troubleshooting). Then start the bot again.
 
 ## 4. What to try
 

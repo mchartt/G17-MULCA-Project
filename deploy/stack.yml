@@ -45,6 +45,10 @@ services:
     secrets:
       - source: mulca_discord_bot_token
         target: DISCORD_BOT_TOKEN
+    # Links (/mulca link) and stopped bots, kept across redeploys. On i3lab,
+    # like the service itself (see placement).
+    volumes:
+      - mulca-data:/data
     networks:
       - muca
     # On a redeploy the bot logs out and closes its sessions (MUCA-Server
@@ -74,6 +78,7 @@ networks:
 
 volumes:
   muca-data:
+  mulca-data:
 
 # Create these once in Swarmpit (Secrets > New secret) before deploying.
 secrets:

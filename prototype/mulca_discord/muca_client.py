@@ -66,10 +66,10 @@ class MucaWsClient:
         self._url = url
         self._conversation_id = conversation_id
         self._is_dm = is_dm
-        # For a DM only: the group conversation_id its sender is a
-        # recognized participant of (instances.py), so MUCA-Server can give
-        # this DM one-way read access to that group's memory. None if the
-        # sender isn't recognized as belonging to any instance.
+        # For a DM only: the group conversation_id of the linked channel
+        # its sender last spoke in (and can still see), so MUCA-Server can
+        # give this DM one-way read access to that group's memory. None if
+        # there's none.
         self._linked_conversation_id = linked_conversation_id
         self._connection: ClientConnection | None = None
         self._receive_task: asyncio.Task[None] | None = None

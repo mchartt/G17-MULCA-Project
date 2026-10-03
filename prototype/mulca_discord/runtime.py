@@ -4,10 +4,10 @@ One Discord bot account at work (BotRuntime), and the bots of this process
 on.
 
 A BotRuntime is one discord.Client, its MUCA-Server sessions (one per
-scope), the instance it serves and its voice channel. It can be paused
-(/mulca stop: out of voice, sessions closed, every event ignored, but still
-logged in so commands keep working) and its sessions restarted (/restart:
-fresh provider connections on MUCA-Server, the same memory).
+scope), and the channels linked to it (links.py: /mulca link). It can be
+paused (/mulca stop: out of voice, sessions closed, every event ignored, but
+still logged in so commands keep working) and its sessions restarted
+(/restart: fresh provider connections on MUCA-Server, the same memory).
 """
 
 from __future__ import annotations
@@ -20,12 +20,7 @@ from dataclasses import dataclass, field
 
 import discord
 
-from .instances import (
-    MulcaInstance,
-    first_available_instance,
-    instance_for_channel,
-    instance_for_participant,
-)
+from .links import Link, LinkStore, link_for_channel
 from .permissions import missing_permissions
 from .sessions import RESTART_WAIT_SECONDS, Scope, SessionRegistry
 
@@ -54,7 +49,6 @@ def _humans(channel) -> list:
 
 @dataclass(frozen=True, slots=True)
 class LinkStatus:
-    name: str
     text_channel_id: int
     voice_channel_id: int | None
     in_voice: bool
@@ -77,7 +71,7 @@ class BotStatus:
 
 @dataclass(frozen=True, slots=True)
 class RestartOutcome:
-    instance: MulcaInstance
+    link: Link
     # Whether MUCA-Server confirmed it saved the conversation before the
     # session was reopened (False: it didn't answer in time).
     confirmed: bool
@@ -92,11 +86,9 @@ class RestartOutcome:
 class BotRuntime:
     client: discord.Client
     registry: SessionRegistry
-    # Every configured instance; `active` is the one this bot runs as.
-    instances: list[MulcaInstance]
+    store: LinkStore
     is_primary: bool = True
 
-    active: list[MulcaInstance] = field(default_factory=list)
     voice: dict[str, object] = field(default_factory=dict)
     paused: bool = False
     ready_at: float | None = None
@@ -121,104 +113,152 @@ class BotRuntime:
         user = self.client.user
         return user.id if user is not None else None
 
-    def link_for_channel(self, channel_id: int) -> MulcaInstance | None:
-        return instance_for_channel(self.active, channel_id)
+    def links(self) -> list[Link]:
+        """The channels this bot serves, live from the store."""
 
-    def roster(self, instance: MulcaInstance) -> dict[int, str]:
-        """Everyone in the instance's text channel or its voice channel."""
+        return self.store.links_for(self.user_id)
+
+    def link_for_channel(self, channel_id: int) -> Link | None:
+        return link_for_channel(self.links(), channel_id)
+
+    def roster(self, link: Link) -> dict[int, str]:
+        """Everyone in the link's text channel or its voice channel."""
 
         roster: dict[int, str] = {}
-        for channel_id in (instance.text_channel_id, instance.voice_channel_id):
+        for channel_id in (link.text_channel_id, link.voice_channel_id):
             channel = self.client.get_channel(channel_id) if channel_id else None
             for member in _humans(channel):
                 roster[member.id] = member.display_name
 
         return roster
 
+    def dm_link(self, user_id: int) -> Link | None:
+        """
+        The group memory a DM from this user may read: the linked channel
+        they last spoke in, as long as they can still see it.
+        """
+
+        link = self.store.last_link_for(user_id)
+        if link is None:
+            return None
+
+        channel = self.client.get_channel(link.text_channel_id)
+        guild = getattr(channel, "guild", None)
+        member = guild.get_member(user_id) if guild is not None else None
+        if member is None or not channel.permissions_for(member).view_channel:
+            return None
+
+        return link
+
     # ------------------------------------------------------------------
     # Voice
     # ------------------------------------------------------------------
 
-    async def join_voice(self, instance: MulcaInstance) -> None:
+    async def join_voice(self, link: Link) -> None:
         from discord.ext import voice_recv
 
         from .voice import VoiceBridge
 
-        if instance.name in self.voice:
+        if link.name in self.voice:
             return
 
-        channel = self.client.get_channel(instance.voice_channel_id)
+        channel = self.client.get_channel(link.voice_channel_id)
         if channel is None:
             logger.warning(
                 "Voice channel %s of %s not found",
-                instance.voice_channel_id,
-                instance.name,
+                link.voice_channel_id,
+                link.name,
             )
             return
 
-        logger.info("Joining voice channel %s for %s", channel, instance.name)
+        logger.info("Joining voice channel %s for %s", channel, link.name)
         voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
 
         bridge = VoiceBridge(
-            scope=Scope(conversation_id=instance.conversation_id),
+            scope=Scope(conversation_id=link.conversation_id),
             registry=self.registry,
             voice_client=voice_client,
-            reply_channel=self.client.get_channel(instance.text_channel_id),
-            post_voice_transcripts=instance.post_voice_transcripts,
-            roster=lambda: self.roster(instance),
+            reply_channel=self.client.get_channel(link.text_channel_id),
+            post_voice_transcripts=link.post_voice_transcripts,
+            roster=lambda: self.roster(link),
         )
-        self.voice[instance.name] = bridge
+        self.voice[link.name] = bridge
         await bridge.start()
 
-    async def leave_voice(self, instance: MulcaInstance) -> None:
-        bridge = self.voice.pop(instance.name, None)
+    async def leave_voice(self, link: Link) -> None:
+        bridge = self.voice.pop(link.name, None)
         if bridge is None:
             return
 
-        logger.info("Leaving the voice channel of %s", instance.name)
+        logger.info("Leaving the voice channel of %s", link.name)
         await bridge.disconnect()
 
-    async def sync_voice(self, instance: MulcaInstance) -> None:
-        channel = self.client.get_channel(instance.voice_channel_id)
+    async def sync_voice(self, link: Link) -> None:
+        channel = (
+            self.client.get_channel(link.voice_channel_id)
+            if link.voice_channel_id is not None
+            else None
+        )
         if _humans(channel) and not self.paused:
-            await self.join_voice(instance)
+            await self.join_voice(link)
         else:
-            await self.leave_voice(instance)
+            await self.leave_voice(link)
 
     async def _sync_all_voice(self) -> None:
-        for instance in self.active:
-            if instance.voice_channel_id is None:
-                continue
+        for link in self.links():
             try:
-                await self.sync_voice(instance)
+                await self.sync_voice(link)
             except Exception:
-                logger.exception("Could not join voice for %s", instance.name)
+                logger.exception("Could not join voice for %s", link.name)
+
+    # ------------------------------------------------------------------
+    # Linking: /mulca link|unlink
+    # ------------------------------------------------------------------
+
+    async def apply_link(self, link: Link, previous: Link | None) -> None:
+        """
+        Put a just-saved link into effect: a changed voice channel or
+        transcript setting starts a new voice bridge.
+        """
+
+        if previous is not None and previous != link:
+            await self.leave_voice(previous)
+
+        if link.voice_channel_id is not None:
+            await self.sync_voice(link)
+
+    async def unlink(self, link: Link) -> None:
+        """Out of its voice channel, its session closed (memory saved)."""
+
+        await self.leave_voice(link)
+        await self.registry.close(link.conversation_id, wait=RESTART_WAIT_SECONDS)
 
     # ------------------------------------------------------------------
     # Control: /restart, /mulca stop|start|restart
     # ------------------------------------------------------------------
 
-    async def restart_link(self, instance: MulcaInstance) -> RestartOutcome:
+    async def restart_link(self, link: Link) -> RestartOutcome:
         """
-        Restart one instance's MUCA-Server session: the server reconnects
-        its provider (OpenAI) from scratch and reloads the saved memory.
-        In voice, the bridge reopens it right away, roster included.
+        Restart one link's MUCA-Server session: the server reconnects its
+        provider (OpenAI) from scratch and reloads the saved memory. In
+        voice, the bridge reopens it right away, roster included.
         """
 
-        confirmed = await self.registry.restart(instance.conversation_id)
+        confirmed = await self.registry.restart(link.conversation_id)
 
-        bridge = self.voice.get(instance.name)
+        bridge = self.voice.get(link.name)
         if bridge is not None:
             await bridge.update_participants()
 
-        return RestartOutcome(instance=instance, confirmed=confirmed)
+        return RestartOutcome(link=link, confirmed=confirmed)
 
     async def restart_all(self) -> list[RestartOutcome]:
-        """Every instance's session, and every DM session, restarted."""
+        """Every link's session, and every DM session, restarted."""
 
-        outcomes = [await self.restart_link(instance) for instance in self.active]
+        links = self.links()
+        outcomes = [await self.restart_link(link) for link in links]
 
-        linked = {instance.conversation_id for instance in self.active}
+        linked = {link.conversation_id for link in links}
         for conversation_id in list(self.registry.sessions):
             if conversation_id not in linked:
                 await self.registry.restart(conversation_id)
@@ -228,19 +268,25 @@ class BotRuntime:
     async def pause(self) -> None:
         """Out of voice, every session closed, every event ignored."""
 
+        if self.user_id is not None:
+            self.store.set_paused(self.user_id, True)
+
         if self.paused:
             return
 
         self.paused = True
         logger.info("Pausing %s", self.name)
 
-        for instance in self.active:
-            await self.leave_voice(instance)
+        for link in self.links():
+            await self.leave_voice(link)
 
         for conversation_id in list(self.registry.sessions):
             await self.registry.close(conversation_id, wait=RESTART_WAIT_SECONDS)
 
     async def resume(self) -> None:
+        if self.user_id is not None:
+            self.store.set_paused(self.user_id, False)
+
         if not self.paused:
             return
 
@@ -248,19 +294,24 @@ class BotRuntime:
         logger.info("Resuming %s", self.name)
         await self._sync_all_voice()
 
-    def status(self) -> BotStatus:
+    def status(self, guild_id: int | None = None) -> BotStatus:
+        """This bot's state; its links in `guild_id` only, if given."""
+
         now = time.monotonic()
         links = []
 
-        for instance in self.active:
-            session = self.registry.find(instance.conversation_id)
+        for link in self.links():
+            if guild_id is not None and link.guild_id != guild_id:
+                continue
+
+            session = self.registry.find(link.conversation_id)
             client = session.client if session is not None else None
-            bridge = self.voice.get(instance.name)
+            is_open = client is not None and client.is_open
 
             problems: list[str] = []
             for channel_id, voice in (
-                (instance.text_channel_id, False),
-                (instance.voice_channel_id, True),
+                (link.text_channel_id, False),
+                (link.voice_channel_id, True),
             ):
                 if channel_id is None:
                     continue
@@ -271,22 +322,17 @@ class BotRuntime:
                 guild = getattr(channel, "guild", None)
                 if guild is not None and guild.me is not None:
                     problems.extend(
-                        f"missing {name} in {channel}"
+                        f"missing {name} in <#{channel_id}>"
                         for name in missing_permissions(channel, guild.me, voice=voice)
                     )
 
             links.append(
                 LinkStatus(
-                    name=instance.name,
-                    text_channel_id=instance.text_channel_id,
-                    voice_channel_id=instance.voice_channel_id,
-                    in_voice=bridge is not None,
-                    session_open=client is not None and client.is_open,
-                    session_age_seconds=(
-                        now - session.opened_at
-                        if session is not None and client.is_open
-                        else None
-                    ),
+                    text_channel_id=link.text_channel_id,
+                    voice_channel_id=link.voice_channel_id,
+                    in_voice=link.name in self.voice,
+                    session_open=is_open,
+                    session_age_seconds=now - session.opened_at if is_open else None,
                     last_close_code=getattr(client, "close_code", None),
                     problems=tuple(problems),
                 )
@@ -321,42 +367,26 @@ class BotRuntime:
         )
         self.ready_at = time.monotonic()
 
-        chosen = first_available_instance(
-            self.instances,
-            lambda channel_id: self.client.get_channel(channel_id) is not None,
-        )
+        self.store.register_bot(self.user_id, self.name, is_primary=self.is_primary)
+        self.paused = self.store.is_paused(self.user_id)
+        if self.paused:
+            logger.info("%s is stopped (/mulca stop); /mulca start resumes it", self.name)
 
-        # on_ready fires again after a full reconnect; if the choice changed
-        # (e.g. the bot lost access to a channel), leave the old voice channel.
-        for previous in self.active:
-            if previous != chosen:
-                await self.leave_voice(previous)
-        self.active[:] = [chosen] if chosen is not None else []
-
-        for instance in self.instances:
-            if instance is chosen:
-                continue
-            visible = self.client.get_channel(instance.text_channel_id) is not None
-            logger.info(
-                "Not running as %s: %s",
-                instance.name,
-                "an earlier instance comes first"
-                if visible
-                else f"text channel {instance.text_channel_id} not visible",
-            )
-
-        if chosen is None:
+        links = self.links()
+        if not links:
             logger.warning(
-                "None of the %d configured instances' text channels is "
-                "visible to this bot; only DMs will be answered",
-                len(self.instances),
+                "No channel is linked to %s yet: use /mulca link in Discord. "
+                "Only DMs will be answered until then.",
+                self.name,
             )
-        else:
+        for link in links:
+            visible = self.client.get_channel(link.text_channel_id) is not None
             logger.info(
-                "Running as instance %s (text channel %s, voice channel %s)",
-                chosen.name,
-                chosen.text_channel_id,
-                chosen.voice_channel_id,
+                "Serving %s (text channel %s, voice channel %s)%s",
+                link.name,
+                link.text_channel_id,
+                link.voice_channel_id,
+                "" if visible else " -- but that text channel isn't visible",
             )
 
         await self._sync_all_voice()
@@ -377,23 +407,27 @@ class BotRuntime:
             if channel is not None
         }
 
-        for instance in self.active:
-            if instance.voice_channel_id not in touched:
+        for link in self.links():
+            if link.voice_channel_id not in touched:
                 continue
+
+            if after.channel is not None and after.channel.id == link.voice_channel_id:
+                # Joining a linked voice channel counts as taking part there.
+                self.store.remember_speaker(member.id, link.text_channel_id)
 
             try:
-                await self.sync_voice(instance)
+                await self.sync_voice(link)
             except Exception:
-                logger.exception("Could not update voice for %s", instance.name)
+                logger.exception("Could not update voice for %s", link.name)
                 continue
 
-            bridge = self.voice.get(instance.name)
+            bridge = self.voice.get(link.name)
             if bridge is None:
                 continue
 
             if (
                 before.channel is not None
-                and before.channel.id == instance.voice_channel_id
+                and before.channel.id == link.voice_channel_id
                 and (after.channel is None or after.channel.id != before.channel.id)
             ):
                 bridge.forget(member.id)
@@ -413,38 +447,35 @@ class BotRuntime:
             return
 
         is_dm = isinstance(message.channel, discord.DMChannel)
-        instance: MulcaInstance | None = None
+        link: Link | None = None
 
         if is_dm:
             # Answering is permissive by design (BLUEPRINT.md: "open to DMs
-            # from any individual user") -- participant_ids doesn't gate
-            # that. It does gate one-way read access to a group's memory:
-            # a recognized participant's DM gets it, a stranger's doesn't.
-            linked_instance = instance_for_participant(
-                self.active, message.author.id
-            )
+            # from any individual user"). What a DM may also read is the
+            # group memory of the linked channel its sender last spoke in,
+            # as long as they can still see it.
+            linked = self.dm_link(message.author.id)
             scope = Scope(
                 conversation_id=f"dm:{message.author.id}",
                 is_dm=True,
                 linked_conversation_id=(
-                    linked_instance.conversation_id
-                    if linked_instance is not None
-                    else None
+                    linked.conversation_id if linked is not None else None
                 ),
             )
         else:
-            instance = self.link_for_channel(message.channel.id)
-            if instance is None:
-                # Not a channel the active MulcaInstance owns.
+            link = self.link_for_channel(message.channel.id)
+            if link is None:
+                # Not a channel linked to this bot.
                 return
-            scope = Scope(conversation_id=instance.conversation_id)
+            scope = Scope(conversation_id=link.conversation_id)
+            self.store.remember_speaker(message.author.id, link.text_channel_id)
 
-        roster = self.roster(instance) if instance is not None else {}
-        if instance is not None and not roster:
+        roster = self.roster(link) if link is not None else {}
+        if link is not None and not roster:
             roster = await _roster(message.channel)
 
         async def send(muca_client) -> None:
-            if instance is not None:
+            if link is not None:
                 await muca_client.send_participants(roster)
 
             await muca_client.send_user_text(
@@ -459,7 +490,7 @@ class BotRuntime:
                 send,
                 reply_channel=message.channel,
                 post_voice_transcripts=(
-                    instance.post_voice_transcripts if instance else False
+                    link.post_voice_transcripts if link else False
                 ),
                 # A text message triggers a real cognitive turn -- unlike
                 # voice's continuous frames, resending it on a reconnect
@@ -502,14 +533,14 @@ class BotManager:
     def primary(self) -> BotRuntime:
         return next((bot for bot in self.bots if bot.is_primary), self.bots[0])
 
-    def link_for_channel(
-        self,
-        channel_id: int,
-    ) -> tuple[BotRuntime, MulcaInstance] | None:
+    def bot_by_id(self, bot_id: int) -> BotRuntime | None:
+        return next((bot for bot in self.bots if bot.user_id == bot_id), None)
+
+    def link_for_channel(self, channel_id: int) -> tuple[BotRuntime, Link] | None:
         for bot in self.bots:
-            instance = bot.link_for_channel(channel_id)
-            if instance is not None:
-                return bot, instance
+            link = bot.link_for_channel(channel_id)
+            if link is not None:
+                return bot, link
 
         return None
 

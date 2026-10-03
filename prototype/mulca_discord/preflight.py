@@ -5,12 +5,12 @@ Checks everything the bot needs before a real run, one PASS/FAIL line each.
     python -m mulca_discord.preflight --voice-test 10
 
 - the voice libraries (opus, PyNaCl, davey) load;
-- the instances file (MULCA_INSTANCES, or the default) parses;
+- the links file (MULCA_DB_PATH, or the default) opens;
 - MUCA-Server answers a handshake;
 - the bot token logs in, with the privileged intents enabled;
-- every configured channel exists and the bot may use it.
+- every channel linked to the bot (/mulca link) exists and it may use it.
 
---voice-test N also joins the first instance's voice channel and records
+--voice-test N also joins the first linked voice channel and records
 every user separately for N seconds -- no MUCA-Server involved -- to
 voice-test/<user id>.wav, and prints what happened to the packets. Talk
 while it runs, then listen: if that is not clearly your voice, the problem
@@ -31,7 +31,7 @@ import numpy as np
 from dotenv import load_dotenv
 
 from .discord_client import mulca_intents
-from .instances import MulcaInstance, configured_instances_path, load_instances
+from .links import Link, LinkStore, configured_db_path
 from .muca_client import MucaWsClient
 from .permissions import missing_permissions
 from .voice.debug import WavRecorder
@@ -76,20 +76,16 @@ def check_voice_libraries(report: Report) -> None:
             report.check(True, f"{module} imports ({why})")
 
 
-def check_instances(report: Report) -> list[MulcaInstance]:
-    path = configured_instances_path()
+def open_store(report: Report) -> LinkStore | None:
+    path = configured_db_path()
     try:
-        instances = load_instances(path)
+        store = LinkStore(path)
     except Exception as exc:
-        report.check(False, f"instances file {path}", str(exc))
-        return []
+        report.check(False, f"links file {path}", str(exc))
+        return None
 
-    report.check(
-        bool(instances),
-        f"instances file {path}",
-        ", ".join(instance.name for instance in instances) or "no instances",
-    )
-    return instances
+    report.check(True, f"links file {path}", f"{len(store.all_links())} link(s)")
+    return store
 
 
 async def check_muca_server(report: Report, url: str) -> None:
@@ -120,9 +116,16 @@ async def check_muca_server(report: Report, url: str) -> None:
 def check_channels(
     report: Report,
     client: discord.Client,
-    instances: list[MulcaInstance],
+    links: list[Link],
 ) -> None:
-    for instance in instances:
+    if not report.check(
+        bool(links),
+        "channels linked to this bot",
+        "" if links else "none yet -- run /mulca link in Discord",
+    ):
+        return
+
+    for instance in links:
         text = client.get_channel(instance.text_channel_id)
         if report.check(
             text is not None,
@@ -166,7 +169,7 @@ def check_channels(
 async def voice_test(
     report: Report,
     client: discord.Client,
-    instance: MulcaInstance,
+    instance: Link,
     seconds: int,
 ) -> None:
     from discord.ext import voice_recv
@@ -249,7 +252,7 @@ async def run(voice_test_seconds: int | None) -> int:
     report = Report()
 
     check_voice_libraries(report)
-    instances = check_instances(report)
+    store = open_store(report)
     await check_muca_server(
         report,
         os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/"),
@@ -265,10 +268,11 @@ async def run(voice_test_seconds: int | None) -> int:
     async def on_ready() -> None:
         try:
             report.check(True, f"logs in as {client.user}")
-            check_channels(report, client, instances)
+            links = store.links_for(client.user.id) if store is not None else []
+            check_channels(report, client, links)
 
             if voice_test_seconds:
-                with_voice = [i for i in instances if i.voice_channel_id]
+                with_voice = [link for link in links if link.voice_channel_id]
                 if with_voice:
                     await voice_test(
                         report,
@@ -277,7 +281,7 @@ async def run(voice_test_seconds: int | None) -> int:
                         voice_test_seconds,
                     )
                 else:
-                    report.check(False, "voice test", "no instance has a voice channel")
+                    report.check(False, "voice test", "no linked voice channel")
         finally:
             await client.close()
 

@@ -7,6 +7,8 @@ Discord's "/" menu).
   MULCA (fresh OpenAI connections, same memory).
 - /mulca status|restart|stop|start: members with Manage Server, acting only
   on the bots in the server it's used in.
+- /mulca link|unlink: members with Manage Server -- which channels a bot
+  serves (links.py), with no code or config file involved.
 
 The decisions are plain functions over BotManager (control, format_status,
 restart_message), so they're testable without Discord; the command
@@ -20,6 +22,8 @@ import logging
 import discord
 from discord import app_commands
 
+from .links import Link
+from .permissions import missing_permissions
 from .runtime import BotManager, BotRuntime, BotStatus, RestartOutcome
 
 logger = logging.getLogger(__name__)
@@ -73,7 +77,7 @@ def format_status(statuses: list[BotStatus]) -> str:
         )
 
         if not status.links:
-            lines.append("  no channel (none of its configured text channels is visible)")
+            lines.append("  no channel linked in this server (`/mulca link`)")
 
         for link in status.links:
             voice = (
@@ -92,7 +96,7 @@ def format_status(statuses: list[BotStatus]) -> str:
                 if link.last_close_code is not None
                 else ""
             )
-            lines.append(f"  {link.name}: <#{link.text_channel_id}>{voice}; {session}{closed}")
+            lines.append(f"  <#{link.text_channel_id}>{voice}: {session}{closed}")
             lines.extend(f"  - {problem}" for problem in link.problems)
 
     return "\n".join(lines)
@@ -114,7 +118,9 @@ async def control(
     for bot in bots:
         if action == "restart":
             outcomes = await bot.restart_all()
-            unconfirmed = [o.instance.name for o in outcomes if not o.confirmed]
+            unconfirmed = [
+                f"<#{o.link.text_channel_id}>" for o in outcomes if not o.confirmed
+            ]
             lines.append(
                 f"**{bot.name}** restarted"
                 + (
@@ -137,6 +143,85 @@ async def control(
             raise ValueError(action)
 
     return "\n".join(lines)
+
+
+async def link_channels(
+    *,
+    bot: BotRuntime,
+    guild_id: int,
+    text_channel,
+    voice_channel=None,
+    post_voice_transcripts: bool = False,
+    created_by: int | None = None,
+) -> str:
+    """/mulca link: check, save, put into effect, and say what happened."""
+
+    guild = bot.client.get_guild(guild_id)
+    bot_member = guild.get_member(bot.user_id) if guild is not None else None
+    if bot_member is None:
+        return f"**{bot.name}** isn't in this server."
+
+    # The bot itself must be able to see the channels it's asked to serve.
+    for channel in (text_channel, voice_channel):
+        if channel is not None and not channel.permissions_for(bot_member).view_channel:
+            return f"**{bot.name}** can't see <#{channel.id}>. Give it access first."
+
+    link = Link(
+        text_channel_id=text_channel.id,
+        guild_id=guild_id,
+        bot_id=bot.user_id,
+        voice_channel_id=voice_channel.id if voice_channel is not None else None,
+        post_voice_transcripts=post_voice_transcripts,
+    )
+
+    problems = bot.store.conflicts(link)
+    if problems:
+        return "Not linked: " + " ".join(problems)
+
+    previous = bot.store.save(link, created_by=created_by)
+    await bot.apply_link(link, previous)
+
+    where = f"<#{text_channel.id}>" + (
+        f" and <#{voice_channel.id}>" if voice_channel is not None else ""
+    )
+    lines = [
+        (
+            f"Updated: **{bot.name}** serves {where}."
+            if previous is not None
+            else f"Linked: **{bot.name}** now serves {where}."
+        )
+        + (" Spoken replies are also posted as text." if post_voice_transcripts else ""),
+        "If MULCA was linked to this channel before, it still remembers that conversation.",
+    ]
+
+    warnings = [
+        f"missing **{name}** in <#{channel.id}>"
+        for channel, voice in ((text_channel, False), (voice_channel, True))
+        if channel is not None
+        for name in missing_permissions(channel, bot_member, voice=voice)
+    ]
+    if warnings:
+        lines.append("It can't work fully yet: " + "; ".join(warnings) + ".")
+
+    return "\n".join(lines)
+
+
+async def unlink_channel(manager: BotManager, channel_id: int) -> str:
+    """/mulca unlink: stop serving the link that owns this channel."""
+
+    found = manager.link_for_channel(channel_id)
+    if found is None:
+        return f"<#{channel_id}> isn't linked to any MULCA bot."
+
+    bot, link = found
+    await bot.unlink(link)
+    bot.store.remove(link.text_channel_id)
+
+    return (
+        f"Unlinked: **{bot.name}** no longer serves <#{link.text_channel_id}>"
+        + (f" and <#{link.voice_channel_id}>" if link.voice_channel_id else "")
+        + ". Its memory is kept: linking the channel again brings it back."
+    )
 
 
 # ----------------------------------------------------------------------
@@ -192,9 +277,9 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             )
             return
 
-        bot, instance = found
+        bot, link = found
         await interaction.response.defer(thinking=True)
-        outcome = await bot.restart_link(instance)
+        outcome = await bot.restart_link(link)
         await interaction.followup.send(
             restart_message(interaction.user.mention, outcome),
         )
@@ -210,8 +295,76 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     @mulca.command(name="status", description="Show every MULCA bot in this server.")
     async def status(interaction: discord.Interaction) -> None:
-        statuses = [bot.status() for bot in manager.in_guild(interaction.guild_id)]
+        statuses = [
+            bot.status(interaction.guild_id)
+            for bot in manager.in_guild(interaction.guild_id)
+        ]
         await interaction.response.send_message(format_status(statuses), ephemeral=True)
+
+    @mulca.command(
+        name="link",
+        description="Make MULCA serve a text channel, and optionally a voice channel.",
+    )
+    @app_commands.describe(
+        text="The text channel (default: this one). MULCA's memory belongs to it.",
+        voice="A voice channel MULCA joins whenever someone is in it.",
+        bot="Which MULCA bot (default: the main one).",
+        transcripts="Also post what MULCA says out loud in the text channel.",
+    )
+    @app_commands.autocomplete(bot=bot_choices)
+    async def link(
+        interaction: discord.Interaction,
+        text: discord.TextChannel | None = None,
+        voice: discord.VoiceChannel | None = None,
+        bot: str | None = None,
+        transcripts: bool = False,
+    ) -> None:
+        text = text or interaction.channel
+        if not isinstance(text, discord.TextChannel):
+            await interaction.response.send_message(
+                "Pick a text channel, or run this in one.",
+                ephemeral=True,
+            )
+            return
+
+        chosen = (
+            [manager.primary]
+            if bot is None or bot.strip().lower() == ALL
+            else manager.resolve(bot, interaction.guild_id)
+        )
+        if not chosen:
+            await interaction.response.send_message(
+                f"No MULCA bot called {bot!r} in this server.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await link_channels(
+            bot=chosen[0],
+            guild_id=interaction.guild_id,
+            text_channel=text,
+            voice_channel=voice,
+            post_voice_transcripts=transcripts,
+            created_by=interaction.user.id,
+        )
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="unlink",
+        description="Stop MULCA serving a channel. Its memory is kept.",
+    )
+    @app_commands.describe(
+        channel="The linked text or voice channel (default: this one).",
+    )
+    async def unlink(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | discord.VoiceChannel | None = None,
+    ) -> None:
+        channel_id = channel.id if channel is not None else interaction.channel_id
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await unlink_channel(manager, channel_id)
+        await interaction.followup.send(reply, ephemeral=True)
 
     async def run_control(
         interaction: discord.Interaction,

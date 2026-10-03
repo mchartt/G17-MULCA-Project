@@ -6,7 +6,7 @@ originally in this repo (`mulca/`) has been **ported to
 `README.md` for its current status. What's left in this repo is
 `mulca_discord/`: a thin Discord client that speaks MUCA-Server's WebSocket
 protocol (MUCA-Server's `docs/PROTOCOL.md`) -- text channels, DMs, and a
-voice channel per instance -- and holds no cognition logic of its own. See
+voice channel per linked text channel -- and holds no cognition logic of its own. See
 **"Running it"** below for how to run the two together.
 
 The "Implementation status" section right below is a historical record of
@@ -175,7 +175,7 @@ python -m muca_server.run_server
 `run_server.py` is the composition root: it's what currently hardcodes the
 active task (`general_moderation`) and strategy set — see that file to change
 either. Memory (working-memory snapshots, the episodic log) persists there,
-one SQLite file per conversation, e.g. `data/instance_team-alpha.db`.
+one SQLite file per conversation, e.g. `data/channel_1555669595581456537.db`.
 
 **2. This adapter**, in a second terminal:
 
@@ -189,19 +189,21 @@ cp .env.example .env
 python -m mulca_discord
 ```
 
-Which channels the bot answers in is configured in `mulca_discord/instances.yaml`:
-each instance is one text channel, optionally one voice channel, and the
-participants who belong to it. The list is in priority order: the bot runs as
-the first instance whose text channel it can see, and ignores the rest. So
-one config serves whichever team's server the bot was invited to, and two
-teams at once need two bot accounts. Anything not listed there is ignored; DMs
-are always answered, privately.
+Which channels the bot answers in is set from Discord, not in code or a
+config file: `/mulca link` (Manage Server) links a text channel, optionally
+with one voice channel, to the bot. A link's memory belongs to its text
+channel (`channel:<id>` on MUCA-Server), so it survives renaming the channel,
+changing its voice channel, and unlinking and linking it again. Who takes part
+is whoever can see the channel. Links are kept in a small SQLite file
+(`MULCA_DB_PATH`, default `data/mulca.db`). Channels that aren't linked are
+ignored; DMs are always answered, privately, and may read the group memory of
+the linked channel their sender last spoke in, while they can still see it.
 
 The bot needs the "Message Content" and "Server Members" privileged intents
 enabled in the Discord developer portal (`discord_client.py` requests
 `intents.message_content = True` and `intents.members = True`, the latter for
 the roster lookup that seeds silent participants). For voice it also needs
-the Connect and Speak permissions in the instance's voice channel.
+the Connect and Speak permissions in the linked voice channel.
 
 If MUCA-Server restarts, the bot reconnects on the next message (or voice
 tick) and the server restores the conversation's memory. The same happens
@@ -219,8 +221,10 @@ per server):
 | `/restart` | Anyone, in a channel MULCA serves | Restarts that channel's MULCA: fresh OpenAI connections, same memory. At most once per 30 s per channel. |
 | `/mulca status` | Manage Server | Every MULCA bot in this server: online, paused, its channels, its sessions, missing permissions. Only you see the reply. |
 | `/mulca restart [bot]` | Manage Server | `/restart` for every channel and DM of one bot, or of all (default). |
-| `/mulca stop [bot]` | Manage Server | MULCA leaves voice and stops answering, but stays online so `/mulca start` works. A redeploy starts it again. |
+| `/mulca stop [bot]` | Manage Server | MULCA leaves voice and stops answering, but stays online so `/mulca start` works. Still stopped after a restart or redeploy. |
 | `/mulca start [bot]` | Manage Server | Undoes `/mulca stop`. |
+| `/mulca link [text] [voice] [bot] [transcripts]` | Manage Server | Makes MULCA serve a text channel (default: this one), and optionally a voice channel with it. Linking a linked channel again updates it. One voice channel per bot per server. |
+| `/mulca unlink [channel]` | Manage Server | Stops MULCA serving a channel. Its memory is kept; linking it again brings it back. |
 
 `/mulca` is hidden from members without Manage Server. If the commands don't
 appear at all, the bot was invited without the `applications.commands`
@@ -228,10 +232,10 @@ scope: invite it again with scopes `bot` and `applications.commands`.
 
 ## Voice
 
-Set `voice_channel_id` on an instance and MULCA joins that voice channel
-whenever someone is in it, and leaves when it empties. Text and voice share
-one MUCA-Server session (`instance:<name>`), so they share one memory: what
-was said out loud is known in the text channel and vice versa.
+Link a voice channel with a text channel and MULCA joins it whenever
+someone is in it, and leaves when it empties. Text and voice share one
+MUCA-Server session (`channel:<text channel id>`), so they share one memory:
+what was said out loud is known in the text channel and vice versa.
 
 - **Listening** (`voice/capture.py`, `voice/synchronizer.py`): each user's
   audio arrives separately (discord-ext-voice-recv); Discord's end-to-end
@@ -246,7 +250,7 @@ was said out loud is known in the text channel and vice versa.
   echoed as `playback_frame` for the intervention agent. Talking over MULCA
   stops it (the server sends `clearAudioQueue`).
 - **Transcripts**: a spoken reply is not posted to the text channel unless
-  the instance sets `post_voice_transcripts: true`.
+  the link was made with `transcripts: True`.
 
 No ffmpeg needed: audio goes in and out as raw PCM.
 
@@ -267,17 +271,18 @@ for trouble: `voice/capture.py`'s `_undo_dave`).
 mulca_discord/
   discord_client.py    Builds the Discord client: intents, and wiring it to
                        a BotRuntime
-  runtime.py           BotRuntime (one bot: instance scoping, DM detection,
+  runtime.py           BotRuntime (one bot: channel scoping, DM detection,
                        rosters, voice, pause/restart/status) and BotManager
   commands.py          The slash commands: /restart and /mulca
-  sessions.py          One MUCA-Server session per scope ("instance:<name>" or
+  sessions.py          One MUCA-Server session per scope ("channel:<id>" or
                        "dm:<user_id>"), opened lazily, reopened when lost
   muca_client.py       One WebSocket session against MUCA-Server for one scope:
                        the handshake, user_text, audio_stream, playback_frame;
                        assistant_text / state_update back
   dispatch.py          Turns assistant_text deltas into throttled Discord
                        messages (split at Discord's 2000-character limit)
-  instances.py/.yaml   Which text + voice channels make up each instance
+  links.py             Which text + voice channels each bot serves, and the
+                       SQLite store keeping them (with paused state)
   voice/               The voice channel: capture, floor, playback, bridge
   __main__.py          Entrypoint: `python -m mulca_discord`
 ```

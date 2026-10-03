@@ -8,4 +8,4 @@ voice-debug
 **/__pycache__
 **/*.pyc
 .pytest_cache
-mulca_discord/instances.local.yaml
+data

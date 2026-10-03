@@ -34,7 +34,13 @@ RUN python -c "import discord.opus, mulca_discord.muca_client, mulca_discord.voi
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
     && useradd --system --no-create-home mulca \
-    && chown mulca /app
+    && chown mulca /app \
+    && mkdir /data && chown mulca /data
+
+# Which channels each bot serves, and whether it's stopped (links.py). Mount
+# a volume here, or every redeploy forgets them.
+ENV MULCA_DB_PATH=/data/mulca.db
+VOLUME /data
 
 USER mulca
 

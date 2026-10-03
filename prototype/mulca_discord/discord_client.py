@@ -5,13 +5,13 @@ Everything here is unchanged in spirit from the old (deleted) discord_adapter
 module: bot-author filtering, DM detection, the roster-from-channel.members
 lookup. What changed is what it's wired to -- a MUCA-Server session per
 scope (sessions.py) instead of an in-process Orchestrator, and scoping is
-driven by one MulcaInstance (instances.py), the first configured one whose
-text channel this bot can see: its text channel and its paired voice channel
-share one scope, one memory. The event handlers themselves live on
-BotRuntime (runtime.py), which the slash commands (commands.py) also drive.
+driven by the channels linked to this bot from Discord (links.py, /mulca
+link): a linked text channel and its paired voice channel share one scope,
+one memory. The event handlers themselves live on BotRuntime (runtime.py),
+which the slash commands (commands.py) also drive.
 
-Voice: whenever someone is in an instance's voice channel, MULCA is there
-too, listening (voice/). It leaves when the channel empties.
+Voice: whenever someone is in a linked voice channel, MULCA is there too,
+listening (voice/). It leaves when the channel empties.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import logging
 
 import discord
 
-from .instances import MulcaInstance
+from .links import LinkStore
 from .runtime import BotRuntime, _humans, _roster
 from .sessions import SessionRegistry
 
@@ -51,13 +51,14 @@ def mulca_intents() -> discord.Intents:
 def build_discord_client(
     *,
     muca_server_url: str,
-    instances: list[MulcaInstance],
+    store: LinkStore,
     registry: SessionRegistry | None = None,
+    is_primary: bool = True,
 ) -> discord.Client:
     """
     `client.mulca_runtime` is the BotRuntime handling this client's events;
     `client.mulca_sessions` holds the MUCA-Server session of each scope (a
-    MulcaInstance's conversation_id, or "dm:<user_id>"), opened lazily on
+    linked channel's "channel:<id>", or "dm:<user_id>"), opened lazily on
     first use and reopened if MUCA-Server went away.
     """
 
@@ -65,7 +66,8 @@ def build_discord_client(
     runtime = BotRuntime(
         client=client,
         registry=registry or SessionRegistry(muca_server_url),
-        instances=instances,
+        store=store,
+        is_primary=is_primary,
     )
     runtime.install()
 

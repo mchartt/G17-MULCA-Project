@@ -66,20 +66,23 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
 5. **The stack.** Stacks > New stack, name it `muca`, and paste `deploy/stack.yml`. Swarm
    names services `<stack>_<service>`, so they show up as `muca_muca-server` and `muca_mulca`.
 
+6. **Link the channels.** In Discord, in the text channel MULCA should serve, run
+   `/mulca link` (optionally with a `voice` channel). Repeat for every channel. Invite the bot
+   with the scopes `bot` and `applications.commands`, or the commands won't appear.
+
 ## Things to know
 
 - **Commands in Discord.** `/restart` in a MULCA channel restarts it, keeping its memory, and
-  anyone can use it. `/mulca status`, `/mulca restart`, `/mulca stop` and `/mulca start` need
-  the Manage Server permission. See `prototype/README.md` for the details.
+  anyone can use it. `/mulca status`, `restart`, `stop`, `start`, `link` and `unlink` need the
+  Manage Server permission. See `prototype/README.md` for the details.
 - **The 60-minute OpenAI limit is handled.** OpenAI ends each Realtime connection after an
   hour. MUCA-Server then saves the memory and ends that session, and the bot opens a new one
   without anyone noticing. If MULCA ever stops answering anyway, `/restart` fixes it.
 - **What a redeploy keeps.** A redeploy replaces containers, not volumes. Memory (in
-  `muca-data`) and the secrets survive. The bot logs out cleanly first (`stop_grace_period`),
-  so MUCA-Server saves each conversation. `/mulca stop` doesn't survive a redeploy yet: a
-  redeployed bot starts again. Memory is lost only if the volume is deleted, the stack is
-  renamed (volume names start with the stack name), or the `i3lab` node is lost, so back up
-  the volume.
+  `muca-data`), links and stopped bots (in `mulca-data`) and the secrets all survive. The bot
+  logs out cleanly first (`stop_grace_period`), so MUCA-Server saves each conversation. They
+  are lost only if a volume is deleted, the stack is renamed (volume names start with the
+  stack name), or the `i3lab` node is lost, so back up both volumes.
 
 - **Only one bot.** Two processes on the same bot token both answer every message. The stack
   runs exactly one `mulca` and stops the old container before starting the new one.
@@ -92,12 +95,11 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
 - **MUCA-Server isn't exposed outside the swarm.** MULCA reaches it as
   `ws://muca-server:8000/` on the stack's own network. Uncomment `ports` in `stack.yml` only
   if a client outside the swarm (e.g. the Unity app) needs to connect directly.
-- **Channels and rosters** come from `prototype/mulca_discord/instances.yaml`, built into the
-  image. Changing them means a push and a new build. The entries are a priority list: the bot
-  runs as the first one whose text channel it can see (team-alpha, else team-beta), and the
-  `muca_mulca` logs say which (`Running as instance …`). Discord allows a bot in only one
-  voice channel per server, so two teams at once need a second bot account, with its own
-  token, secret and `mulca` service.
+- **Channels are linked from Discord**, with `/mulca link` and `/mulca unlink`. No code,
+  config file or redeploy is involved. The links live in the `mulca-data` volume, and the
+  `muca_mulca` logs list them at startup (`Serving channel:<id> …`). Discord allows a bot in
+  only one voice channel per server, so two voice groups talking at once in one server need
+  a second bot.
 - **Building locally**, to check an image builds before pushing:
 
   ```sh

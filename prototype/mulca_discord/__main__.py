@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 from .commands import install_commands
 from .discord_client import build_discord_client, close_all_sessions
-from .instances import configured_instances_path, load_instances
+from .links import LinkStore, configured_db_path
 from .runtime import BotManager
 from .singleton import AlreadyRunning, acquire_singleton_lock
 
@@ -43,13 +43,13 @@ def main() -> None:
 
     discord_token = os.environ["DISCORD_BOT_TOKEN"]
     muca_server_url = os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/")
-    instances_path = configured_instances_path()
-    logging.info("Instances from %s", instances_path)
-    instances = load_instances(instances_path)
+    db_path = configured_db_path()
+    logging.info("Links and bot state in %s", db_path)
+    store = LinkStore(db_path)
 
     client = build_discord_client(
         muca_server_url=muca_server_url,
-        instances=instances,
+        store=store,
     )
     install_commands(BotManager([client.mulca_runtime]))
 

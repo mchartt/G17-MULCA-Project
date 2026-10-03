@@ -5,6 +5,8 @@ happened after a manual restart left an old process running).
 """
 
 import os
+import threading
+import time
 
 import pytest
 
@@ -30,11 +32,13 @@ def test_the_first_process_acquires_the_lock():
         lock.close()
 
 
-def test_a_second_process_is_refused_while_the_first_holds_it():
+def test_a_second_process_is_refused_once_retrying_runs_out():
     first = acquire_singleton_lock()
     try:
         with pytest.raises(AlreadyRunning):
-            acquire_singleton_lock()
+            # A short deadline: this is testing the "still genuinely taken"
+            # outcome, not asking the test to wait out the real default.
+            acquire_singleton_lock(retry_deadline_seconds=0.2)
     finally:
         first.close()
 
@@ -44,4 +48,23 @@ def test_the_lock_is_free_again_once_the_holder_closes_it():
     first.close()
 
     second = acquire_singleton_lock()
+    second.close()
+
+
+def test_a_slow_release_is_waited_out_instead_of_refused():
+    """
+    A Ctrl+C'd process can take a few seconds to actually exit; restarting
+    in that window should succeed once the old one actually lets go, not
+    bounce off immediately.
+    """
+
+    first = acquire_singleton_lock()
+
+    def release_shortly() -> None:
+        time.sleep(0.2)
+        first.close()
+
+    threading.Thread(target=release_shortly).start()
+
+    second = acquire_singleton_lock(retry_deadline_seconds=2.0)
     second.close()

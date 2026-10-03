@@ -33,6 +33,7 @@ from dotenv import load_dotenv
 from .discord_client import mulca_intents
 from .instances import MulcaInstance, configured_instances_path, load_instances
 from .muca_client import MucaWsClient
+from .permissions import missing_permissions
 from .voice.debug import WavRecorder
 
 VOICE_TEST_DIR = Path("voice-test")
@@ -128,12 +129,7 @@ def check_channels(
             f"{instance.name}: text channel {instance.text_channel_id}",
             f"#{text}" if text else "not visible to the bot (wrong id, or not invited?)",
         ):
-            permissions = text.permissions_for(text.guild.me)
-            missing = [
-                name
-                for name in ("view_channel", "send_messages", "read_message_history")
-                if not getattr(permissions, name)
-            ]
+            missing = missing_permissions(text, text.guild.me, voice=False)
             report.check(
                 not missing,
                 f"{instance.name}: may post in #{text}",
@@ -159,12 +155,7 @@ def check_channels(
             f"{instance.name}: voice channel {instance.voice_channel_id}",
             f"{voice}" if voice else "not visible to the bot",
         ):
-            permissions = voice.permissions_for(voice.guild.me)
-            missing = [
-                name
-                for name in ("connect", "speak", "use_voice_activation")
-                if not getattr(permissions, name)
-            ]
+            missing = missing_permissions(voice, voice.guild.me, voice=True)
             report.check(
                 not missing,
                 f"{instance.name}: may talk in {voice}",

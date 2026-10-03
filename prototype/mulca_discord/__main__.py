@@ -12,12 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 import sys
+from contextlib import suppress
 
 from dotenv import load_dotenv
 
+from .commands import install_commands
 from .discord_client import build_discord_client, close_all_sessions
 from .instances import configured_instances_path, load_instances
+from .runtime import BotManager
 from .singleton import AlreadyRunning, acquire_singleton_lock
 
 
@@ -44,8 +48,19 @@ def main() -> None:
         muca_server_url=muca_server_url,
         instances=instances,
     )
+    install_commands(BotManager([client.mulca_runtime]))
 
     async def run() -> None:
+        # Swarm stops a container with SIGTERM: log out and close the
+        # sessions (MUCA-Server saves each conversation as its session
+        # ends) instead of dying mid-conversation. Not on Windows, which
+        # has no add_signal_handler; Ctrl+C still works there.
+        with suppress(NotImplementedError):
+            asyncio.get_running_loop().add_signal_handler(
+                signal.SIGTERM,
+                lambda: asyncio.ensure_future(client.close()),
+            )
+
         # One event loop for the bot and its MUCA-Server sessions, so the
         # sessions can still be closed (with a disconnect) on the way out.
         async with client:

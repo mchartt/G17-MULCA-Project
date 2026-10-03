@@ -47,6 +47,9 @@ services:
         target: DISCORD_BOT_TOKEN
     networks:
       - muca
+    # On a redeploy the bot logs out and closes its sessions (MUCA-Server
+    # saves each conversation) before the container is killed.
+    stop_grace_period: 30s
     deploy:
       labels:
         swarmpit.service.deployment.autoredeploy: "true"

@@ -29,7 +29,7 @@ RUN grep -v -- '-e ../../MUCA-Server' requirements.txt > /tmp/requirements.txt \
 
 COPY mulca_discord ./mulca_discord
 # Fails the build now, not the first Discord message, if a dependency is missing.
-RUN python -c "import discord.opus, mulca_discord.muca_client, mulca_discord.voice.bridge; discord.opus._load_default() or exit('libopus not found')"
+RUN python -c "import discord.opus, mulca_discord.muca_client, mulca_discord.voice.bridge, mulca_discord.commands, mulca_discord.runtime; discord.opus._load_default() or exit('libopus not found')"
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \

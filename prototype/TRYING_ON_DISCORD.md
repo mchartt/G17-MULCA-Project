@@ -84,4 +84,5 @@ Watch the MUCA-Server terminal. For every turn it logs who spoke (the trigger va
 | The voice-test WAV is silent and `packets=0` | Voice receive isn't working | Run with `logging.DEBUG`; check the `discord-ext-voice-recv` version |
 | MUCA-Server never logs a voice turn | The floor was never taken, or the provider's VAD never fired | Loudness of `voice-debug/*.wav` and its `.floor.txt`; `voice/synchronizer.py` threshold |
 | A turn is logged, but MULCA doesn't answer | The intervention agent decided to say nothing | The "intervention decision" line; address MULCA by name |
+| MULCA stopped answering, by text and voice | Its OpenAI connection ended and the session didn't recover | Type `/restart` in its channel; `/mulca status` shows the session; MUCA-Server's log |
 | MULCA answers but can't be heard | The bot lacks Speak permission, or playback didn't start | Preflight permissions; `voice/bridge.py` `_ensure_playing` |

@@ -68,6 +68,19 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
 
 ## Things to know
 
+- **Commands in Discord.** `/restart` in a MULCA channel restarts it, keeping its memory, and
+  anyone can use it. `/mulca status`, `/mulca restart`, `/mulca stop` and `/mulca start` need
+  the Manage Server permission. See `prototype/README.md` for the details.
+- **The 60-minute OpenAI limit is handled.** OpenAI ends each Realtime connection after an
+  hour. MUCA-Server then saves the memory and ends that session, and the bot opens a new one
+  without anyone noticing. If MULCA ever stops answering anyway, `/restart` fixes it.
+- **What a redeploy keeps.** A redeploy replaces containers, not volumes. Memory (in
+  `muca-data`) and the secrets survive. The bot logs out cleanly first (`stop_grace_period`),
+  so MUCA-Server saves each conversation. `/mulca stop` doesn't survive a redeploy yet: a
+  redeployed bot starts again. Memory is lost only if the volume is deleted, the stack is
+  renamed (volume names start with the stack name), or the `i3lab` node is lost, so back up
+  the volume.
+
 - **Only one bot.** Two processes on the same bot token both answer every message. The stack
   runs exactly one `mulca` and stops the old container before starting the new one.
   Don't also run the bot locally with the production token while the stack is up.

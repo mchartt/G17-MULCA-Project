@@ -204,7 +204,27 @@ the roster lookup that seeds silent participants). For voice it also needs
 the Connect and Speak permissions in the instance's voice channel.
 
 If MUCA-Server restarts, the bot reconnects on the next message (or voice
-tick) and the server restores the conversation's memory.
+tick) and the server restores the conversation's memory. The same happens
+every hour on its own: OpenAI ends each Realtime connection after 60 minutes,
+MUCA-Server then saves the memory and closes that session (code 1012), and
+the bot opens a fresh one.
+
+## Slash commands
+
+The bot registers these in every server it's in when it starts (instantly,
+per server):
+
+| Command | Who | What |
+|---|---|---|
+| `/restart` | Anyone, in a channel MULCA serves | Restarts that channel's MULCA: fresh OpenAI connections, same memory. At most once per 30 s per channel. |
+| `/mulca status` | Manage Server | Every MULCA bot in this server: online, paused, its channels, its sessions, missing permissions. Only you see the reply. |
+| `/mulca restart [bot]` | Manage Server | `/restart` for every channel and DM of one bot, or of all (default). |
+| `/mulca stop [bot]` | Manage Server | MULCA leaves voice and stops answering, but stays online so `/mulca start` works. A redeploy starts it again. |
+| `/mulca start [bot]` | Manage Server | Undoes `/mulca stop`. |
+
+`/mulca` is hidden from members without Manage Server. If the commands don't
+appear at all, the bot was invited without the `applications.commands`
+scope: invite it again with scopes `bot` and `applications.commands`.
 
 ## Voice
 
@@ -245,8 +265,11 @@ for trouble: `voice/capture.py`'s `_undo_dave`).
 
 ```
 mulca_discord/
-  discord_client.py    Discord-side glue: bot-author filtering, instance
-                       scoping, DM detection, rosters, joining/leaving voice
+  discord_client.py    Builds the Discord client: intents, and wiring it to
+                       a BotRuntime
+  runtime.py           BotRuntime (one bot: instance scoping, DM detection,
+                       rosters, voice, pause/restart/status) and BotManager
+  commands.py          The slash commands: /restart and /mulca
   sessions.py          One MUCA-Server session per scope ("instance:<name>" or
                        "dm:<user_id>"), opened lazily, reopened when lost
   muca_client.py       One WebSocket session against MUCA-Server for one scope:

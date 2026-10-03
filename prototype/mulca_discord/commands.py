@@ -7,8 +7,9 @@ Discord's "/" menu).
   MULCA (fresh OpenAI connections, same memory).
 - /mulca status|restart|stop|start: members with Manage Server, acting only
   on the bots in the server it's used in.
-- /mulca link|unlink: members with Manage Server -- which channels a bot
-  serves (links.py), with no code or config file involved.
+- /mulca link|unlink|dms: members with Manage Server -- which channels a
+  bot serves (links.py), with no code or config file involved, and whether
+  the people of a channel may DM it (off by default).
 - /mulca bot add|remove|list: members with Manage Server -- more bot
   accounts, run by this same process. These act on the whole deployment,
   not just the server they're used in (see deploy/README.md, Security).
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import discord
 from discord import app_commands
@@ -101,7 +102,8 @@ def format_status(statuses: list[BotStatus]) -> str:
                 if link.last_close_code is not None
                 else ""
             )
-            lines.append(f"  <#{link.text_channel_id}>{voice}: {session}{closed}")
+            dms = ", DMs on" if link.allow_dms else ""
+            lines.append(f"  <#{link.text_channel_id}>{voice}: {session}{closed}{dms}")
             lines.extend(f"  - {problem}" for problem in link.problems)
 
     return "\n".join(lines)
@@ -157,9 +159,13 @@ async def link_channels(
     text_channel,
     voice_channel=None,
     post_voice_transcripts: bool = False,
+    allow_dms: bool | None = None,
     created_by: int | None = None,
 ) -> str:
-    """/mulca link: check, save, put into effect, and say what happened."""
+    """
+    /mulca link: check, save, put into effect, and say what happened.
+    `allow_dms` None keeps what the channel had (off for a new link).
+    """
 
     guild = bot.client.get_guild(guild_id)
     bot_member = guild.get_member(bot.user_id) if guild is not None else None
@@ -171,12 +177,17 @@ async def link_channels(
         if channel is not None and not channel.permissions_for(bot_member).view_channel:
             return f"**{bot.name}** can't see <#{channel.id}>. Give it access first."
 
+    existing = bot.store.link_for_channel(text_channel.id)
+    if allow_dms is None:
+        allow_dms = existing.allow_dms if existing is not None else False
+
     link = Link(
         text_channel_id=text_channel.id,
         guild_id=guild_id,
         bot_id=bot.user_id,
         voice_channel_id=voice_channel.id if voice_channel is not None else None,
         post_voice_transcripts=post_voice_transcripts,
+        allow_dms=allow_dms,
     )
 
     problems = bot.store.conflicts(link)
@@ -195,7 +206,12 @@ async def link_channels(
             if previous is not None
             else f"Linked: **{bot.name}** now serves {where}."
         )
-        + (" Spoken replies are also posted as text." if post_voice_transcripts else ""),
+        + (" Spoken replies are also posted as text." if post_voice_transcripts else "")
+        + (
+            " People who can see this channel may DM it."
+            if allow_dms
+            else " DMs are off (`/mulca dms` turns them on)."
+        ),
         "If MULCA was linked to this channel before, it still remembers that conversation.",
     ]
 
@@ -209,6 +225,27 @@ async def link_channels(
         lines.append("It can't work fully yet: " + "; ".join(warnings) + ".")
 
     return "\n".join(lines)
+
+
+async def set_dms(manager: BotManager, channel_id: int, enabled: bool) -> str:
+    """/mulca dms: let the people of one linked channel DM its bot, or not."""
+
+    found = manager.link_for_channel(channel_id)
+    if found is None:
+        return f"<#{channel_id}> isn't linked to any MULCA bot; `/mulca link` it first."
+
+    bot, link = found
+    bot.store.save(replace(link, allow_dms=enabled))
+
+    if enabled:
+        return (
+            f"DMs on: people who can see <#{link.text_channel_id}> may now DM "
+            f"**{bot.name}**, and it remembers this channel's conversation there."
+        )
+    return (
+        f"DMs off for <#{link.text_channel_id}>: its people can no longer DM "
+        f"**{bot.name}**, unless another DM-enabled channel of it lets them."
+    )
 
 
 async def unlink_channel(manager: BotManager, channel_id: int) -> str:
@@ -513,6 +550,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         voice="A voice channel MULCA joins whenever someone is in it.",
         bot="Which MULCA bot (default: the main one).",
         transcripts="Also post what MULCA says out loud in the text channel.",
+        dms="Let people who can see the text channel DM MULCA (default: unchanged, off for a new link).",
     )
     @app_commands.autocomplete(bot=bot_choices)
     async def link(
@@ -521,6 +559,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         voice: discord.VoiceChannel | None = None,
         bot: str | None = None,
         transcripts: bool = False,
+        dms: bool | None = None,
     ) -> None:
         text = text or interaction.channel
         if not isinstance(text, discord.TextChannel):
@@ -549,9 +588,27 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             text_channel=text,
             voice_channel=voice,
             post_voice_transcripts=transcripts,
+            allow_dms=dms,
             created_by=interaction.user.id,
         )
         await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="dms",
+        description="Let the people of a linked channel DM MULCA, or stop them (off by default).",
+    )
+    @app_commands.describe(
+        enabled="True: people who can see the channel may DM MULCA. False: they can't.",
+        channel="The linked text or voice channel (default: this one).",
+    )
+    async def dms(
+        interaction: discord.Interaction,
+        enabled: bool,
+        channel: discord.TextChannel | discord.VoiceChannel | None = None,
+    ) -> None:
+        channel_id = channel.id if channel is not None else interaction.channel_id
+        reply = await set_dms(manager, channel_id, enabled)
+        await interaction.response.send_message(reply, ephemeral=True)
 
     @mulca.command(
         name="unlink",

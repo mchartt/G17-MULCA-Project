@@ -196,8 +196,13 @@ channel (`channel:<id>` on MUCA-Server), so it survives renaming the channel,
 changing its voice channel, and unlinking and linking it again. Who takes part
 is whoever can see the channel. Links are kept in a small SQLite file
 (`MULCA_DB_PATH`, default `data/mulca.db`). Channels that aren't linked are
-ignored; DMs are always answered, privately, and may read the group memory of
-the linked channel their sender last spoke in, while they can still see it.
+ignored.
+
+DMs to MULCA are **off by default**: a DM gets a short "I don't take direct
+messages" reply. An admin turns them on per linked channel (`/mulca dms`, or
+`dms: True` when linking). Then whoever can see that channel may DM the bot
+that serves it, privately, and the DM may read that channel's group memory
+(the DM-enabled channel they last spoke in, if several). Nobody else can.
 
 The bot needs the "Message Content" and "Server Members" privileged intents
 enabled in the Discord developer portal (`discord_client.py` requests
@@ -223,7 +228,8 @@ per server):
 | `/mulca restart [bot]` | Manage Server | `/restart` for every channel and DM of one bot, or of all (default). |
 | `/mulca stop [bot]` | Manage Server | MULCA leaves voice and stops answering, but stays online so `/mulca start` works. Still stopped after a restart or redeploy. |
 | `/mulca start [bot]` | Manage Server | Undoes `/mulca stop`. |
-| `/mulca link [text] [voice] [bot] [transcripts]` | Manage Server | Makes MULCA serve a text channel (default: this one), and optionally a voice channel with it. Linking a linked channel again updates it. One voice channel per bot per server. |
+| `/mulca link [text] [voice] [bot] [transcripts] [dms]` | Manage Server | Makes MULCA serve a text channel (default: this one), and optionally a voice channel with it. Linking a linked channel again updates it (`dms` left out keeps its DM setting). One voice channel per bot per server. |
+| `/mulca dms enabled [channel]` | Manage Server | Lets the people who can see a linked channel DM MULCA (`True`), or stops them (`False`). Off by default. |
 | `/mulca unlink [channel]` | Manage Server | Stops MULCA serving a channel. Its memory is kept; linking it again brings it back. |
 | `/mulca bot add` | Manage Server | Adds another bot account: its token goes in a private form, it starts at once, and the reply has its invite link. Needed for two voice groups talking at once in one server. |
 | `/mulca bot remove bot [force]` | Manage Server | Stops an added bot and deletes its token. Refused while it still serves channels, unless `force` (which unlinks them). |

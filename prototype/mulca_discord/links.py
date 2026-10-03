@@ -6,7 +6,9 @@ A Link is one text channel, optionally one voice channel paired with it, and
 the bot serving them. Its memory on MUCA-Server is keyed by the text
 channel's id ("channel:<id>"), so it survives renaming the channel, swapping
 its voice channel, or unlinking and linking it again later. Who takes part
-isn't configured either: it's whoever can see the channel.
+isn't configured either: it's whoever can see the channel. DMs to the bot are
+off unless an admin turns them on for a link (/mulca dms); then whoever can
+see that link's text channel may DM the bot.
 
 LinkStore keeps the links, the bots added with /mulca bot add (with their
 tokens, unencrypted -- the file is readable only by the bot's own user), each
@@ -26,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -48,6 +50,7 @@ CREATE TABLE IF NOT EXISTS links (
     bot_id INTEGER NOT NULL,
     voice_channel_id INTEGER UNIQUE,
     post_voice_transcripts INTEGER NOT NULL DEFAULT 0,
+    allow_dms INTEGER NOT NULL DEFAULT 0,
     created_by INTEGER,
     created_at REAL
 );
@@ -81,6 +84,8 @@ class Link:
     bot_id: int
     voice_channel_id: int | None = None
     post_voice_transcripts: bool = False
+    # Whether people who can see this text channel may DM the bot.
+    allow_dms: bool = False
 
     @property
     def conversation_id(self) -> str:
@@ -124,8 +129,10 @@ class LinkStore:
             # It holds bot tokens: only the bot's own user may read it.
             os.chmod(path, 0o600)
         self._db.executescript(_SCHEMA)
+        self._migrate()
         self._db.execute(
-            "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
+            "INSERT INTO meta (key, value) VALUES ('schema_version', ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             (str(SCHEMA_VERSION),),
         )
         self._db.commit()
@@ -137,10 +144,11 @@ class LinkStore:
                 bot_id=row[2],
                 voice_channel_id=row[3],
                 post_voice_transcripts=bool(row[4]),
+                allow_dms=bool(row[5]),
             )
             for row in self._db.execute(
                 "SELECT text_channel_id, guild_id, bot_id, voice_channel_id, "
-                "post_voice_transcripts FROM links"
+                "post_voice_transcripts, allow_dms FROM links"
             )
         }
 
@@ -150,6 +158,16 @@ class LinkStore:
 
     def close(self) -> None:
         self._db.close()
+
+    def _migrate(self) -> None:
+        """Bring a file from an older version up to date, keeping its data."""
+
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(links)")}
+        if "allow_dms" not in columns:
+            # Version 1: DMs weren't per link yet. They start off.
+            self._db.execute(
+                "ALTER TABLE links ADD COLUMN allow_dms INTEGER NOT NULL DEFAULT 0"
+            )
 
     # -- links -------------------------------------------------------------
 
@@ -226,18 +244,20 @@ class LinkStore:
         with self._db:
             self._db.execute(
                 "INSERT INTO links (text_channel_id, guild_id, bot_id, "
-                "voice_channel_id, post_voice_transcripts, created_by, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "voice_channel_id, post_voice_transcripts, allow_dms, created_by, "
+                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (text_channel_id) DO UPDATE SET "
                 "guild_id = excluded.guild_id, bot_id = excluded.bot_id, "
                 "voice_channel_id = excluded.voice_channel_id, "
-                "post_voice_transcripts = excluded.post_voice_transcripts",
+                "post_voice_transcripts = excluded.post_voice_transcripts, "
+                "allow_dms = excluded.allow_dms",
                 (
                     link.text_channel_id,
                     link.guild_id,
                     link.bot_id,
                     link.voice_channel_id,
                     int(link.post_voice_transcripts),
+                    int(link.allow_dms),
                     created_by,
                     time.time(),
                 ),

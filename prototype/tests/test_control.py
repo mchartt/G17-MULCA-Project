@@ -11,15 +11,20 @@ import time
 import pytest
 
 import mulca_discord.sessions as sessions_module
+from dataclasses import replace
+
+import discord
+
 from mulca_discord.commands import (
     control,
     format_status,
     link_channels,
     restart_message,
+    set_dms,
     unlink_channel,
 )
 from mulca_discord.links import Link, LinkStore
-from mulca_discord.runtime import BotManager, BotRuntime, RestartOutcome
+from mulca_discord.runtime import DMS_OFF_REPLY, BotManager, BotRuntime, RestartOutcome
 from mulca_discord.sessions import Scope, SessionRegistry
 from mulca_discord.voice.bridge import VoiceBridge
 
@@ -383,18 +388,75 @@ async def test_a_message_in_an_unlinked_channel_is_ignored():
     assert runtime.registry.scopes == []
 
 
-def test_a_dm_reads_the_memory_of_the_channel_its_sender_last_spoke_in():
+class FakeDMChannel(discord.DMChannel):
+    """Passes isinstance(..., discord.DMChannel); records what's sent."""
+
+    def __init__(self) -> None:
+        self.id = 77
+        self.sent: list[str] = []
+
+    async def send(self, content):
+        self.sent.append(content)
+
+
+async def test_dms_are_off_by_default():
     runtime = make_runtime()
+    runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+    dm = FakeDMChannel()
+
+    await runtime.on_message(message(5, dm))
+
+    assert dm.sent == [DMS_OFF_REPLY]
+    assert runtime.registry.scopes == []
+
+
+async def test_with_dms_on_people_who_see_the_channel_may_dm_and_it_remembers():
+    runtime = make_runtime(link=replace(ALPHA, allow_dms=True))
+    runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+    dm = FakeDMChannel()
+
+    await runtime.on_message(message(5, dm))
+
+    [scope] = runtime.registry.scopes
+    assert scope.conversation_id == "dm:5"
+    assert scope.is_dm and scope.linked_conversation_id == "channel:111"
+    assert dm.sent == []
+
+
+async def test_with_dms_on_people_who_cant_see_the_channel_still_cant_dm():
+    runtime = make_runtime(link=replace(ALPHA, allow_dms=True))
     text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
-    runtime.store.remember_speaker(5, 111)
-
-    assert runtime.dm_link(5) == ALPHA
-
-    # ...but not once they can no longer see that channel.
     text.allowed[5] = set()
-    assert runtime.dm_link(5) is None
+    # In the server, but the channel is private to others.
+    runtime.client.guilds[GUILD].members[6] = FakeMember(6, "Bob")
+    text.allowed[6] = set()
+    dm = FakeDMChannel()
 
-    assert runtime.dm_link(6) is None
+    await runtime.on_message(message(5, dm))
+    await runtime.on_message(message(6, dm))
+    # Not in the server at all.
+    await runtime.on_message(message(7, dm))
+
+    assert dm.sent == [DMS_OFF_REPLY, DMS_OFF_REPLY, DMS_OFF_REPLY]
+    assert runtime.registry.scopes == []
+
+
+def test_a_dm_reads_the_dm_enabled_channel_its_sender_last_spoke_in():
+    store = LinkStore(":memory:")
+    runtime = make_runtime(store, link=replace(ALPHA, allow_dms=True))
+    other = Link(text_channel_id=333, guild_id=GUILD, bot_id=1, allow_dms=True)
+    closed = Link(text_channel_id=555, guild_id=GUILD, bot_id=1)
+    store.save(other)
+    store.save(closed)
+    for channel_id in (111, 333, 555):
+        runtime.client.add_channel(channel_id, members=[FakeMember(5, "Ada")])
+
+    store.remember_speaker(5, 333)
+    assert runtime.dm_link(5) == other
+
+    # Last spoke in a channel without DMs: the first DM-enabled one instead.
+    store.remember_speaker(5, 555)
+    assert runtime.dm_link(5) == replace(ALPHA, allow_dms=True)
 
 
 def test_status_reports_each_link_in_the_server():
@@ -513,6 +575,40 @@ async def test_missing_permissions_are_reported_but_the_link_is_made():
     assert "missing **send_messages**" in reply
 
 
+async def test_dms_are_turned_on_and_off_per_linked_channel():
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+
+    on = await set_dms(manager, 222, True)  # by its voice channel, too
+    assert "DMs on" in on
+    assert runtime.links() == [replace(ALPHA, allow_dms=True)]
+
+    off = await set_dms(manager, 111, False)
+    assert "DMs off" in off
+    assert runtime.links() == [ALPHA]
+
+    assert "isn't linked" in await set_dms(manager, 999, True)
+
+
+async def test_relinking_without_saying_keeps_the_dm_setting():
+    runtime = make_runtime(link=replace(ALPHA, allow_dms=True))
+    text = runtime.client.add_channel(111)
+    voice = runtime.client.add_channel(222)
+
+    await link_channels(bot=runtime, guild_id=GUILD, text_channel=text, voice_channel=voice)
+    assert runtime.links()[0].allow_dms
+
+    reply = await link_channels(
+        bot=runtime,
+        guild_id=GUILD,
+        text_channel=text,
+        voice_channel=voice,
+        allow_dms=False,
+    )
+    assert not runtime.links()[0].allow_dms
+    assert "DMs are off" in reply
+
+
 async def test_unlinking_closes_the_session_and_forgets_the_link():
     runtime = make_runtime()
     manager = BotManager([runtime])
@@ -587,6 +683,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "start",
         "link",
         "unlink",
+        "dms",
         "bot",
     }
     assert {sub.name for sub in subcommands["bot"].commands} == {"add", "remove", "list"}

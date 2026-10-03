@@ -30,6 +30,12 @@ logger = logging.getLogger(__name__)
 
 ReadyHook = Callable[["BotRuntime"], Awaitable[None]]
 
+# The answer to a DM the bot doesn't take.
+DMS_OFF_REPLY = (
+    "I don't take direct messages here. Talk to me in a server channel I'm "
+    "in -- or ask a server admin to turn DMs on for that channel (/mulca dms)."
+)
+
 
 async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
     members = getattr(channel, "members", [])
@@ -53,6 +59,7 @@ def _humans(channel) -> list:
 class LinkStatus:
     text_channel_id: int
     voice_channel_id: int | None
+    allow_dms: bool
     in_voice: bool
     session_open: bool
     session_age_seconds: float | None
@@ -134,23 +141,38 @@ class BotRuntime:
 
         return roster
 
-    def dm_link(self, user_id: int) -> Link | None:
-        """
-        The group memory a DM from this user may read: the linked channel
-        they last spoke in, as long as they can still see it.
-        """
-
-        link = self.store.last_link_for(user_id)
-        if link is None:
-            return None
-
-        channel = self.client.get_channel(link.text_channel_id)
+    def _can_see(self, user_id: int, channel_id: int) -> bool:
+        channel = self.client.get_channel(channel_id)
         guild = getattr(channel, "guild", None)
         member = guild.get_member(user_id) if guild is not None else None
-        if member is None or not channel.permissions_for(member).view_channel:
+        return member is not None and channel.permissions_for(member).view_channel
+
+    def dm_links(self, user_id: int) -> list[Link]:
+        """
+        The links that let this user DM the bot: those with DMs turned on
+        (/mulca dms) whose text channel the user can see. None means the bot
+        doesn't take their DMs -- the default, since DMs start off.
+        """
+
+        return [
+            link
+            for link in self.links()
+            if link.allow_dms and self._can_see(user_id, link.text_channel_id)
+        ]
+
+    def dm_link(self, user_id: int) -> Link | None:
+        """
+        The group memory a DM from this user may read, if the bot takes
+        their DMs at all: the DM-enabled channel they last spoke in, else
+        the first DM-enabled channel they can see.
+        """
+
+        allowed = self.dm_links(user_id)
+        if not allowed:
             return None
 
-        return link
+        last = self.store.last_link_for(user_id)
+        return last if last in allowed else allowed[0]
 
     # ------------------------------------------------------------------
     # Voice
@@ -332,6 +354,7 @@ class BotRuntime:
                 LinkStatus(
                     text_channel_id=link.text_channel_id,
                     voice_channel_id=link.voice_channel_id,
+                    allow_dms=link.allow_dms,
                     in_voice=link.name in self.voice,
                     session_open=is_open,
                     session_age_seconds=now - session.opened_at if is_open else None,
@@ -452,17 +475,21 @@ class BotRuntime:
         link: Link | None = None
 
         if is_dm:
-            # Answering is permissive by design (BLUEPRINT.md: "open to DMs
-            # from any individual user"). What a DM may also read is the
-            # group memory of the linked channel its sender last spoke in,
-            # as long as they can still see it.
+            # DMs are off unless an admin turned them on for a linked channel
+            # (/mulca dms), and then only for people who can see that
+            # channel. Such a DM may also read that channel's group memory.
             linked = self.dm_link(message.author.id)
+            if linked is None:
+                try:
+                    await message.channel.send(DMS_OFF_REPLY)
+                except Exception:
+                    logger.warning("Could not answer a refused DM")
+                return
+
             scope = Scope(
                 conversation_id=f"dm:{message.author.id}",
                 is_dm=True,
-                linked_conversation_id=(
-                    linked.conversation_id if linked is not None else None
-                ),
+                linked_conversation_id=linked.conversation_id,
             )
         else:
             link = self.link_for_channel(message.channel.id)

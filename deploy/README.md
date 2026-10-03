@@ -100,7 +100,7 @@ All bots run inside the one `mulca` service. `/mulca bot list` shows them, and
 ## Things to know
 
 - **Commands in Discord.** `/restart` in a MULCA channel restarts it, keeping its memory, and
-  anyone can use it. `/mulca status`, `restart`, `stop`, `start`, `link` and `unlink` need the
+  anyone can use it. `/mulca status`, `restart`, `stop`, `start`, `link`, `unlink`, `dms` and `bot` need the
   Manage Server permission. See `prototype/README.md` for the details.
 - **The 60-minute OpenAI limit is handled.** OpenAI ends each Realtime connection after an
   hour. MUCA-Server then saves the memory and ends that session, and the bot opens a new one
@@ -122,6 +122,8 @@ All bots run inside the one `mulca` service. `/mulca bot list` shows them, and
 - **MUCA-Server isn't exposed outside the swarm.** MULCA reaches it as
   `ws://muca-server:8000/` on the stack's own network. Uncomment `ports` in `stack.yml` only
   if a client outside the swarm (e.g. the Unity app) needs to connect directly.
+- **DMs to MULCA are off by default.** `/mulca dms enabled:True` in a linked channel lets the
+  people who can see that channel DM its bot; nobody else can.
 - **Channels are linked from Discord**, with `/mulca link` and `/mulca unlink`. No code,
   config file or redeploy is involved. The links live in the `mulca-data` volume, and the
   `muca_mulca` logs list them at startup (`Serving channel:<id> …`). Discord allows a bot in

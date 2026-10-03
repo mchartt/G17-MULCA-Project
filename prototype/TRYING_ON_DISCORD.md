@@ -62,9 +62,10 @@ Watch the MUCA-Server terminal. For every turn it logs who spoke (the trigger va
 | 5 | Say "MULCA, tell me a long story", then talk over it | MULCA stops within about 0.5 s. |
 | 6 | Say a fact out loud, then type `@mainllm` and ask about it | The text reply knows the fact, because text and voice share one memory. |
 | 7 | With a second person, take turns, then let one person dominate | Each turn is logged under the right name. Eventually `participation_equality` fires. |
-| 8 | DM the bot: "what did we talk about in voice?" | A private reply that knows the group's recent talk. |
-| 9 | Stop MUCA-Server with Ctrl+C, restart it, and keep talking | The bot reconnects and still remembers the fact from step 6. |
-| 10 | Everyone leaves the voice channel | The bot leaves too. |
+| 8 | DM the bot: "what did we talk about in voice?" | "I don't take direct messages here": DMs are off by default. |
+| 9 | In `#mulca-test`, run `/mulca dms enabled:True`, then DM the same question | A private reply that knows the group's recent talk. |
+| 10 | Stop MUCA-Server with Ctrl+C, restart it, and keep talking | The bot reconnects and still remembers the fact from step 6. |
+| 11 | Everyone leaves the voice channel | The bot leaves too. |
 
 ## 5. Troubleshooting
 

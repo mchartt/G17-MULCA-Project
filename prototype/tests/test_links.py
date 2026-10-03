@@ -131,3 +131,37 @@ def test_where_each_user_last_spoke_is_remembered(tmp_path):
     # An unlinked channel is no longer anyone's group memory.
     reopened.remove(333)
     assert reopened.last_link_for(5) is None
+
+
+def test_a_store_from_before_per_link_dms_is_upgraded_with_dms_off(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "mulca.db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta VALUES ('schema_version', '1');
+        CREATE TABLE links (
+            text_channel_id INTEGER PRIMARY KEY,
+            guild_id INTEGER NOT NULL,
+            bot_id INTEGER NOT NULL,
+            voice_channel_id INTEGER UNIQUE,
+            post_voice_transcripts INTEGER NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            created_at REAL
+        );
+        INSERT INTO links (text_channel_id, guild_id, bot_id, voice_channel_id)
+            VALUES (111, 900, 1, 222);
+        """
+    )
+    old.commit()
+    old.close()
+
+    store = LinkStore(path)
+
+    assert store.all_links() == [link(111, 222)]
+    assert not store.all_links()[0].allow_dms
+    store.save(Link(111, 900, 1, 222, allow_dms=True))
+    store.close()
+    assert LinkStore(path).all_links()[0].allow_dms

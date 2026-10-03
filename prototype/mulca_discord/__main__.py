@@ -28,6 +28,9 @@ from .singleton import AlreadyRunning, acquire_singleton_lock
 def main() -> None:
     load_dotenv()
     logging.basicConfig(level=logging.INFO)
+    # Logs every RTCP sender report Discord sends (several a second in voice)
+    # at INFO as "unexpected"; they're routine and bury the useful lines.
+    logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.WARNING)
 
     try:
         # Held for the rest of the process's life -- see singleton.py for

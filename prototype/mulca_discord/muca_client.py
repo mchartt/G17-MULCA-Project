@@ -45,6 +45,11 @@ StateUpdateHandler = Callable[[dict], Awaitable[None]]
 ClosedHandler = Callable[[], Awaitable[None]]
 
 
+# MUCA-Server closes a session with this ("service restart") when its
+# provider connection ended, e.g. OpenAI's 60-minute Realtime limit.
+SERVER_RESTART_CLOSE_CODE = 1012
+
+
 class MucaConnectionLost(ConnectionError):
     """The session's socket is gone; a new session has to be opened."""
 
@@ -61,14 +66,18 @@ class MucaWsClient:
         self._url = url
         self._conversation_id = conversation_id
         self._is_dm = is_dm
-        # For a DM only: the group conversation_id its sender is a
-        # recognized participant of (instances.py), so MUCA-Server can give
-        # this DM one-way read access to that group's memory. None if the
-        # sender isn't recognized as belonging to any instance.
+        # For a DM only: the group conversation_id of the linked channel
+        # its sender last spoke in (and can still see), so MUCA-Server can
+        # give this DM one-way read access to that group's memory. None if
+        # there's none.
         self._linked_conversation_id = linked_conversation_id
         self._connection: ClientConnection | None = None
         self._receive_task: asyncio.Task[None] | None = None
         self._open = False
+
+        # How the server ended the session, once it has: 1012 means it
+        # restarted it on purpose (its provider connection ended).
+        self.close_code: int | None = None
 
         # Guids of the observers the server created for this session.
         self.agent_guids: list[str] = []
@@ -176,15 +185,35 @@ class MucaWsClient:
             PlaybackFrameMessage(event="playback_frame", audio=audio),
         )
 
-    async def close(self) -> None:
+    async def close(self, *, wait_for_server: float | None = None) -> bool:
+        """
+        End the session. With `wait_for_server`, first wait up to that many
+        seconds for the server to close the socket itself, and say whether
+        it did: the server closes it only after it has closed the
+        conversation, saving its memory -- so a session reopened after a
+        True can't load memory older than this one's.
+        """
+
         if self._connection is None:
-            return
+            return False
 
         if self._open:
             with suppress(Exception):
                 await self._send(DisconnectMessage(event="disconnect"))
 
+        # From here on the socket's end is expected, not "lost".
         self._open = False
+
+        server_closed = False
+        if wait_for_server is not None and self._receive_task is not None:
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(self._receive_task),
+                    timeout=wait_for_server,
+                )
+                server_closed = True
+            except (asyncio.TimeoutError, Exception):
+                pass
 
         with suppress(Exception):
             await self._connection.close()
@@ -194,6 +223,8 @@ class MucaWsClient:
             with suppress(asyncio.CancelledError, Exception):
                 await self._receive_task
             self._receive_task = None
+
+        return server_closed
 
     async def _send(self, message: IncomingMessage) -> None:
         if self._connection is None or not self._open:
@@ -216,11 +247,19 @@ class MucaWsClient:
         except ConnectionClosed:
             pass
         finally:
+            self.close_code = getattr(self._connection, "close_code", None)
             was_open, self._open = self._open, False
-            if was_open:
-                logger.warning(
-                    "Lost MUCA-Server session for %s",
+            if was_open and self.close_code == SERVER_RESTART_CLOSE_CODE:
+                logger.info(
+                    "MUCA-Server restarted the session for %s; it reopens "
+                    "on next use",
                     self._conversation_id,
+                )
+            elif was_open:
+                logger.warning(
+                    "Lost MUCA-Server session for %s (close code %s)",
+                    self._conversation_id,
+                    self.close_code,
                 )
             if self.on_closed is not None:
                 with suppress(Exception):

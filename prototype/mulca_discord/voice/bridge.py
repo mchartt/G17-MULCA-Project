@@ -83,6 +83,7 @@ class VoiceBridge:
 
         self._task: asyncio.Task[None] | None = None
         self._last_speaker: int | None = None
+        self._last_client: MucaWsClient | None = None
         self._last_stats = time.monotonic()
         self._recorder: UpstreamRecorder | None = None
 
@@ -209,6 +210,17 @@ class VoiceBridge:
             post_voice_transcripts=self._post_voice_transcripts,
         )
         session.on_state_update = self._on_state_update
+
+        client = getattr(session, "client", None)
+        if client is not self._last_client:
+            new_session = self._last_client is not None
+            self._last_client = client
+            if new_session:
+                # The session was reopened (a /restart, the server ending
+                # it, a server restart): the new one knows nobody yet, and
+                # whatever the old one still had queued to say is stale.
+                self.player.clear()
+                await client.send_participants(self._roster())
 
     async def _on_state_update(self, data: dict) -> None:
         if data.get("clearAudioQueue"):

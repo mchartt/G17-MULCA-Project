@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from websockets.exceptions import WebSocketException
 
@@ -27,6 +28,17 @@ StateUpdateHandler = Callable[[dict], Awaitable[None]]
 
 # Waits between attempts to (re)open a session.
 RECONNECT_DELAYS_SECONDS = (0.0, 0.5, 1.0, 2.0)
+
+# A session that ends sooner than this after opening (e.g. the server can't
+# connect to its provider, so every new session dies at once) is reopened
+# only after a wait, doubling each time up to the maximum -- voice ticks
+# every 100 ms and would otherwise reopen it ten times a second.
+SHORT_LIVED_SECONDS = 10.0
+SHORT_LIVED_BACKOFF_SECONDS = (1.0, 30.0)
+
+# How long a restart waits for the server to confirm the old session saved
+# its memory before the new one is opened.
+RESTART_WAIT_SECONDS = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +57,8 @@ class ScopeSession:
     # Set by the voice bridge while the bot is in this scope's voice
     # channel: spoken replies go there.
     on_state_update: StateUpdateHandler | None = None
+
+    opened_at: float = field(default_factory=time.monotonic)
 
     async def handle_state_update(self, data: dict) -> None:
         if self.on_state_update is not None:
@@ -67,8 +81,11 @@ class SessionRegistry:
         # discord.py runs event handlers concurrently, so two messages for
         # the same scope arriving before the first connect() resolves would
         # otherwise both see "no session" and each open a duplicate -- this
-        # makes check-then-create-then-store atomic across those calls.
-        self._lock = asyncio.Lock()
+        # makes check-then-create-then-store atomic across those calls. One
+        # lock per scope: a restart holding it (waiting for the server to
+        # save) must not hold up every other scope.
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._backoff: dict[str, float] = {}
 
     @property
     def sessions(self) -> dict[str, ScopeSession]:
@@ -83,10 +100,13 @@ class SessionRegistry:
     ) -> ScopeSession:
         """The open session for this scope, opening (or reopening) it."""
 
-        async with self._lock:
+        async with self._lock_for(scope.conversation_id):
             existing = self._sessions.get(scope.conversation_id)
             if existing is not None and existing.client.is_open:
                 return existing
+
+            if existing is not None:
+                await self._wait_if_short_lived(existing)
 
             replies = (
                 existing.replies
@@ -158,14 +178,67 @@ class SessionRegistry:
     def find(self, conversation_id: str) -> ScopeSession | None:
         return self._sessions.get(conversation_id)
 
-    async def close(self, conversation_id: str) -> None:
-        session = self._sessions.pop(conversation_id, None)
-        if session is not None:
-            await session.client.close()
+    async def close(
+        self,
+        conversation_id: str,
+        *,
+        wait: float | None = None,
+    ) -> bool:
+        """
+        Close the scope's session. With `wait`, wait up to that long for
+        the server to confirm it saved the conversation, and say whether it
+        did (True also when there was no open session, so nothing to save).
+        The scope stays locked meanwhile, so nothing reopens it early.
+        """
+
+        async with self._lock_for(conversation_id):
+            session = self._sessions.pop(conversation_id, None)
+            self._backoff.pop(conversation_id, None)
+            if session is None or not session.client.is_open:
+                return True
+
+            return await session.client.close(wait_for_server=wait)
+
+    async def restart(
+        self,
+        conversation_id: str,
+        *,
+        wait: float = RESTART_WAIT_SECONDS,
+    ) -> bool:
+        """
+        End the scope's session so that its next use opens a fresh one: new
+        provider connections on the server, the same memory. Says whether
+        the server confirmed it saved that memory first.
+        """
+
+        logger.info("Restarting the session for %s", conversation_id)
+        return await self.close(conversation_id, wait=wait)
 
     async def close_all(self) -> None:
         for conversation_id in list(self._sessions):
             await self.close(conversation_id)
+
+    def _lock_for(self, conversation_id: str) -> asyncio.Lock:
+        return self._locks.setdefault(conversation_id, asyncio.Lock())
+
+    async def _wait_if_short_lived(self, ended: ScopeSession) -> None:
+        conversation_id = ended.scope.conversation_id
+        if time.monotonic() - ended.opened_at >= SHORT_LIVED_SECONDS:
+            self._backoff.pop(conversation_id, None)
+            return
+
+        first, maximum = SHORT_LIVED_BACKOFF_SECONDS
+        previous = self._backoff.get(conversation_id)
+        delay = first if previous is None else min(previous * 2, maximum)
+        self._backoff[conversation_id] = delay
+
+        logger.warning(
+            "The session for %s ended %.1f s after opening; reopening in %.0f s",
+            conversation_id,
+            time.monotonic() - ended.opened_at,
+            delay,
+        )
+        await asyncio.sleep(delay)
 
     async def _open(self, scope: Scope) -> MucaWsClient:
         last_error: Exception | None = None

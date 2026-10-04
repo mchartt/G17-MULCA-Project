@@ -1,0 +1,757 @@
+"""
+MULCA's slash commands, registered by the primary bot only (several bots
+registering the same commands would show each one several times in
+Discord's "/" menu).
+
+- /restart: anyone, in a channel MULCA serves -- restarts that channel's
+  MULCA (fresh OpenAI connections, same memory).
+- /mulca status|restart|stop|start: members with Manage Server, acting only
+  on the bots in the server it's used in.
+- /mulca link|unlink|dms: members with Manage Server -- which channels a
+  bot serves (links.py), with no code or config file involved, and whether
+  the people of a channel may DM it (off by default).
+- /mulca bot add|remove|list: members with Manage Server -- more bot
+  accounts, run by this same process. These act on the whole deployment,
+  not just the server they're used in (see deploy/README.md, Security).
+
+The decisions are plain functions over BotManager (control, format_status,
+restart_message), so they're testable without Discord; the command
+callbacks only translate interactions to and from them.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
+
+import discord
+from discord import app_commands
+
+from .links import BotRecord, Link
+from .permissions import missing_permissions
+from .runtime import BotManager, BotRuntime, BotStatus, RestartOutcome
+
+logger = logging.getLogger(__name__)
+
+# One /restart per channel per this many seconds: a restart takes a few
+# seconds itself, and several people pressing it at once gain nothing.
+RESTART_COOLDOWN_SECONDS = 30.0
+
+ALL = "all"
+
+
+# ----------------------------------------------------------------------
+# What the commands do and say -- no Discord objects needed
+# ----------------------------------------------------------------------
+
+
+def _duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "-"
+
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    return f"{seconds // 3600}h {seconds % 3600 // 60}m"
+
+
+def restart_message(user_mention: str, outcome: RestartOutcome) -> str:
+    if outcome.confirmed:
+        return f"{user_mention} restarted MULCA here. It still remembers the conversation."
+
+    return (
+        f"{user_mention} restarted MULCA here. MUCA-Server didn't confirm "
+        "it saved the conversation in time, so the last few messages may be "
+        "missing from its memory."
+    )
+
+
+def format_status(statuses: list[BotStatus]) -> str:
+    if not statuses:
+        return "No MULCA bot is in this server."
+
+    lines: list[str] = []
+    for status in statuses:
+        state = "paused" if status.paused else ("online" if status.online else "offline")
+        latency = f", {status.latency_ms:.0f} ms" if status.latency_ms is not None else ""
+        lines.append(
+            f"**{status.name}**: {state}{latency}, up {_duration(status.uptime_seconds)}"
+            + (f", {status.dm_sessions} open DM session(s)" if status.dm_sessions else "")
+        )
+
+        if not status.links:
+            lines.append("  no channel linked in this server (`/mulca link`)")
+
+        for link in status.links:
+            voice = (
+                f" + <#{link.voice_channel_id}>"
+                + (" (in voice)" if link.in_voice else "")
+                if link.voice_channel_id is not None
+                else ""
+            )
+            session = (
+                f"session open for {_duration(link.session_age_seconds)}"
+                if link.session_open
+                else "no open session (opens on the next message)"
+            )
+            closed = (
+                f", last ended with code {link.last_close_code}"
+                if link.last_close_code is not None
+                else ""
+            )
+            dms = ", DMs on" if link.allow_dms else ""
+            lines.append(f"  <#{link.text_channel_id}>{voice}: {session}{closed}{dms}")
+            lines.extend(f"  - {problem}" for problem in link.problems)
+
+    return "\n".join(lines)
+
+
+async def control(
+    manager: BotManager,
+    action: str,
+    target: str | None,
+    guild_id: int,
+) -> str:
+    """/mulca restart|stop|start, for `target` ("all" or a bot) in this server."""
+
+    bots = manager.resolve(target, guild_id)
+    if not bots:
+        return f"No MULCA bot called {target!r} in this server."
+
+    lines: list[str] = []
+    for bot in bots:
+        if action == "restart":
+            outcomes = await bot.restart_all()
+            unconfirmed = [
+                f"<#{o.link.text_channel_id}>" for o in outcomes if not o.confirmed
+            ]
+            lines.append(
+                f"**{bot.name}** restarted"
+                + (
+                    f" (save not confirmed for {', '.join(unconfirmed)})"
+                    if unconfirmed
+                    else ""
+                )
+                + "."
+            )
+        elif action == "stop":
+            await bot.pause()
+            lines.append(
+                f"**{bot.name}** stopped: out of voice, not answering. "
+                "`/mulca start` brings it back."
+            )
+        elif action == "start":
+            await bot.resume()
+            lines.append(f"**{bot.name}** started.")
+        else:  # pragma: no cover - the command choices prevent it
+            raise ValueError(action)
+
+    return "\n".join(lines)
+
+
+async def link_channels(
+    *,
+    bot: BotRuntime,
+    guild_id: int,
+    text_channel,
+    voice_channel=None,
+    post_voice_transcripts: bool = False,
+    allow_dms: bool | None = None,
+    created_by: int | None = None,
+) -> str:
+    """
+    /mulca link: check, save, put into effect, and say what happened.
+    `allow_dms` None keeps what the channel had (off for a new link).
+    """
+
+    guild = bot.client.get_guild(guild_id)
+    bot_member = guild.get_member(bot.user_id) if guild is not None else None
+    if bot_member is None:
+        return f"**{bot.name}** isn't in this server."
+
+    # The bot itself must be able to see the channels it's asked to serve.
+    for channel in (text_channel, voice_channel):
+        if channel is not None and not channel.permissions_for(bot_member).view_channel:
+            return f"**{bot.name}** can't see <#{channel.id}>. Give it access first."
+
+    existing = bot.store.link_for_channel(text_channel.id)
+    if allow_dms is None:
+        allow_dms = existing.allow_dms if existing is not None else False
+
+    link = Link(
+        text_channel_id=text_channel.id,
+        guild_id=guild_id,
+        bot_id=bot.user_id,
+        voice_channel_id=voice_channel.id if voice_channel is not None else None,
+        post_voice_transcripts=post_voice_transcripts,
+        allow_dms=allow_dms,
+    )
+
+    problems = bot.store.conflicts(link)
+    if problems:
+        return "Not linked: " + " ".join(problems)
+
+    previous = bot.store.save(link, created_by=created_by)
+    await bot.apply_link(link, previous)
+
+    where = f"<#{text_channel.id}>" + (
+        f" and <#{voice_channel.id}>" if voice_channel is not None else ""
+    )
+    lines = [
+        (
+            f"Updated: **{bot.name}** serves {where}."
+            if previous is not None
+            else f"Linked: **{bot.name}** now serves {where}."
+        )
+        + (" Spoken replies are also posted as text." if post_voice_transcripts else "")
+        + (
+            " People who can see this channel may DM it."
+            if allow_dms
+            else " DMs are off (`/mulca dms` turns them on)."
+        ),
+        "If MULCA was linked to this channel before, it still remembers that conversation.",
+    ]
+
+    warnings = [
+        f"missing **{name}** in <#{channel.id}>"
+        for channel, voice in ((text_channel, False), (voice_channel, True))
+        if channel is not None
+        for name in missing_permissions(channel, bot_member, voice=voice)
+    ]
+    if warnings:
+        lines.append("It can't work fully yet: " + "; ".join(warnings) + ".")
+
+    return "\n".join(lines)
+
+
+async def set_dms(manager: BotManager, channel_id: int, enabled: bool) -> str:
+    """/mulca dms: let the people of one linked channel DM its bot, or not."""
+
+    found = manager.link_for_channel(channel_id)
+    if found is None:
+        return f"<#{channel_id}> isn't linked to any MULCA bot; `/mulca link` it first."
+
+    bot, link = found
+    bot.store.save(replace(link, allow_dms=enabled))
+
+    if enabled:
+        return (
+            f"DMs on: people who can see <#{link.text_channel_id}> may now DM "
+            f"**{bot.name}**, and it remembers this channel's conversation there."
+        )
+    return (
+        f"DMs off for <#{link.text_channel_id}>: its people can no longer DM "
+        f"**{bot.name}**, unless another DM-enabled channel of it lets them."
+    )
+
+
+async def unlink_channel(manager: BotManager, channel_id: int) -> str:
+    """/mulca unlink: stop serving the link that owns this channel."""
+
+    found = manager.link_for_channel(channel_id)
+    if found is None:
+        return f"<#{channel_id}> isn't linked to any MULCA bot."
+
+    bot, link = found
+    await bot.unlink(link)
+    bot.store.remove(link.text_channel_id)
+
+    return (
+        f"Unlinked: **{bot.name}** no longer serves <#{link.text_channel_id}>"
+        + (f" and <#{link.voice_channel_id}>" if link.voice_channel_id else "")
+        + ". Its memory is kept: linking the channel again brings it back."
+    )
+
+
+# -- bots -------------------------------------------------------------------
+
+# What a MULCA bot needs in a channel: View Channel, Send Messages, Read
+# Message History, Connect, Speak, Use Voice Activity.
+BOT_PERMISSIONS = discord.Permissions(
+    view_channel=True,
+    send_messages=True,
+    read_message_history=True,
+    connect=True,
+    speak=True,
+    use_voice_activation=True,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TokenProbe:
+    """What a bot token belongs to, checked with Discord before saving it."""
+
+    bot_id: int
+    name: str
+    application_id: int
+    missing_intents: tuple[str, ...]
+    public: bool
+
+
+async def probe_token(token: str) -> TokenProbe:
+    """Log in with `token` (no gateway connection) and read its app's setup."""
+
+    client = discord.Client(intents=discord.Intents.none())
+    try:
+        await client.login(token)
+        app = await client.application_info()
+        flags = app.flags
+        missing = []
+        if not (flags.gateway_message_content or flags.gateway_message_content_limited):
+            missing.append("Message Content Intent")
+        if not (flags.gateway_guild_members or flags.gateway_guild_members_limited):
+            missing.append("Server Members Intent")
+        return TokenProbe(
+            bot_id=client.user.id,
+            name=client.user.name,
+            application_id=app.id,
+            missing_intents=tuple(missing),
+            public=app.bot_public,
+        )
+    finally:
+        await client.close()
+
+
+def invite_url(application_id: int) -> str:
+    return discord.utils.oauth_url(
+        application_id,
+        permissions=BOT_PERMISSIONS,
+        scopes=("bot",),
+    )
+
+
+async def add_bot(
+    manager: BotManager,
+    token: str,
+    *,
+    added_by: int | None = None,
+    probe: Callable[[str], Awaitable[TokenProbe]] = probe_token,
+) -> str:
+    """/mulca bot add: check the token, save it, start the bot."""
+
+    token = token.strip()
+    if token == manager.primary_token:
+        return "That's the main MULCA bot's token: it's already running."
+
+    try:
+        info = await probe(token)
+    except discord.LoginFailure:
+        return (
+            "Discord rejected that token. Copy it again: Developer Portal → "
+            "your application → Bot → Reset Token."
+        )
+    except Exception as exc:
+        logger.warning("Could not check a bot token: %s", type(exc).__name__)
+        return "Couldn't check that token with Discord right now. Try again in a minute."
+
+    running = manager.bot_by_id(info.bot_id)
+    if running is not None:
+        return f"**{info.name}** is already part of MULCA, and running."
+
+    if info.missing_intents:
+        return (
+            f"**{info.name}** needs these turned on first, in the Developer "
+            f"Portal (your application → Bot): {', '.join(info.missing_intents)}. "
+            "Then run /mulca bot add again."
+        )
+
+    manager.store.add_bot(
+        BotRecord(bot_id=info.bot_id, name=info.name, token=token),
+        added_by=added_by,
+    )
+    state = await manager.start_bot(
+        BotRecord(bot_id=info.bot_id, name=info.name, token=token),
+    )
+
+    lines = [
+        f"Added **{info.name}** ({state}).",
+        f"Invite it to a server: {invite_url(info.application_id)}",
+        f"Then link channels to it: `/mulca link bot:{info.name}`.",
+    ]
+    if not info.public:
+        lines.append(
+            "Its application isn't public, so only its owner can use that invite "
+            "link (or turn on Public Bot in the Developer Portal)."
+        )
+    return "\n".join(lines)
+
+
+async def remove_bot(manager: BotManager, target: str, *, force: bool = False) -> str:
+    """/mulca bot remove: stop an added bot and forget its token."""
+
+    wanted = target.strip().lower()
+    records = [
+        record
+        for record in manager.store.added_bots()
+        if record.name.lower() == wanted or str(record.bot_id) == wanted
+    ]
+    if not records:
+        if manager.primary.name.lower() == wanted or str(manager.primary.user_id) == wanted:
+            return "The main MULCA bot can't be removed; its token is the stack's secret."
+        return f"No added bot called {target!r}. `/mulca bot list` shows them."
+
+    record = records[0]
+    links = manager.store.links_for(record.bot_id)
+    if links and not force:
+        channels = ", ".join(f"<#{link.text_channel_id}>" for link in links)
+        return (
+            f"**{record.name}** still serves {channels}. Unlink them first, "
+            "or run this again with `force: True` to unlink them for you."
+        )
+
+    runtime = manager.bot_by_id(record.bot_id)
+    for link in links:
+        if runtime is not None:
+            await runtime.unlink(link)
+        manager.store.remove(link.text_channel_id)
+
+    await manager.stop_bot(record.bot_id)
+    manager.store.remove_bot(record.bot_id)
+
+    return (
+        f"Removed **{record.name}**: stopped, and its token deleted. "
+        "To also remove it from your Discord server, kick it there."
+    )
+
+
+def list_bots(manager: BotManager) -> str:
+    """/mulca bot list: every bot of this deployment. Never their tokens."""
+
+    primary = manager.primary
+    lines = [
+        f"**{primary.name}** (main, id {primary.user_id}): "
+        + ("stopped" if primary.paused else "online")
+        + f", {len(manager.store.links_for(primary.user_id))} link(s)"
+    ]
+    for record in manager.store.added_bots():
+        runtime = manager.bot_by_id(record.bot_id)
+        state = manager.states.get(record.bot_id, "not running")
+        if runtime is not None and runtime.paused:
+            state = "stopped"
+        lines.append(
+            f"**{record.name}** (id {record.bot_id}): {state}, "
+            f"{len(manager.store.links_for(record.bot_id))} link(s)"
+        )
+
+    return "\n".join(lines)
+
+
+# ----------------------------------------------------------------------
+# Discord glue
+# ----------------------------------------------------------------------
+
+
+class AddBotModal(discord.ui.Modal, title="Add a MULCA bot"):
+    """The token goes in a form, never in a message anyone else could see."""
+
+    token = discord.ui.TextInput(
+        label="Bot token",
+        placeholder="Developer Portal → your application → Bot → Reset Token",
+        style=discord.TextStyle.short,
+        min_length=50,
+        max_length=100,
+    )
+
+    def __init__(self, manager: BotManager) -> None:
+        super().__init__()
+        self._manager = manager
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await add_bot(
+            self._manager,
+            self.token.value,
+            added_by=interaction.user.id,
+        )
+        await interaction.followup.send(reply, ephemeral=True)
+
+
+class MulcaGroup(app_commands.Group):
+    """/mulca: hidden from members without Manage Server, and checked too."""
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        permissions = getattr(interaction.user, "guild_permissions", None)
+        if permissions is None or not permissions.manage_guild:
+            raise app_commands.MissingPermissions(["manage_guild"])
+        return True
+
+
+def install_commands(manager: BotManager) -> app_commands.CommandTree:
+    primary = manager.primary
+    tree = app_commands.CommandTree(primary.client)
+
+    async def bot_choices(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        names = [ALL] + [
+            bot.name for bot in manager.in_guild(interaction.guild_id or 0)
+        ]
+        return [
+            app_commands.Choice(name=name, value=name)
+            for name in names
+            if current.lower() in name.lower()
+        ][:25]
+
+    # -- /restart -------------------------------------------------------
+
+    @tree.command(
+        name="restart",
+        description="Restart MULCA in this channel. It keeps its memory.",
+    )
+    @app_commands.guild_only()
+    @app_commands.checks.cooldown(
+        1,
+        RESTART_COOLDOWN_SECONDS,
+        key=lambda interaction: interaction.channel_id,
+    )
+    async def restart(interaction: discord.Interaction) -> None:
+        found = manager.link_for_channel(interaction.channel_id)
+        if found is None:
+            await interaction.response.send_message(
+                "MULCA doesn't run in this channel.",
+                ephemeral=True,
+            )
+            return
+
+        bot, link = found
+        await interaction.response.defer(thinking=True)
+        outcome = await bot.restart_link(link)
+        await interaction.followup.send(
+            restart_message(interaction.user.mention, outcome),
+        )
+
+    # -- /mulca ... -----------------------------------------------------
+
+    mulca = MulcaGroup(
+        name="mulca",
+        description="Control MULCA (needs Manage Server).",
+        guild_only=True,
+        default_permissions=discord.Permissions(manage_guild=True),
+    )
+
+    @mulca.command(name="status", description="Show every MULCA bot in this server.")
+    async def status(interaction: discord.Interaction) -> None:
+        statuses = [
+            bot.status(interaction.guild_id)
+            for bot in manager.in_guild(interaction.guild_id)
+        ]
+        await interaction.response.send_message(format_status(statuses), ephemeral=True)
+
+    @mulca.command(
+        name="link",
+        description="Make MULCA serve a text channel, and optionally a voice channel.",
+    )
+    @app_commands.describe(
+        text="The text channel (default: this one). MULCA's memory belongs to it.",
+        voice="A voice channel MULCA joins whenever someone is in it.",
+        bot="Which MULCA bot (default: the main one).",
+        transcripts="Also post what MULCA says out loud in the text channel.",
+        dms="Let people who can see the text channel DM MULCA (default: unchanged, off for a new link).",
+    )
+    @app_commands.autocomplete(bot=bot_choices)
+    async def link(
+        interaction: discord.Interaction,
+        text: discord.TextChannel | None = None,
+        voice: discord.VoiceChannel | None = None,
+        bot: str | None = None,
+        transcripts: bool = False,
+        dms: bool | None = None,
+    ) -> None:
+        text = text or interaction.channel
+        if not isinstance(text, discord.TextChannel):
+            await interaction.response.send_message(
+                "Pick a text channel, or run this in one.",
+                ephemeral=True,
+            )
+            return
+
+        chosen = (
+            [manager.primary]
+            if bot is None or bot.strip().lower() == ALL
+            else manager.resolve(bot, interaction.guild_id)
+        )
+        if not chosen:
+            await interaction.response.send_message(
+                f"No MULCA bot called {bot!r} in this server.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await link_channels(
+            bot=chosen[0],
+            guild_id=interaction.guild_id,
+            text_channel=text,
+            voice_channel=voice,
+            post_voice_transcripts=transcripts,
+            allow_dms=dms,
+            created_by=interaction.user.id,
+        )
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="dms",
+        description="Let the people of a linked channel DM MULCA, or stop them (off by default).",
+    )
+    @app_commands.describe(
+        enabled="True: people who can see the channel may DM MULCA. False: they can't.",
+        channel="The linked text or voice channel (default: this one).",
+    )
+    async def dms(
+        interaction: discord.Interaction,
+        enabled: bool,
+        channel: discord.TextChannel | discord.VoiceChannel | None = None,
+    ) -> None:
+        channel_id = channel.id if channel is not None else interaction.channel_id
+        reply = await set_dms(manager, channel_id, enabled)
+        await interaction.response.send_message(reply, ephemeral=True)
+
+    @mulca.command(
+        name="unlink",
+        description="Stop MULCA serving a channel. Its memory is kept.",
+    )
+    @app_commands.describe(
+        channel="The linked text or voice channel (default: this one).",
+    )
+    async def unlink(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | discord.VoiceChannel | None = None,
+    ) -> None:
+        channel_id = channel.id if channel is not None else interaction.channel_id
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await unlink_channel(manager, channel_id)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    async def run_control(
+        interaction: discord.Interaction,
+        action: str,
+        bot: str | None,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await control(manager, action, bot, interaction.guild_id)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="restart",
+        description="Restart MULCA's connections. It keeps its memory.",
+    )
+    @app_commands.describe(bot="One bot, or all of them in this server (default).")
+    @app_commands.autocomplete(bot=bot_choices)
+    async def restart_bots(interaction: discord.Interaction, bot: str | None = None) -> None:
+        await run_control(interaction, "restart", bot)
+
+    @mulca.command(
+        name="stop",
+        description="Stop MULCA: it leaves voice and stops answering until started.",
+    )
+    @app_commands.describe(bot="One bot, or all of them in this server (default).")
+    @app_commands.autocomplete(bot=bot_choices)
+    async def stop(interaction: discord.Interaction, bot: str | None = None) -> None:
+        await run_control(interaction, "stop", bot)
+
+    @mulca.command(name="start", description="Start MULCA again after /mulca stop.")
+    @app_commands.describe(bot="One bot, or all of them in this server (default).")
+    @app_commands.autocomplete(bot=bot_choices)
+    async def start(interaction: discord.Interaction, bot: str | None = None) -> None:
+        await run_control(interaction, "start", bot)
+
+    # -- /mulca bot ... --------------------------------------------------
+
+    bots = app_commands.Group(
+        name="bot",
+        description="MULCA's bot accounts (for the whole deployment).",
+        parent=mulca,
+    )
+
+    async def added_bot_choices(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        return [
+            app_commands.Choice(name=record.name, value=str(record.bot_id))
+            for record in manager.store.added_bots()
+            if current.lower() in record.name.lower()
+        ][:25]
+
+    @bots.command(name="add", description="Add another bot account (its token goes in a private form).")
+    async def bot_add(interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(AddBotModal(manager))
+
+    @bots.command(name="remove", description="Stop an added bot and delete its token.")
+    @app_commands.describe(
+        bot="The added bot.",
+        force="Also unlink the channels it still serves.",
+    )
+    @app_commands.autocomplete(bot=added_bot_choices)
+    async def bot_remove(
+        interaction: discord.Interaction,
+        bot: str,
+        force: bool = False,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await remove_bot(manager, bot, force=force)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @bots.command(name="list", description="Every MULCA bot account, and what it's doing.")
+    async def bot_list(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(list_bots(manager), ephemeral=True)
+
+    tree.add_command(mulca)
+
+    # -- errors -----------------------------------------------------------
+
+    @tree.error
+    async def on_error(
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
+    ) -> None:
+        if isinstance(error, app_commands.CommandOnCooldown):
+            message = (
+                f"MULCA was just restarted here; try again in "
+                f"{error.retry_after:.0f} s."
+            )
+        elif isinstance(error, app_commands.MissingPermissions):
+            message = "Only members with the Manage Server permission can use /mulca."
+        else:
+            logger.error(
+                "Slash command %s failed",
+                interaction.command.qualified_name if interaction.command else "?",
+                exc_info=error,
+            )
+            message = "That didn't work; the error is in MULCA's logs."
+
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+
+    # -- registration -------------------------------------------------------
+
+    async def sync_guild(guild: discord.abc.Snowflake) -> None:
+        # Per server, not global: a global sync takes up to an hour to show
+        # up, a server's is immediate.
+        tree.copy_global_to(guild=guild)
+        await tree.sync(guild=guild)
+
+    async def sync_all(runtime: BotRuntime) -> None:
+        for guild in runtime.client.guilds:
+            try:
+                await sync_guild(guild)
+                logger.info("Slash commands registered in %s", guild)
+            except Exception:
+                logger.exception("Could not register slash commands in %s", guild)
+
+    primary.after_ready.append(sync_all)
+
+    @primary.client.event
+    async def on_guild_join(guild: discord.Guild) -> None:
+        try:
+            await sync_guild(guild)
+        except Exception:
+            logger.exception("Could not register slash commands in %s", guild)
+
+    return tree

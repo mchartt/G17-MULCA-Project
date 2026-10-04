@@ -1,0 +1,88 @@
+# MULCA + MUCA-Server as one Docker Swarm stack. Paste it into Swarmpit as-is.
+#
+# The images are built by each project's GitLab pipeline. Each service follows
+# its branch's newest build: Swarmpit's autoredeploy label makes it check the
+# registry and redeploy when that tag points at a new image. To pin or roll
+# back, replace the branch tag with a commit tag from the registry.
+version: "3.8"
+
+services:
+  muca-server:
+    image: registry.gitlab.com/i3lab/muca/muca-server:gitlab-deployment
+    environment:
+      MUCA_LOG_LEVEL: INFO
+    secrets:
+      - source: muca_openai_api_key
+        target: OPENAI_API_KEY
+    volumes:
+      - muca-data:/data
+    networks:
+      - muca
+    # Only needed if clients outside the swarm (e.g. the Unity app) connect
+    # to MUCA-Server directly. MULCA reaches it over the stack's network.
+    # ports:
+    #   - "8000:8000"
+    deploy:
+      labels:
+        swarmpit.service.deployment.autoredeploy: "true"
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      # muca-data is a volume on whichever node runs this service, so it
+      # stays pinned to one node: rescheduled onto another, it would start
+      # there with an empty database.
+      placement:
+        constraints:
+          - node.hostname == i3lab
+
+  mulca:
+    image: registry.gitlab.com/i3lab/muca/mulca:gitlab-deployment
+    environment:
+      MUCA_SERVER_URL: ws://muca-server:8000/
+    secrets:
+      - source: mulca_discord_bot_token
+        target: DISCORD_BOT_TOKEN
+    # Links (/mulca link) and stopped bots, kept across redeploys. On i3lab,
+    # like the service itself (see placement).
+    volumes:
+      - mulca-data:/data
+    networks:
+      - muca
+    # On a redeploy the bot logs out and closes its sessions (MUCA-Server
+    # saves each conversation) before the container is killed.
+    stop_grace_period: 30s
+    deploy:
+      labels:
+        swarmpit.service.deployment.autoredeploy: "true"
+      # Exactly one, and stop the old container before starting its
+      # replacement: two processes on one bot token both answer every
+      # message. The in-process singleton lock can't see across containers.
+      replicas: 1
+      update_config:
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      # Not i3lab-vm-1, which also hosts the GitLab runner: the bot exited
+      # there at startup without logging anything.
+      placement:
+        constraints:
+          - node.hostname == i3lab
+
+networks:
+  muca:
+    driver: overlay
+
+volumes:
+  muca-data:
+  mulca-data:
+
+# Create these once in Swarmpit (Secrets > New secret) before deploying.
+secrets:
+  muca_openai_api_key:
+    external: true
+  mulca_discord_bot_token:
+    external: true

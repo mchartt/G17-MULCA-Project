@@ -1,6 +1,6 @@
 # Trying MULCA on Discord
 
-This guide takes you from nothing to MULCA talking in a Discord voice channel. It uses a private test server, so the shared `instances.yaml` stays untouched.
+This guide takes you from nothing to MULCA talking in a Discord voice channel. It uses a private test server, linked to your own bot from Discord, so nobody else's setup is touched.
 
 ## 1. One-time setup (about 15 min)
 
@@ -9,32 +9,21 @@ This guide takes you from nothing to MULCA talking in a Discord voice channel. I
    - On the **Bot** page, choose *Reset Token* and copy the token.
    - On the same page, turn on **Message Content Intent** and **Server Members Intent**.
 3. **Invite the bot.** Go to **OAuth2 → URL Generator**.
-   - Scope: `bot`.
+   - Scopes: `bot` and `applications.commands` (for `/restart` and `/mulca`).
    - Permissions: View Channels, Send Messages, Read Message History, Connect, Speak, Use Voice Activity.
    - Open the generated URL and add the bot to the test server.
-4. **Copy the IDs.** Turn on *User Settings → Advanced → Developer Mode*. Then right-click each of these and choose *Copy ID*: the text channel, the voice channel, and yourself.
-5. **Optional:** a second person, or a second account in a browser, for the multi-person steps.
+4. **Optional:** a second person, or a second account in a browser, for the multi-person steps.
 
 ## 2. Configuration
-
-Create `mulca_discord/instances.local.yaml` (git-ignored):
-
-```yaml
-instances:
-  - name: mulca-test
-    text_channel_id: 111111111111111111   # #mulca-test
-    voice_channel_id: 222222222222222222  # MULCA voice
-    participant_ids: [333333333333333333] # you
-    post_voice_transcripts: true          # show what MULCA says out loud
-```
 
 Create `.env`:
 
 ```bash
 DISCORD_BOT_TOKEN=...
-MULCA_INSTANCES=mulca_discord/instances.local.yaml
 MULCA_VOICE_DEBUG_DIR=voice-debug
 ```
+
+Which channels MULCA serves is set from Discord once the bot runs (step 3), and kept in `data/mulca.db` (git-ignored).
 
 ## 3. Start
 
@@ -44,19 +33,21 @@ MULCA_VOICE_DEBUG_DIR=voice-debug
    cd ../../MUCA-Server && python -m muca_server.run_server
    ```
 
-2. **Run the preflight check,** while you sit in `MULCA voice`:
+2. **Start the bot:**
+
+   ```bash
+   python -m mulca_discord
+   ```
+
+3. **Link the channels.** In `#mulca-test`, type `/mulca link`, set `voice` to `MULCA voice` and `transcripts` to True (to see what MULCA says out loud), and send it. Only you see the reply.
+
+4. **Optional: run the preflight check.** Stop the bot (Ctrl+C) first, since both would use the same bot account. Then, while you sit in `MULCA voice`:
 
    ```bash
    python -m mulca_discord.preflight --voice-test 10
    ```
 
-   Every line should say PASS. Talk while it records, then listen to `voice-test/<your id>.wav`. **If it isn't clearly your voice, stop here** and see [Troubleshooting](#5-troubleshooting).
-
-3. **Start the bot:**
-
-   ```bash
-   python -m mulca_discord
-   ```
+   Every line should say PASS. Talk while it records, then listen to `voice-test/<your id>.wav`. **If it isn't clearly your voice, stop here** and see [Troubleshooting](#5-troubleshooting). Then start the bot again.
 
 ## 4. What to try
 
@@ -71,9 +62,10 @@ Watch the MUCA-Server terminal. For every turn it logs who spoke (the trigger va
 | 5 | Say "MULCA, tell me a long story", then talk over it | MULCA stops within about 0.5 s. |
 | 6 | Say a fact out loud, then type `@mainllm` and ask about it | The text reply knows the fact, because text and voice share one memory. |
 | 7 | With a second person, take turns, then let one person dominate | Each turn is logged under the right name. Eventually `participation_equality` fires. |
-| 8 | DM the bot: "what did we talk about in voice?" | A private reply that knows the group's recent talk. |
-| 9 | Stop MUCA-Server with Ctrl+C, restart it, and keep talking | The bot reconnects and still remembers the fact from step 6. |
-| 10 | Everyone leaves the voice channel | The bot leaves too. |
+| 8 | DM the bot: "what did we talk about in voice?" | "I don't take direct messages here": DMs are off by default. |
+| 9 | In `#mulca-test`, run `/mulca dms enabled:True`, then DM the same question | A private reply that knows the group's recent talk. |
+| 10 | Stop MUCA-Server with Ctrl+C, restart it, and keep talking | The bot reconnects and still remembers the fact from step 6. |
+| 11 | Everyone leaves the voice channel | The bot leaves too. |
 
 ## 5. Troubleshooting
 
@@ -84,4 +76,5 @@ Watch the MUCA-Server terminal. For every turn it logs who spoke (the trigger va
 | The voice-test WAV is silent and `packets=0` | Voice receive isn't working | Run with `logging.DEBUG`; check the `discord-ext-voice-recv` version |
 | MUCA-Server never logs a voice turn | The floor was never taken, or the provider's VAD never fired | Loudness of `voice-debug/*.wav` and its `.floor.txt`; `voice/synchronizer.py` threshold |
 | A turn is logged, but MULCA doesn't answer | The intervention agent decided to say nothing | The "intervention decision" line; address MULCA by name |
+| MULCA stopped answering, by text and voice | Its OpenAI connection ended and the session didn't recover | Type `/restart` in its channel; `/mulca status` shows the session; MUCA-Server's log |
 | MULCA answers but can't be heard | The bot lacks Speak permission, or playback didn't start | Preflight permissions; `voice/bridge.py` `_ensure_playing` |

@@ -167,7 +167,7 @@ trigger variables are plain deterministic code, never an LLM call
   context and strategy output are mutually exclusive by construction because
   step 4 short-circuits step 5, not because of a runtime check). Reordering
   steps can silently break an invariant that isn't re-verified anywhere.
-- **The `"instance:<name>"` vs `"dm:<user_id>"` scope split** (BLUEPRINT.md's
+- **The `"channel:<id>"` vs `"dm:<user_id>"` scope split** (BLUEPRINT.md's
   "Channel/instance scoping" section): DM content must never reach the
   persisted episodic log or the snapshot — this is a privacy requirement,
   not just a routing detail. If you touch persistence (MUCA-Server's

@@ -30,6 +30,11 @@ class EchoMainAgent(MainAgent):
             EchoMainAgent.heard.append(text)
 
     async def _trigger_response(self, **kwargs) -> None:
+        if EchoMainAgent.heard[-1].endswith("drop"):
+            # As OpenAI does after 60 minutes: the provider connection ends.
+            await self._connection_lost("the provider ended the session")
+            return
+
         await self._stream_text("echo: ")
         await self._stream_text(EchoMainAgent.heard[-1])
         await self._stream_text("", is_final=True)
@@ -47,6 +52,7 @@ class AnswerEverything:
     """Cognition that answers every utterance, and records the handshake."""
 
     seen: list[tuple[str, bool, str | None]] = []
+    closed: list[str] = []
 
     async def start(self, port) -> None:
         self._port = port
@@ -55,7 +61,7 @@ class AnswerEverything:
         )
 
     async def close(self) -> None:
-        pass
+        AnswerEverything.closed.append(self._port.conversation_id)
 
     async def on_utterance(self, utterance) -> bool:
         await self._port.instruct_main_agent("answer")
@@ -112,6 +118,7 @@ class Server:
 async def server():
     EchoMainAgent.heard = []
     AnswerEverything.seen = []
+    AnswerEverything.closed = []
     running = Server(free_port())
     await running.start()
     yield running
@@ -253,3 +260,96 @@ async def test_voice_frames_are_accepted_and_state_updates_come_back(server):
     speakers = [update["currentSpeaker"] for update in updates]
     assert 7 in speakers
     assert speakers[-1] == -1
+
+
+class Channel:
+    def __init__(self) -> None:
+        self.replies: list[str] = []
+
+    async def send(self, content):
+        self.replies.append(content)
+        replies = self.replies
+
+        class Message:
+            def __init__(self, text):
+                self.content = text
+
+            async def edit(self, content):
+                replies.append(content)
+                self.content = content
+
+        return Message(content)
+
+
+async def say(registry, scope, channel, text):
+    async def send(client):
+        await client.send_user_text(speaker=1, speaker_name="Ada", text=text)
+
+    return await registry.run(scope, send, reply_channel=channel, retry_once=False)
+
+
+async def test_a_server_that_ends_the_session_gets_it_reopened_on_next_use(server):
+    registry = SessionRegistry(server.url)
+    scope = Scope(conversation_id="instance:a")
+    channel = Channel()
+
+    first = (await say(registry, scope, channel, "drop")).client
+    for _ in range(100):
+        if not first.is_open:
+            break
+        await asyncio.sleep(0.05)
+
+    # 1012: MUCA-Server restarted the session on purpose, memory saved.
+    assert not first.is_open
+    assert first.close_code == 1012
+    assert AnswerEverything.closed == ["instance:a"]
+
+    # A text message sent after the close arrived is not dropped: the
+    # registry reopens before sending it.
+    second = (await say(registry, scope, channel, "still there?")).client
+    await asyncio.sleep(0.3)
+    await registry.close_all()
+
+    assert second is not first
+    assert any("still there?" in reply for reply in channel.replies)
+    assert [seen[0] for seen in AnswerEverything.seen] == ["instance:a", "instance:a"]
+
+
+async def test_a_waiting_close_returns_once_the_server_has_saved(server):
+    client = MucaWsClient(server.url, conversation_id="instance:w", is_dm=False)
+    await client.connect()
+    await asyncio.sleep(0.1)
+
+    confirmed = await client.close(wait_for_server=5)
+
+    assert confirmed
+    assert AnswerEverything.closed == ["instance:w"]
+
+
+async def test_a_restart_opens_a_fresh_session_for_that_scope_only(server):
+    registry = SessionRegistry(server.url)
+    restarted = Scope(conversation_id="instance:r")
+    untouched = Scope(conversation_id="instance:u")
+    channel = Channel()
+
+    old = (await say(registry, restarted, channel, "one")).client
+    other = (await say(registry, untouched, channel, "two")).client
+    await asyncio.sleep(0.2)
+
+    assert await registry.restart(restarted.conversation_id)
+    assert not old.is_open
+    assert AnswerEverything.closed == ["instance:r"]
+    assert other.is_open
+
+    new = (await say(registry, restarted, channel, "three")).client
+    await asyncio.sleep(0.2)
+    await registry.close_all()
+
+    assert new is not old
+    assert [seen[0] for seen in AnswerEverything.seen].count("instance:r") == 2
+
+
+async def test_restarting_a_scope_with_no_session_is_a_no_op(server):
+    registry = SessionRegistry(server.url)
+
+    assert await registry.restart("instance:none")

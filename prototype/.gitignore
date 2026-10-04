@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 db.sqlite3
 
-# Personal test config and trial output.
-instances.local.yaml
+# Links and bot state (MULCA_DB_PATH), and trial output.
+data/
 voice-test/
 voice-debug/

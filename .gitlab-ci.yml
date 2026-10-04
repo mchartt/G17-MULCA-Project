@@ -1,0 +1,58 @@
+# Builds the Discord bot's Docker image into this project's GitLab container
+# registry, on every push to GitLab (git push gitlab <branch>).
+#
+# The image bundles MUCA-Server's source, fetched from its GitLab project at
+# MUCA_SERVER_REF. For that clone to work, MUCA-Server must allow this
+# project's job token: in MUCA-Server, Settings > CI/CD > Job token
+# permissions, add this project.
+#
+# Each build is tagged with its commit (what a rollback should name) and with
+# its branch (always the branch's newest build, what the stack follows).
+variables:
+  MUCA_SERVER_PROJECT: i3lab/muca/muca-server
+  # The MUCA-Server branch this build pairs with. Override it when running a
+  # pipeline by hand (Build > Pipelines > Run pipeline).
+  MUCA_SERVER_REF: gitlab-deployment
+
+build-image:
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    # Buildx's record of its builders, kept in the project directory so
+    # after_script (a fresh shell) can still find the job's builder to remove.
+    BUILDX_CONFIG: "$CI_PROJECT_DIR/.buildx"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - git clone --depth 1 --branch "$MUCA_SERVER_REF"
+      "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${MUCA_SERVER_PROJECT}.git" muca-server
+    - export MUCA_SERVER_COMMIT=$(git -C muca-server rev-parse --short HEAD)
+  script:
+    # The --build-context below needs a newer BuildKit than some runners'
+    # Docker daemons have built in (i3lab's runner shares its host's daemon,
+    # where the dind service above can't start), so build in a current
+    # BuildKit container. Named per job: that daemon is shared.
+    #
+    # Pinned to v0.16.0, the last BuildKit with runc 1.1: the runc 1.2+ in
+    # newer ones fails every RUN step on that host ("can't mask dir
+    # /proc/acpi ... invalid argument"). Unpin once the host is upgraded.
+    - docker buildx create --name "ci-$CI_JOB_ID" --driver docker-container
+      --driver-opt image=moby/buildkit:v0.16.0 --use
+    # --provenance/--sbom off: push one plain image manifest, like
+    # muca-server's, not an OCI index with attestations -- Swarmpit's
+    # autoredeploy didn't pick up new builds in that format.
+    - docker buildx build
+      --build-context muca-server=muca-server
+      --label "muca-server.commit=$MUCA_SERVER_COMMIT"
+      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+      --provenance=false --sbom=false
+      --push
+      prototype
+    - echo "Built with MUCA-Server $MUCA_SERVER_REF at $MUCA_SERVER_COMMIT"
+  after_script:
+    # Also after a failed build, so no BuildKit container is left running.
+    - docker buildx rm "ci-$CI_JOB_ID" || true

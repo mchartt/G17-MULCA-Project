@@ -42,6 +42,10 @@ TICK_SAMPLES = 2400  # 100 ms at 24 kHz
 # slow -- see _run()'s use of this as an asyncio.wait_for timeout.
 TICK_HANG_SECONDS = 2.0
 
+# Watchdog: consecutive tick failures before trying to recover, not one
+# transient blip -- see _watchdog_tick_failed.
+WATCHDOG_FAILURE_THRESHOLD = 3
+
 # How often the capture counters are logged while in voice.
 STATS_INTERVAL_SECONDS = 10.0
 
@@ -70,6 +74,7 @@ class VoiceBridge:
         reply_channel,
         post_voice_transcripts: bool = False,
         roster: Callable[[], dict[int, str]] = dict,
+        on_unhealthy: Callable[[], Any] | None = None,
     ) -> None:
         self._scope = scope
         self._registry = registry
@@ -77,6 +82,12 @@ class VoiceBridge:
         self._reply_channel = reply_channel
         self._post_voice_transcripts = post_voice_transcripts
         self._roster = roster
+        # Watchdog tier 2: a full leave-and-rejoin of the voice channel,
+        # since that needs the Discord-side join/leave this object has no
+        # reference to (discord_client.py owns client.mulca_voice). Fine to
+        # reach whenever tier 1 (just reopening the MUCA-Server session)
+        # doesn't verifiably fix things -- not a scary last resort to avoid.
+        self._on_unhealthy = on_unhealthy
 
         self.synchronizer = SpeakerSynchronizer()
         self.player = AssistantPlayer()
@@ -90,6 +101,10 @@ class VoiceBridge:
         self._last_client: MucaWsClient | None = None
         self._last_stats = time.monotonic()
         self._recorder: UpstreamRecorder | None = None
+        # Watchdog: consecutive tick failures (hangs, or MUCA-Server
+        # unreachable) since the last success -- one transient blip isn't
+        # worth reacting to, several in a row is.
+        self._consecutive_tick_failures = 0
 
     async def start(self) -> None:
         debug_dir = os.environ.get(DEBUG_DIR_ENV_VAR)
@@ -163,6 +178,11 @@ class VoiceBridge:
         _tick() raised), this is otherwise a silent voice outage: nothing
         else would notice or log it, matching exactly a reported freeze
         where voice stopped doing anything with no error anywhere.
+
+        Watchdog tier 2 directly, no tier 1 attempt: there's no loop left
+        to retry a tick from, so "just reopen the session" isn't an option
+        the way it is in _watchdog_tick_failed -- a full leave-and-rejoin
+        is the only recovery available here.
         """
 
         if task.cancelled():
@@ -173,17 +193,22 @@ class VoiceBridge:
             logger.error(
                 "Voice for %s: its tick loop died unexpectedly (bug, not "
                 "a per-tick failure -- those are already caught inside "
-                "_run()); voice is now completely dead for this scope "
-                "until a restart",
+                "_run()); recovering with a full leave-and-rejoin",
                 self._scope.conversation_id,
                 exc_info=exc,
             )
         else:
             logger.error(
                 "Voice for %s: its tick loop returned instead of looping "
-                "forever -- voice is now dead for this scope until a "
-                "restart",
+                "forever; recovering with a full leave-and-rejoin",
                 self._scope.conversation_id,
+            )
+
+        if self._on_unhealthy is not None:
+            # A done-callback must be sync; on_unhealthy is a coroutine.
+            asyncio.create_task(
+                self._on_unhealthy(),
+                name=f"voice-watchdog-recover-{self._scope.conversation_id}",
             )
 
     async def _run(self) -> None:
@@ -211,6 +236,7 @@ class VoiceBridge:
                     self._scope.conversation_id,
                     TICK_HANG_SECONDS,
                 )
+                await self._watchdog_tick_failed()
             except MucaConnectionLost:
                 # The registry reopens the session on the next tick.
                 logger.warning(
@@ -218,8 +244,62 @@ class VoiceBridge:
                     self._scope.conversation_id,
                 )
                 await asyncio.sleep(1)
+                await self._watchdog_tick_failed()
             except Exception:
                 logger.exception("Voice tick failed")
+                await self._watchdog_tick_failed()
+            else:
+                self._consecutive_tick_failures = 0
+
+    async def _watchdog_tick_failed(self) -> None:
+        """
+        Covers two real causes uniformly, without needing to know which
+        one actually happened: OpenAI's 60-minute Realtime session limit
+        (MUCA-Server saves and ends the session; the client should just
+        reopen it), and an otherwise-unexplained stall. One failed tick
+        isn't worth reacting to -- a network blip, a slow response -- but
+        several in a row means something is actually wrong.
+        """
+
+        self._consecutive_tick_failures += 1
+        if self._consecutive_tick_failures < WATCHDOG_FAILURE_THRESHOLD:
+            return
+
+        self._consecutive_tick_failures = 0
+        logger.warning(
+            "[watchdog] %s unhealthy after %d consecutive tick failures; "
+            "reopening the MUCA-Server session",
+            self._scope.conversation_id,
+            WATCHDOG_FAILURE_THRESHOLD,
+        )
+        await self._registry.close(self._scope.conversation_id)
+
+        # Tier 1: does a fresh session alone fix it? Only logged if it
+        # doesn't -- a successful recovery falls through silently, same as
+        # any other healthy tick.
+        try:
+            await asyncio.wait_for(self._tick(), timeout=TICK_HANG_SECONDS)
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning(
+                "[watchdog] %s still unhealthy after reopening the "
+                "session; escalating to a full leave-and-rejoin",
+                self._scope.conversation_id,
+            )
+
+        # Tier 2: fine to reach whenever tier 1 doesn't verifiably work --
+        # not a scary last resort reserved for rare cases. Scheduled rather
+        # than awaited: we're still inside _run()'s own task, and
+        # on_unhealthy ends up calling disconnect(), which cancels and
+        # awaits that same task -- awaiting it directly here would be the
+        # task waiting on itself.
+        if self._on_unhealthy is not None:
+            asyncio.create_task(
+                self._on_unhealthy(),
+                name=f"voice-watchdog-recover-{self._scope.conversation_id}",
+            )
 
     async def _tick(self) -> None:
         speaker, samples = self.synchronizer.take_frame(_now_ms())

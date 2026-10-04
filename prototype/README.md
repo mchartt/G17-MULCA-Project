@@ -268,6 +268,16 @@ what was said out loud is known in the text channel and vice versa.
   stops it (the server sends `clearAudioQueue`).
 - **Transcripts**: a spoken reply is not posted to the text channel unless
   the link was made with `transcripts: True`.
+- **Watchdog** (`voice/bridge.py`): recovers from two real failure modes --
+  OpenAI's 60-minute Realtime session limit, and the tick loop stalling or
+  dying outright (both confirmed live). Tier 1, tried first, just reopens
+  the MUCA-Server session (handles the 60-minute limit on its own) and
+  checks that a tick succeeds; tier 2, reached whenever tier 1 doesn't
+  verifiably fix things -- not treated as a rare last resort -- is a full
+  Discord leave-and-rejoin of the voice channel. Three consecutive failed
+  ticks (`WATCHDOG_FAILURE_THRESHOLD`) trigger it, not one -- a single
+  blip isn't worth reacting to. Failures and recoveries are only ever
+  logged server-side; nothing is announced in Discord.
 
 No ffmpeg needed: audio goes in and out as raw PCM.
 

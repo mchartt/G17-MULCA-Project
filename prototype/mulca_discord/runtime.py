@@ -216,6 +216,7 @@ class BotRuntime:
             reply_channel=self.client.get_channel(link.text_channel_id),
             post_voice_transcripts=link.post_voice_transcripts,
             roster=lambda: self.roster(link),
+            on_unhealthy=lambda: self._rejoin_voice(link),
         )
         self.voice[link.name] = bridge
         await bridge.start()
@@ -227,6 +228,17 @@ class BotRuntime:
 
         logger.info("Leaving the voice channel of %s", link.name)
         await bridge.disconnect()
+
+    async def _rejoin_voice(self, link: Link) -> None:
+        """
+        Watchdog tier 2 -- a full reset, given whenever the bridge decides
+        a lighter fix (reopening the MUCA-Server session) didn't
+        verifiably work, or its own tick loop died outright. Server-side
+        logs only (see bridge.py); never announced to the group.
+        """
+
+        await self.leave_voice(link)
+        await self.join_voice(link)
 
     async def sync_voice(self, link: Link) -> None:
         channel = (

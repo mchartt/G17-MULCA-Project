@@ -2,8 +2,10 @@
 The voice pieces with synthetic audio: no Discord connection, no server.
 """
 
+import asyncio
 import base64
 import struct
+from contextlib import suppress
 
 import numpy as np
 
@@ -248,10 +250,15 @@ class FakeRegistry:
     def __init__(self) -> None:
         self.client = FakeClient()
         self.session = FakeSession()
+        self.closed: list[str] = []
 
     async def run(self, scope, action, **kwargs):
         await action(self.client)
         return self.session
+
+    async def close(self, conversation_id, **kwargs):
+        self.closed.append(conversation_id)
+        return True
 
 
 class FakeVoiceClient:
@@ -286,7 +293,7 @@ class FakeVoiceClient:
         self.playing = False
 
 
-def make_bridge():
+def make_bridge(*, on_unhealthy=None):
     registry = FakeRegistry()
     voice = FakeVoiceClient()
     bridge = VoiceBridge(
@@ -295,6 +302,7 @@ def make_bridge():
         voice_client=voice,
         reply_channel=None,
         roster=lambda: {1: "Ada"},
+        on_unhealthy=on_unhealthy,
     )
     return bridge, registry, voice
 
@@ -358,6 +366,85 @@ async def test_spoken_replies_play_and_a_clear_silences_them():
     assert voice.stops_playing == 1
     assert voice.stops == 0
     assert not bridge.player.is_notifying()
+
+
+# ----------------------------------------------------------------------
+# Watchdog
+# ----------------------------------------------------------------------
+
+
+class AlwaysFailingRegistry(FakeRegistry):
+    """A registry whose session is unreachable no matter what -- tier 1
+    (reopening the session) can never verifiably fix anything here, so a
+    failing bridge should always escalate to tier 2."""
+
+    async def run(self, scope, action, **kwargs):
+        raise RuntimeError("still down")
+
+
+async def test_one_or_two_failed_ticks_do_not_trigger_recovery():
+    recovered = []
+    bridge, registry, _ = make_bridge(on_unhealthy=lambda: recovered.append(1))
+
+    await bridge._watchdog_tick_failed()
+    await bridge._watchdog_tick_failed()
+
+    assert registry.closed == []
+    assert recovered == []
+
+
+async def test_three_consecutive_failures_reopen_the_session_and_stop_there():
+    recovered = []
+    bridge, registry, _ = make_bridge(on_unhealthy=lambda: recovered.append(1))
+
+    await bridge._watchdog_tick_failed()
+    await bridge._watchdog_tick_failed()
+    await bridge._watchdog_tick_failed()
+
+    # Tier 1: the fake registry's session works again right away, so there
+    # is nothing left for tier 2 to do.
+    assert registry.closed == ["instance:team-alpha"]
+    assert recovered == []
+    assert bridge._consecutive_tick_failures == 0
+
+
+async def test_a_tier_1_failure_escalates_to_tier_2():
+    async def recover():
+        recovered.append(1)
+
+    recovered = []
+    bridge, _, _ = make_bridge(on_unhealthy=recover)
+    bridge._registry = AlwaysFailingRegistry()
+
+    await bridge._watchdog_tick_failed()
+    await bridge._watchdog_tick_failed()
+    await bridge._watchdog_tick_failed()
+    # Tier 2 is scheduled as its own task, not awaited in place (it may
+    # need to cancel the very task _watchdog_tick_failed runs inside of).
+    await asyncio.sleep(0)
+
+    assert bridge._registry.closed == ["instance:team-alpha"]
+    assert recovered == [1]
+
+
+async def test_a_dead_tick_loop_goes_straight_to_tier_2():
+    async def recover():
+        recovered.append(1)
+
+    recovered = []
+    bridge, _, _ = make_bridge(on_unhealthy=recover)
+
+    async def boom() -> None:
+        raise RuntimeError("the tick loop itself crashed")
+
+    task = asyncio.create_task(boom())
+    with suppress(RuntimeError):
+        await task
+
+    bridge._report_if_run_died(task)
+    await asyncio.sleep(0)
+
+    assert recovered == [1]
 
 
 # ----------------------------------------------------------------------

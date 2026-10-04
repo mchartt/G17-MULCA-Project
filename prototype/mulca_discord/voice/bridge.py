@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 TICK_SECONDS = 0.1
 TICK_SAMPLES = 2400  # 100 ms at 24 kHz
 
+# A tick taking this long means something inside it is stuck, not just
+# slow -- see _run()'s use of this as an asyncio.wait_for timeout.
+TICK_HANG_SECONDS = 2.0
+
 # How often the capture counters are logged while in voice.
 STATS_INTERVAL_SECONDS = 10.0
 
@@ -106,6 +110,7 @@ class VoiceBridge:
             self._run(),
             name=f"voice-{self._scope.conversation_id}",
         )
+        self._task.add_done_callback(self._report_if_run_died)
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -150,14 +155,62 @@ class VoiceBridge:
 
     # ------------------------------------------------------------------
 
+    def _report_if_run_died(self, task: asyncio.Task) -> None:
+        """
+        _run()'s own while-True loop already catches every exception it
+        knows about and keeps going -- it should never actually finish on
+        its own. If it ever does (a bug in that loop itself, not something
+        _tick() raised), this is otherwise a silent voice outage: nothing
+        else would notice or log it, matching exactly a reported freeze
+        where voice stopped doing anything with no error anywhere.
+        """
+
+        if task.cancelled():
+            return
+
+        exc = task.exception()
+        if exc is not None:
+            logger.error(
+                "Voice for %s: its tick loop died unexpectedly (bug, not "
+                "a per-tick failure -- those are already caught inside "
+                "_run()); voice is now completely dead for this scope "
+                "until a restart",
+                self._scope.conversation_id,
+                exc_info=exc,
+            )
+        else:
+            logger.error(
+                "Voice for %s: its tick loop returned instead of looping "
+                "forever -- voice is now dead for this scope until a "
+                "restart",
+                self._scope.conversation_id,
+            )
+
     async def _run(self) -> None:
         while True:
             await asyncio.sleep(TICK_SECONDS)
 
             try:
-                await self._tick()
+                # Debugging a reported freeze where voice silently stopped
+                # doing anything at all, on either side, with no exception
+                # and no further logs: a genuine hang inside _tick() (a
+                # websocket send that never resolves, a lock that never
+                # releases) would otherwise block this loop forever with
+                # nothing to catch it -- a bare `except Exception` only
+                # catches a tick that *fails*, not one that never returns.
+                # wait_for forces it to surface as a loud, specific error
+                # instead of silence.
+                await asyncio.wait_for(self._tick(), timeout=TICK_HANG_SECONDS)
             except asyncio.CancelledError:
                 raise
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Voice tick for %s did not finish within %.0fs -- "
+                    "something inside _tick() is stuck (not failing, "
+                    "genuinely hanging). Retrying next tick.",
+                    self._scope.conversation_id,
+                    TICK_HANG_SECONDS,
+                )
             except MucaConnectionLost:
                 # The registry reopens the session on the next tick.
                 logger.warning(
@@ -224,9 +277,33 @@ class VoiceBridge:
 
     async def _on_state_update(self, data: dict) -> None:
         if data.get("clearAudioQueue"):
+            logger.info(
+                "[voice-turn] %s clearAudioQueue received -- clearing "
+                "player and stopping playback",
+                self._scope.conversation_id,
+            )
             self.player.clear()
-            with suppress(Exception):
-                self._voice_client.stop()
+            try:
+                # stop_playing(), not stop(): VoiceRecvClient.stop() is
+                # "stop playing AND receiving" -- it calls
+                # stop_listening(), which tears down the receive sink
+                # permanently (self._reader = MISSING) and nothing ever
+                # calls listen() again. That silently and permanently
+                # killed voice input the moment anyone first interrupted
+                # MULCA -- confirmed live: the capture stats (packet
+                # counts) froze at the exact same number forever after an
+                # interrupt, while the tick loop and text kept working.
+                self._voice_client.stop_playing()
+            except Exception:
+                # Was a bare suppress(Exception) -- silent. If this is
+                # where playback fails to actually stop (MULCA keeps
+                # talking over the user), this is what would show it.
+                logger.exception(
+                    "[voice-turn] %s voice_client.stop_playing() failed "
+                    "during clearAudioQueue -- playback may not actually "
+                    "have stopped",
+                    self._scope.conversation_id,
+                )
 
         audio = data.get("audio")
         if audio:

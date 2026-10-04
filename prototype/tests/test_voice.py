@@ -259,6 +259,7 @@ class FakeVoiceClient:
         self.playing = False
         self.plays = 0
         self.stops = 0
+        self.stops_playing = 0
 
     def listen(self, sink) -> None:
         pass
@@ -272,6 +273,13 @@ class FakeVoiceClient:
     def play(self, source) -> None:
         self.plays += 1
         self.playing = True
+
+    def stop_playing(self) -> None:
+        # Real VoiceRecvClient.stop() also tears down voice *receiving*
+        # (stop_listening) -- a distinct method, since a barge-in should
+        # only ever stop outgoing playback, never receiving.
+        self.stops_playing += 1
+        self.playing = False
 
     def stop(self) -> None:
         self.stops += 1
@@ -327,6 +335,14 @@ async def test_the_speakers_audio_goes_up_with_their_id():
 
 
 async def test_spoken_replies_play_and_a_clear_silences_them():
+    """
+    clearAudioQueue (a barge-in) must only stop playback, never receiving:
+    VoiceRecvClient.stop() stops both and tears down the receive sink
+    permanently (nothing ever calls listen() again) -- confirmed live, this
+    silently and permanently killed voice input the moment anyone first
+    interrupted MULCA.
+    """
+
     bridge, registry, voice = make_bridge()
     await bridge._tick()
     handler = registry.session.on_state_update
@@ -339,7 +355,8 @@ async def test_spoken_replies_play_and_a_clear_silences_them():
 
     await handler({"event": "state_update", "audio": "", "clearAudioQueue": True})
 
-    assert voice.stops == 1
+    assert voice.stops_playing == 1
+    assert voice.stops == 0
     assert not bridge.player.is_notifying()
 
 

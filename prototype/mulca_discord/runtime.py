@@ -30,6 +30,17 @@ logger = logging.getLogger(__name__)
 
 ReadyHook = Callable[["BotRuntime"], Awaitable[None]]
 
+
+class AmbiguousBotName(Exception):
+    """More than one bot in this server shares the name a command targeted."""
+
+    def __init__(self, name: str, matches: list["BotRuntime"]) -> None:
+        self.name = name
+        self.matches = matches
+        super().__init__(
+            f"{len(matches)} bots in this server are named {name!r}"
+        )
+
 # The answer to a DM the bot doesn't take.
 DMS_OFF_REPLY = (
     "I don't take direct messages here. Talk to me in a server channel I'm "
@@ -704,6 +715,15 @@ class BotManager:
         """
         "all" (or nothing) means every bot in this server; anything else is
         one bot's name or id. Never a bot outside this server.
+
+        Matching by id is always exact -- ids are unique by construction, so
+        that branch can never be ambiguous. Matching by name can be: two
+        bots running from the same code default to the same Discord
+        username until someone renames one, and a command that named one
+        specific bot (unlike "all") picking a silently arbitrary one of
+        several matches would be a real foot-gun -- e.g. /mulca link
+        linking whichever bot happened to be resolved first, not the one
+        actually chosen. Raises AmbiguousBotName instead.
         """
 
         bots = self.in_guild(guild_id)
@@ -711,8 +731,13 @@ class BotManager:
             return bots
 
         wanted = target.strip().lower()
-        return [
-            bot
-            for bot in bots
-            if bot.name.lower() == wanted or str(bot.user_id) == wanted
-        ]
+
+        by_id = [bot for bot in bots if str(bot.user_id) == wanted]
+        if by_id:
+            return by_id
+
+        by_name = [bot for bot in bots if bot.name.lower() == wanted]
+        if len(by_name) > 1:
+            raise AmbiguousBotName(target, by_name)
+
+        return by_name

@@ -370,6 +370,31 @@ def test_the_capture_counts_what_happened_to_each_packet():
     assert "dave_failed=1" in failing.stats()
 
 
+class _BorrowConflict(BaseException):
+    """
+    Stands in for a davey (Rust, via PyO3) panic: not guaranteed to be an
+    Exception subclass, unlike an ordinary decrypt failure (ValueError
+    above). A bare `except Exception` would let this escape and kill the
+    whole sink's receive thread; `_undo_dave` must catch it too.
+    """
+
+
+class PanickingDave(FakeDave):
+    def decrypt(self, user_id, media_type, packet):
+        raise _BorrowConflict("davey: already borrowed")
+
+
+def test_a_non_exception_decrypt_failure_is_dropped_not_fatal():
+    dave = PanickingDave()
+    capture, _ = make_capture(dave)
+
+    # Would propagate out of write() and kill this sink's thread if
+    # _undo_dave only caught Exception, not BaseException.
+    capture.write(User(5), Data(b"e2ee-opus"))
+
+    assert capture.counters["dave_failed"] == 1
+
+
 def test_the_tap_hears_every_user_not_just_the_floor():
     heard = []
     capture = VoiceCapture(

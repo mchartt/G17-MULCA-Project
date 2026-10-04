@@ -24,7 +24,13 @@ from mulca_discord.commands import (
     unlink_channel,
 )
 from mulca_discord.links import Link, LinkStore
-from mulca_discord.runtime import DMS_OFF_REPLY, BotManager, BotRuntime, RestartOutcome
+from mulca_discord.runtime import (
+    DMS_OFF_REPLY,
+    AmbiguousBotName,
+    BotManager,
+    BotRuntime,
+    RestartOutcome,
+)
 from mulca_discord.sessions import Scope, SessionRegistry
 from mulca_discord.voice.bridge import VoiceBridge
 
@@ -496,6 +502,37 @@ def test_the_manager_finds_the_bot_serving_a_channel_and_resolves_targets():
     assert manager.resolve("2", GUILD) == [beta]
     # Never a bot outside the server the command came from.
     assert manager.resolve("MULCA", 901) == []
+
+
+def test_resolving_an_ambiguous_name_raises_instead_of_guessing():
+    """
+    Two bots running from the same code share a Discord username until
+    someone renames one -- found live: /mulca link's `chosen[0]` would
+    otherwise silently link whichever bot happened to resolve first.
+    """
+
+    store = LinkStore(":memory:")
+    alpha = make_runtime(store, name="MULCA", id=1, guilds=(GUILD,))
+    twin = make_runtime(store, link=None, name="MULCA", id=3, guilds=(GUILD,))
+    manager = BotManager([alpha, twin])
+
+    with pytest.raises(AmbiguousBotName):
+        manager.resolve("MULCA", GUILD)
+
+    # The id is always unique, so it's never ambiguous even when the name is.
+    assert manager.resolve("1", GUILD) == [alpha]
+    assert manager.resolve("3", GUILD) == [twin]
+
+
+async def test_control_reports_an_ambiguous_name_instead_of_guessing():
+    store = LinkStore(":memory:")
+    alpha = make_runtime(store, name="MULCA", id=1, guilds=(GUILD,))
+    twin = make_runtime(store, link=None, name="MULCA", id=3, guilds=(GUILD,))
+    manager = BotManager([alpha, twin])
+
+    reply = await control(manager, "restart", "MULCA", GUILD)
+
+    assert "1" in reply and "3" in reply
 
 
 # ----------------------------------------------------------------------

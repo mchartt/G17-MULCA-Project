@@ -119,7 +119,24 @@ class VoiceCapture(voice_recv.AudioSink):
 
         try:
             frame = session.decrypt(user_id, DAVE_AUDIO, opus)
-        except Exception:
+        except BaseException as exc:
+            # BaseException, not Exception: nothing here synchronizes
+            # session.decrypt() (this sink's own receive thread) against
+            # discord.py's asyncio-side DAVE session mutation (voice_state
+            # .py's reinit_dave_session/commit-welcome handling, which runs
+            # whenever someone joins, leaves, or toggles video). If a
+            # decrypt call lands in the same instant as one of those
+            # mutations, davey (Rust, via PyO3) can raise a "borrow
+            # conflict" panic that is not guaranteed to be an Exception
+            # subclass -- a bare `except Exception` would let that escape
+            # and kill this sink's receive thread (silence from the whole
+            # voice channel until the bot rejoins), instead of dropping
+            # just the one packet like every other decrypt failure here.
+            # KeyboardInterrupt/SystemExit are the only things that must
+            # still propagate.
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
+
             # During a DAVE transition a sender may still be unencrypted.
             if session.can_passthrough(user_id):
                 self.counters["dave_passthrough"] += 1

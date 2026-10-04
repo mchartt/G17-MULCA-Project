@@ -30,7 +30,7 @@ from discord import app_commands
 
 from .links import BotRecord, Link
 from .permissions import missing_permissions
-from .runtime import BotManager, BotRuntime, BotStatus, RestartOutcome
+from .runtime import AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,14 @@ logger = logging.getLogger(__name__)
 RESTART_COOLDOWN_SECONDS = 30.0
 
 ALL = "all"
+
+
+def _ambiguous_bot_message(exc: AmbiguousBotName) -> str:
+    ids = ", ".join(f"`{bot.user_id}`" for bot in exc.matches)
+    return (
+        f"{len(exc.matches)} bots in this server are named {exc.name!r} -- "
+        f"use one's id instead: {ids}."
+    )
 
 
 # ----------------------------------------------------------------------
@@ -117,7 +125,11 @@ async def control(
 ) -> str:
     """/mulca restart|stop|start, for `target` ("all" or a bot) in this server."""
 
-    bots = manager.resolve(target, guild_id)
+    try:
+        bots = manager.resolve(target, guild_id)
+    except AmbiguousBotName as exc:
+        return _ambiguous_bot_message(exc)
+
     if not bots:
         return f"No MULCA bot called {target!r} in this server."
 
@@ -487,13 +499,28 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         interaction: discord.Interaction,
         current: str,
     ) -> list[app_commands.Choice[str]]:
-        names = [ALL] + [
-            bot.name for bot in manager.in_guild(interaction.guild_id or 0)
+        bots = manager.in_guild(interaction.guild_id or 0)
+        name_counts: dict[str, int] = {}
+        for bot in bots:
+            name_counts[bot.name] = name_counts.get(bot.name, 0) + 1
+
+        choices = [app_commands.Choice(name=ALL, value=ALL)] + [
+            # Two bots running from the same code share a name until one is
+            # renamed -- submit the id instead of the ambiguous name so
+            # picking from the list can never resolve to the wrong bot
+            # (see AmbiguousBotName).
+            app_commands.Choice(
+                name=(
+                    f"{bot.name} ({bot.user_id})"
+                    if name_counts[bot.name] > 1
+                    else bot.name
+                ),
+                value=str(bot.user_id) if name_counts[bot.name] > 1 else bot.name,
+            )
+            for bot in bots
         ]
         return [
-            app_commands.Choice(name=name, value=name)
-            for name in names
-            if current.lower() in name.lower()
+            choice for choice in choices if current.lower() in choice.name.lower()
         ][:25]
 
     # -- /restart -------------------------------------------------------
@@ -569,11 +596,18 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             )
             return
 
-        chosen = (
-            [manager.primary]
-            if bot is None or bot.strip().lower() == ALL
-            else manager.resolve(bot, interaction.guild_id)
-        )
+        if bot is None or bot.strip().lower() == ALL:
+            chosen = [manager.primary]
+        else:
+            try:
+                chosen = manager.resolve(bot, interaction.guild_id)
+            except AmbiguousBotName as exc:
+                await interaction.response.send_message(
+                    _ambiguous_bot_message(exc),
+                    ephemeral=True,
+                )
+                return
+
         if not chosen:
             await interaction.response.send_message(
                 f"No MULCA bot called {bot!r} in this server.",

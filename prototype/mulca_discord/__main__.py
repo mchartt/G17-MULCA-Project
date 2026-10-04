@@ -27,7 +27,21 @@ from .singleton import AlreadyRunning, acquire_singleton_lock
 
 def main() -> None:
     load_dotenv()
-    logging.basicConfig(level=logging.INFO)
+    # Root stays at INFO always -- a DEBUG root would also unleash
+    # discord.py/websockets' own verbose internals, not just ours.
+    # MUCA_LOG_LEVEL only ever controls the mulca_discord logger tree
+    # specifically (every logger here is logging.getLogger(__name__), under
+    # that namespace).
+    #
+    # Defaults to DEBUG, not INFO, matching MUCA-Server's own
+    # run_server.py: a plain run with nothing special set is a human at a
+    # terminal actively watching it, who wants the [voice-turn]-tagged
+    # diagnostic lines in voice/bridge.py -- those fire on every tick/event
+    # by design, which is also exactly why this isn't the *root* level.
+    logging.basicConfig(level="INFO")
+    logging.getLogger("mulca_discord").setLevel(
+        os.environ.get("MUCA_LOG_LEVEL", "DEBUG"),
+    )
     # Logs every RTCP sender report Discord sends (several a second in voice)
     # at INFO as "unexpected"; they're routine and bury the useful lines.
     logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.WARNING)

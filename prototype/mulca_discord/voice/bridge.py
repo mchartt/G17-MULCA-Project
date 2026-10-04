@@ -277,7 +277,10 @@ class VoiceBridge:
 
     async def _on_state_update(self, data: dict) -> None:
         if data.get("clearAudioQueue"):
-            logger.info(
+            # debug, not info: fires on every barge-in, not just rare
+            # anomalies -- the exception handler below stays loud, since
+            # that's a genuine failure, not routine chatter.
+            logger.debug(
                 "[voice-turn] %s clearAudioQueue received -- clearing "
                 "player and stopping playback",
                 self._scope.conversation_id,

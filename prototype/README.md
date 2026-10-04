@@ -185,6 +185,11 @@ pip install -r requirements-dev.txt   # includes -e ../../MUCA-Server
 cp .env.example .env
 # fill in DISCORD_BOT_TOKEN
 # MUCA_SERVER_URL=ws://localhost:8000/   -- optional, this is the default
+# MUCA_LOG_LEVEL=INFO                    -- optional; default is DEBUG (the
+#                                            `mulca_discord` logger tree only,
+#                                            not discord.py/websockets' own
+#                                            internals), for the [voice-turn]
+#                                            diagnostic lines in voice/bridge.py
 
 python -m mulca_discord
 ```

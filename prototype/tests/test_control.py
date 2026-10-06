@@ -136,7 +136,7 @@ class RosterClient:
     async def send_audio_stream(self, **frame) -> None:
         pass
 
-    async def send_participants(self, roster) -> None:
+    async def send_participants(self, roster, *, modality: str = "text") -> None:
         self.rosters.append(roster)
 
 

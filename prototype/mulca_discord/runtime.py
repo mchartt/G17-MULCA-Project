@@ -141,16 +141,28 @@ class BotRuntime:
     def link_for_channel(self, channel_id: int) -> Link | None:
         return link_for_channel(self.links(), channel_id)
 
-    def roster(self, link: Link) -> dict[int, str]:
-        """Everyone in the link's text channel or its voice channel."""
+    def roster_text(self, link: Link) -> dict[int, str]:
+        """Everyone in the link's text channel."""
 
-        roster: dict[int, str] = {}
-        for channel_id in (link.text_channel_id, link.voice_channel_id):
-            channel = self.client.get_channel(channel_id) if channel_id else None
-            for member in _humans(channel):
-                roster[member.id] = member.display_name
+        channel = self.client.get_channel(link.text_channel_id)
+        return {member.id: member.display_name for member in _humans(channel)}
 
-        return roster
+    def roster_voice(self, link: Link) -> dict[int, str]:
+        """
+        Everyone actually in the link's voice channel -- tracked completely
+        separately from roster_text(): who's in one is not reliably who's
+        in the other, and participation_equality_voice needs this roster on
+        its own, not a text+voice union (that used to make a voice
+        intervention look at everyone in the text channel too, as though
+        they were all also on the call).
+        """
+
+        channel = (
+            self.client.get_channel(link.voice_channel_id)
+            if link.voice_channel_id
+            else None
+        )
+        return {member.id: member.display_name for member in _humans(channel)}
 
     def _can_see(self, user_id: int, channel_id: int) -> bool:
         channel = self.client.get_channel(channel_id)
@@ -215,7 +227,7 @@ class BotRuntime:
             voice_client=voice_client,
             reply_channel=self.client.get_channel(link.text_channel_id),
             post_voice_transcripts=link.post_voice_transcripts,
-            roster=lambda: self.roster(link),
+            roster=lambda: self.roster_voice(link),
             on_unhealthy=lambda: self._rejoin_voice(link),
         )
         self.voice[link.name] = bridge
@@ -522,13 +534,13 @@ class BotRuntime:
             scope = Scope(conversation_id=link.conversation_id)
             self.store.remember_speaker(message.author.id, link.text_channel_id)
 
-        roster = self.roster(link) if link is not None else {}
+        roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
             roster = await _roster(message.channel)
 
         async def send(muca_client) -> None:
             if link is not None:
-                await muca_client.send_participants(roster)
+                await muca_client.send_participants(roster, modality="text")
 
             await muca_client.send_user_text(
                 speaker=message.author.id,

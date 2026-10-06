@@ -268,6 +268,14 @@ what was said out loud is known in the text channel and vice versa.
   stops it (the server sends `clearAudioQueue`).
 - **Transcripts**: a spoken reply is not posted to the text channel unless
   the link was made with `transcripts: True`.
+- **Roster** (`BotRuntime.roster_voice`/`roster_text`, `runtime.py`): voice
+  sends its own roster (the voice channel's actual members), separately
+  from the text channel's -- these used to be one `roster()` returning the
+  *union* of both, so a voice-only participation strategy was really being
+  judged against the text channel's membership, not who was actually on
+  the call. `update_participants()` re-sends voice's roster whenever
+  someone joins/leaves the channel (`on_voice_state_update`) or takes the
+  floor for the first time, not on a timer.
 - **Watchdog** (`voice/bridge.py`): recovers from two real failure modes --
   OpenAI's 60-minute Realtime session limit, and the tick loop stalling or
   dying outright (both confirmed live). Tier 1, tried first, just reopens

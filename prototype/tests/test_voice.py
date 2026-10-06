@@ -231,6 +231,7 @@ class FakeClient:
         self.frames: list[dict] = []
         self.played: list[str] = []
         self.rosters: list[dict] = []
+        self.roster_modalities: list[str] = []
 
     async def send_audio_stream(self, **frame) -> None:
         self.frames.append(frame)
@@ -238,8 +239,9 @@ class FakeClient:
     async def send_playback_frame(self, audio: str) -> None:
         self.played.append(audio)
 
-    async def send_participants(self, roster) -> None:
+    async def send_participants(self, roster, *, modality: str = "text") -> None:
         self.rosters.append(roster)
+        self.roster_modalities.append(modality)
 
 
 class FakeSession:
@@ -340,6 +342,9 @@ async def test_the_speakers_audio_goes_up_with_their_id():
     assert len(base64.b64decode(frame["audio"])) == LOUD.size * 4
     # A newcomer to the floor gets their name sent first.
     assert registry.client.rosters[-1] == {1: "Ada"}
+    # Voice's own roster, not the text channel's -- bridge.py never sends
+    # the merged text+voice union anymore.
+    assert registry.client.roster_modalities[-1] == "audio"
 
 
 async def test_spoken_replies_play_and_a_clear_silences_them():

@@ -127,6 +127,8 @@ class MucaWsClient:
     async def send_participants(
         self,
         participants: dict[int, str],
+        *,
+        modality: str = "text",
     ) -> None:
         await self._send(
             ParticipantsMessage(
@@ -135,6 +137,7 @@ class MucaWsClient:
                     Participant(id=user_id, name=name)
                     for user_id, name in participants.items()
                 ],
+                modality=modality,
             )
         )
 

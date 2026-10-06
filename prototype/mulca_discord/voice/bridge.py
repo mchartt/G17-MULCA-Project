@@ -161,7 +161,9 @@ class VoiceBridge:
     async def update_participants(self) -> None:
         roster = self._roster()
         try:
-            await self._send(lambda client: client.send_participants(roster))
+            await self._send(
+                lambda client: client.send_participants(roster, modality="audio"),
+            )
         except MucaConnectionLost:
             logger.warning("MUCA-Server unreachable; roster not sent")
 
@@ -353,7 +355,7 @@ class VoiceBridge:
                 # it, a server restart): the new one knows nobody yet, and
                 # whatever the old one still had queued to say is stale.
                 self.player.clear()
-                await client.send_participants(self._roster())
+                await client.send_participants(self._roster(), modality="audio")
 
     async def _on_state_update(self, data: dict) -> None:
         if data.get("clearAudioQueue"):

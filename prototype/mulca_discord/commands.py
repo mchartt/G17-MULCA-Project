@@ -10,6 +10,8 @@ Discord's "/" menu).
 - /mulca link|unlink|dms: members with Manage Server -- which channels a
   bot serves (links.py), with no code or config file involved, and whether
   the people of a channel may DM it (off by default).
+- /mulca model: members with Manage Server -- the realtime model of every
+  MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
 - /mulca bot add|remove|list: members with Manage Server -- more bot
   accounts, run by this same process. These act on the whole deployment,
   not just the server they're used in (see deploy/README.md, Security).
@@ -22,6 +24,7 @@ callbacks only translate interactions to and from them.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
@@ -29,6 +32,7 @@ import discord
 from discord import app_commands
 
 from .links import BotRecord, Link
+from .muca_client import set_server_model
 from .permissions import missing_permissions
 from .runtime import AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
 
@@ -325,6 +329,64 @@ async def probe_token(token: str) -> TokenProbe:
         )
     finally:
         await client.close()
+
+
+async def set_model(
+    manager: BotManager,
+    model: str,
+    target: str | None,
+    guild_id: int,
+    *,
+    include_intervention: bool = False,
+    admin_token: str | None = None,
+    set_server: Callable[..., Awaitable[str | None]] = set_server_model,
+) -> str:
+    """
+    /mulca model: the main agent's realtime model, and with
+    `include_intervention` the intervention agent's too. For one bot it is
+    saved here and sent on that bot's next sessions (which are restarted
+    now); for every bot it is MUCA-Server's own setting, which ends every
+    session so they reopen on it. A bot's own choice outranks the server's.
+    """
+
+    model = model.strip()
+    if not model:
+        return "Name a model."
+
+    if target is None or target.strip().lower() == ALL:
+        if not admin_token:
+            return "MUCA_ADMIN_TOKEN isn't set, so MULCA can't change the server's model."
+        problem = await set_server(
+            manager.primary.registry.url,
+            admin_token,
+            model,
+            include_intervention=include_intervention,
+        )
+        if problem:
+            return f"MUCA-Server wouldn't change its model: {problem}."
+        return (
+            f"MUCA-Server now uses `{model}`; every session was restarted. "
+            "A bot set on its own keeps its own model."
+        )
+
+    try:
+        bots = manager.resolve(target, guild_id)
+    except AmbiguousBotName as exc:
+        return _ambiguous_bot_message(exc)
+
+    if not bots:
+        return f"No MULCA bot called {target!r} in this server."
+
+    for bot in bots:
+        manager.store.set_models(
+            bot.user_id,
+            model,
+            model if include_intervention else None,
+        )
+        await bot.restart_all()
+
+    names = ", ".join(f"**{bot.name}**" for bot in bots)
+    return f"{names} now use `{model}`; their sessions were restarted."
 
 
 def invite_url(application_id: int) -> str:
@@ -692,6 +754,30 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
     @app_commands.autocomplete(bot=bot_choices)
     async def start(interaction: discord.Interaction, bot: str | None = None) -> None:
         await run_control(interaction, "start", bot)
+
+    @mulca.command(name="model", description="Change the realtime model of every MULCA, or of one bot.")
+    @app_commands.describe(
+        model="The OpenAI realtime model, e.g. gpt-realtime.",
+        bot="One bot (default: every bot).",
+        include_intervention="Also change the intervention agent's model, not only the main one.",
+    )
+    @app_commands.autocomplete(bot=bot_choices)
+    async def model_command(
+        interaction: discord.Interaction,
+        model: str,
+        bot: str | None = None,
+        include_intervention: bool = False,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await set_model(
+            manager,
+            model,
+            bot,
+            interaction.guild_id,
+            include_intervention=include_intervention,
+            admin_token=os.environ.get("MUCA_ADMIN_TOKEN"),
+        )
+        await interaction.followup.send(reply, ephemeral=True)
 
     # -- /mulca bot ... --------------------------------------------------
 

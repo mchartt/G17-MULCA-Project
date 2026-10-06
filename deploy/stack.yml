@@ -14,6 +14,8 @@ services:
     secrets:
       - source: muca_openai_api_key
         target: OPENAI_API_KEY
+      - source: muca_admin_token
+        target: MUCA_ADMIN_TOKEN
     volumes:
       - muca-data:/data
     networks:
@@ -45,6 +47,8 @@ services:
     secrets:
       - source: mulca_discord_bot_token
         target: DISCORD_BOT_TOKEN
+      - source: muca_admin_token
+        target: MUCA_ADMIN_TOKEN
     # Links (/mulca link) and stopped bots, kept across redeploys. On i3lab,
     # like the service itself (see placement).
     volumes:
@@ -85,4 +89,7 @@ secrets:
   muca_openai_api_key:
     external: true
   mulca_discord_bot_token:
+    external: true
+  # Shared by both services: /mulca model uses it to change MUCA-Server's model.
+  muca_admin_token:
     external: true

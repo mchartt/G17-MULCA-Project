@@ -72,8 +72,12 @@ class SessionRegistry:
         *,
         client_factory: ClientFactory = MucaWsClient,
         reconnect_delays: tuple[float, ...] = RECONNECT_DELAYS_SECONDS,
+        models: Callable[[], tuple[str, str]] = lambda: ("", ""),
     ) -> None:
         self._url = url
+        # The (main, intervention) models a new session asks the server for;
+        # "" means the server's own.
+        self._models = models
         self._client_factory = client_factory
         self._reconnect_delays = reconnect_delays
         self._sessions: dict[str, ScopeSession] = {}
@@ -86,6 +90,10 @@ class SessionRegistry:
         # save) must not hold up every other scope.
         self._locks: dict[str, asyncio.Lock] = {}
         self._backoff: dict[str, float] = {}
+
+    @property
+    def url(self) -> str:
+        return self._url
 
     @property
     def sessions(self) -> dict[str, ScopeSession]:
@@ -247,11 +255,14 @@ class SessionRegistry:
             if delay:
                 await asyncio.sleep(delay)
 
+            main_model, intervention_model = self._models()
             client = self._client_factory(
                 self._url,
                 conversation_id=scope.conversation_id,
                 is_dm=scope.is_dm,
                 linked_conversation_id=scope.linked_conversation_id,
+                main_model=main_model,
+                intervention_model=intervention_model,
             )
 
             try:

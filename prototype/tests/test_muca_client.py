@@ -16,7 +16,7 @@ from muca_server import create_app
 from muca_server.agents import AuxiliaryAgent, MainAgent
 from muca_server.sessions import DefaultSessionComponentsFactory
 
-from mulca_discord.muca_client import MucaConnectionLost, MucaWsClient
+from mulca_discord.muca_client import MucaConnectionLost, MucaWsClient, set_server_model
 from mulca_discord.sessions import Scope, SessionRegistry
 
 
@@ -353,3 +353,11 @@ async def test_restarting_a_scope_with_no_session_is_a_no_op(server):
     registry = SessionRegistry(server.url)
 
     assert await registry.restart("instance:none")
+
+
+async def test_the_servers_model_cannot_be_changed_by_a_server_without_an_admin_token(
+    server,
+):
+    problem = await set_server_model(server.url, "secret", "gpt-new")
+
+    assert problem is not None and "not enabled" in problem

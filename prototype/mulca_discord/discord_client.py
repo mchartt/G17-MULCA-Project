@@ -65,7 +65,13 @@ def build_discord_client(
     client = discord.Client(intents=mulca_intents())
     runtime = BotRuntime(
         client=client,
-        registry=registry or SessionRegistry(muca_server_url),
+        registry=registry
+        or SessionRegistry(
+            muca_server_url,
+            # Read at each connect, so a /mulca model change reaches the
+            # next session without rebuilding anything.
+            models=lambda: store.models_for(client.user and client.user.id),
+        ),
         store=store,
         is_primary=is_primary,
     )

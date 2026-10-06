@@ -31,6 +31,7 @@ from muca_server.protocol import (
     Participant,
     ParticipantsMessage,
     PlaybackFrameMessage,
+    SetModelMessage,
     UserTextMessage,
 )
 
@@ -54,6 +55,49 @@ class MucaConnectionLost(ConnectionError):
     """The session's socket is gone; a new session has to be opened."""
 
 
+async def set_server_model(
+    url: str,
+    admin_token: str,
+    model: str,
+    *,
+    include_intervention: bool = False,
+    timeout: float = 15.0,
+) -> str | None:
+    """
+    Change MUCA-Server's realtime model for every conversation. None when it
+    worked (the server ends every session, this one included, with 1012),
+    otherwise why not.
+    """
+
+    async with websockets.connect(url) as connection:
+        await connection.send(
+            ConnectAgentMessage(event="connect").model_dump_json(by_alias=True)
+        )
+        await connection.send(
+            SetModelMessage(
+                event="set_model",
+                admin_token=admin_token,
+                model=model,
+                include_intervention=include_intervention,
+            ).model_dump_json(by_alias=True)
+        )
+
+        try:
+            async with asyncio.timeout(timeout):
+                async for raw in connection:
+                    data = json.loads(raw)
+                    if data.get("event") == "error":
+                        return str(data.get("message"))
+        except ConnectionClosed as exc:
+            if exc.rcvd is not None and exc.rcvd.code == SERVER_RESTART_CLOSE_CODE:
+                return None
+            return f"the server closed the connection ({exc})"
+        except TimeoutError:
+            return "the server didn't answer"
+
+    return "the server closed the connection"
+
+
 class MucaWsClient:
     def __init__(
         self,
@@ -62,8 +106,13 @@ class MucaWsClient:
         conversation_id: str,
         is_dm: bool,
         linked_conversation_id: str | None = None,
+        main_model: str = "",
+        intervention_model: str = "",
     ) -> None:
         self._url = url
+        # This session's own realtime models; "" is the server's.
+        self._main_model = main_model
+        self._intervention_model = intervention_model
         self._conversation_id = conversation_id
         self._is_dm = is_dm
         # For a DM only: the group conversation_id of the linked channel
@@ -110,6 +159,8 @@ class MucaWsClient:
                 conversation_id=self._conversation_id,
                 is_dm=self._is_dm,
                 linked_conversation_id=self._linked_conversation_id,
+                main_model=self._main_model,
+                intervention_model=self._intervention_model,
             )
         )
         await self._send(

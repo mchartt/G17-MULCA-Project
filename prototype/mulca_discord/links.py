@@ -28,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS bots (
     name TEXT NOT NULL,
     is_primary INTEGER NOT NULL DEFAULT 0,
     paused INTEGER NOT NULL DEFAULT 0,
+    main_model TEXT NOT NULL DEFAULT '',
+    intervention_model TEXT NOT NULL DEFAULT '',
     token TEXT,
     added_by INTEGER,
     added_at REAL
@@ -168,6 +170,14 @@ class LinkStore:
             self._db.execute(
                 "ALTER TABLE links ADD COLUMN allow_dms INTEGER NOT NULL DEFAULT 0"
             )
+
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(bots)")}
+        if "main_model" not in columns:
+            # Version 2: no bot had its own models. They start on the server's.
+            for column in ("main_model", "intervention_model"):
+                self._db.execute(
+                    f"ALTER TABLE bots ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                )
 
     # -- links -------------------------------------------------------------
 
@@ -331,6 +341,26 @@ class LinkStore:
             self._db.execute("SELECT 1 FROM bots WHERE token = ?", (token,)).fetchone()
             is not None
         )
+
+    def models_for(self, bot_id: int | None) -> tuple[str, str]:
+        """A bot's own (main, intervention) realtime models; "" is the server's."""
+
+        row = self._db.execute(
+            "SELECT main_model, intervention_model FROM bots WHERE bot_id = ?",
+            (bot_id,),
+        ).fetchone()
+        return (row[0], row[1]) if row else ("", "")
+
+    def set_models(self, bot_id: int, main: str, intervention: str | None = None) -> None:
+        """Set a bot's main model, and its intervention model unless None."""
+
+        with self._db:
+            self._db.execute(
+                "UPDATE bots SET main_model = ?, "
+                "intervention_model = COALESCE(?, intervention_model) "
+                "WHERE bot_id = ?",
+                (main, intervention, bot_id),
+            )
 
     def is_paused(self, bot_id: int) -> bool:
         row = self._db.execute(

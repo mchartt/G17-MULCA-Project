@@ -21,6 +21,7 @@ from mulca_discord.commands import (
     link_channels,
     restart_message,
     set_dms,
+    set_model,
     unlink_channel,
 )
 from mulca_discord.links import Link, LinkStore
@@ -46,7 +47,7 @@ ALPHA = Link(text_channel_id=111, guild_id=GUILD, bot_id=1, voice_channel_id=222
 class FakeMucaClient:
     instances: list["FakeMucaClient"] = []
 
-    def __init__(self, url, *, conversation_id, is_dm, linked_conversation_id=None):
+    def __init__(self, url, *, conversation_id, is_dm, linked_conversation_id=None, **models):
         self.conversation_id = conversation_id
         self.is_open = False
         self.close_code = None
@@ -721,6 +722,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "link",
         "unlink",
         "dms",
+        "model",
         "bot",
     }
     assert {sub.name for sub in subcommands["bot"].commands} == {"add", "remove", "list"}
@@ -728,3 +730,93 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
     assert commands["mulca"].default_permissions == discord.Permissions(manage_guild=True)
     assert commands["mulca"].guild_only
     assert commands["restart"].guild_only
+
+
+# ----------------------------------------------------------------------
+# /mulca model
+# ----------------------------------------------------------------------
+
+
+def model_manager(*names):
+    store = LinkStore(":memory:")
+    runtimes = []
+    for position, name in enumerate(names, start=1):
+        store.register_bot(position, name, is_primary=position == 1)
+        runtimes.append(
+            make_runtime(
+                store,
+                link=Link(100 + position, GUILD, position, None),
+                name=name,
+                id=position,
+                guilds=(GUILD,),
+            )
+        )
+    runtimes[0].registry.url = "ws://muca/"
+    return BotManager(runtimes, store=store), store, runtimes
+
+
+async def test_a_bots_own_model_is_saved_and_its_sessions_restart():
+    manager, store, runtimes = model_manager("Alpha", "Beta")
+
+    reply = await set_model(manager, " gpt-new ", "Beta", GUILD)
+
+    assert store.models_for(2) == ("gpt-new", "")
+    assert store.models_for(1) == ("", "")
+    assert runtimes[1].registry.restarted == ["channel:102"]
+    assert runtimes[0].registry.restarted == []
+    assert "Beta" in reply
+
+
+async def test_the_intervention_model_changes_only_with_the_flag():
+    manager, store, _ = model_manager("Alpha")
+    store.set_models(1, "old-main", "old-intervention")
+
+    await set_model(manager, "gpt-new", "Alpha", GUILD)
+    assert store.models_for(1) == ("gpt-new", "old-intervention")
+
+    await set_model(manager, "gpt-newer", "Alpha", GUILD, include_intervention=True)
+    assert store.models_for(1) == ("gpt-newer", "gpt-newer")
+
+
+@pytest.mark.parametrize("target", [None, "all"])
+async def test_without_a_bot_the_servers_model_changes_and_no_bot_is_touched(target):
+    manager, store, runtimes = model_manager("Alpha")
+    calls = []
+
+    async def set_server(url, token, model, *, include_intervention):
+        calls.append((url, token, model, include_intervention))
+
+    reply = await set_model(
+        manager,
+        "gpt-new",
+        target,
+        GUILD,
+        include_intervention=True,
+        admin_token="secret",
+        set_server=set_server,
+    )
+
+    assert calls == [("ws://muca/", "secret", "gpt-new", True)]
+    assert store.models_for(1) == ("", "")
+    assert runtimes[0].registry.restarted == []
+    assert "MUCA-Server now uses `gpt-new`" in reply
+
+
+async def test_the_servers_model_needs_the_admin_token_and_reports_a_refusal():
+    manager, _, _ = model_manager("Alpha")
+
+    async def refuse(*args, **kwargs):
+        return "Invalid admin token"
+
+    assert "MUCA_ADMIN_TOKEN" in await set_model(manager, "m", None, GUILD)
+    reply = await set_model(
+        manager, "m", None, GUILD, admin_token="x", set_server=refuse
+    )
+    assert "Invalid admin token" in reply
+
+
+async def test_an_unknown_bot_changes_nothing():
+    manager, store, _ = model_manager("Alpha")
+
+    assert "No MULCA bot" in await set_model(manager, "m", "Nobody", GUILD)
+    assert store.models_for(1) == ("", "")

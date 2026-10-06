@@ -59,8 +59,10 @@ project's Deploy > Container registry, and update the stack in Swarmpit.
    | ------------------------- | ---------------------- |
    | `muca_openai_api_key`     | the OpenAI API key     |
    | `mulca_discord_bot_token` | the Discord bot token  |
+   | `muca_admin_token`        | any long random string |
 
-   The containers receive them as `OPENAI_API_KEY` and `DISCORD_BOT_TOKEN`. Keys never go in
+   The containers receive them as `OPENAI_API_KEY`, `DISCORD_BOT_TOKEN` and
+   `MUCA_ADMIN_TOKEN` (both services get the last one, so `/mulca model` can change MUCA-Server's model). Keys never go in
    the stack file.
 
 5. **The stack.** Stacks > New stack, name it `muca`, and paste `deploy/stack.yml`. Swarm
@@ -84,6 +86,14 @@ once in one server need two bots. To add one:
 
 All bots run inside the one `mulca` service. `/mulca bot list` shows them, and
 `/mulca bot remove` stops one and deletes its token.
+
+## Changing the model
+
+`/mulca model model:<name>` sets the OpenAI realtime model of every MUCA and restarts all
+sessions on it. It changes the main agent only: add `include_intervention: True` for the
+intervention agent too. With `bot:<name>` it changes just that bot, which then keeps its own
+model even when the model is set for everyone. Both are saved across redeploys. To undo a
+bot's own choice, set it again to the model you want.
 
 ## Security
 

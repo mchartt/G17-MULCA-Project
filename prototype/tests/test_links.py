@@ -165,3 +165,47 @@ def test_a_store_from_before_per_link_dms_is_upgraded_with_dms_off(tmp_path):
     store.save(Link(111, 900, 1, 222, allow_dms=True))
     store.close()
     assert LinkStore(path).all_links()[0].allow_dms
+
+
+def test_a_bots_models_default_to_the_servers_and_survive_a_restart(tmp_path):
+    path = tmp_path / "mulca.db"
+    store = LinkStore(path)
+    store.register_bot(1, "MULCA", is_primary=True)
+    assert store.models_for(1) == ("", "")
+    assert store.models_for(None) == ("", "")
+
+    store.set_models(1, "gpt-a")
+    store.set_models(1, "gpt-b", "gpt-c")
+    store.set_models(1, "gpt-d")
+    store.close()
+
+    assert LinkStore(path).models_for(1) == ("gpt-d", "gpt-c")
+
+
+def test_a_file_from_before_per_bot_models_gains_the_columns(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        """
+        CREATE TABLE bots (
+            bot_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            paused INTEGER NOT NULL DEFAULT 0,
+            token TEXT,
+            added_by INTEGER,
+            added_at REAL
+        );
+        INSERT INTO bots (bot_id, name, is_primary) VALUES (1, 'MULCA', 1);
+        """
+    )
+    old.commit()
+    old.close()
+
+    store = LinkStore(path)
+
+    assert store.models_for(1) == ("", "")
+    store.set_models(1, "gpt-a")
+    assert store.models_for(1) == ("gpt-a", "")

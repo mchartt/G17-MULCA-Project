@@ -361,3 +361,9 @@ async def test_the_servers_model_cannot_be_changed_by_a_server_without_an_admin_
     problem = await set_server_model(server.url, "secret", "gpt-new")
 
     assert problem is not None and "not enabled" in problem
+
+
+async def test_an_unreachable_server_is_reported_not_raised():
+    problem = await set_server_model(f"ws://127.0.0.1:{free_port()}/", "secret", "m")
+
+    assert problem is not None and "couldn't reach" in problem

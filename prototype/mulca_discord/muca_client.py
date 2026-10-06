@@ -69,31 +69,32 @@ async def set_server_model(
     otherwise why not.
     """
 
-    async with websockets.connect(url) as connection:
-        await connection.send(
-            ConnectAgentMessage(event="connect").model_dump_json(by_alias=True)
-        )
-        await connection.send(
-            SetModelMessage(
-                event="set_model",
-                admin_token=admin_token,
-                model=model,
-                include_intervention=include_intervention,
-            ).model_dump_json(by_alias=True)
-        )
+    try:
+        async with websockets.connect(url) as connection:
+            # Sent instead of `connect`: the server builds no agents for it,
+            # so this works even when the current model can't connect.
+            await connection.send(
+                SetModelMessage(
+                    event="set_model",
+                    admin_token=admin_token,
+                    model=model,
+                    include_intervention=include_intervention,
+                ).model_dump_json(by_alias=True)
+            )
 
-        try:
             async with asyncio.timeout(timeout):
                 async for raw in connection:
                     data = json.loads(raw)
                     if data.get("event") == "error":
                         return str(data.get("message"))
-        except ConnectionClosed as exc:
-            if exc.rcvd is not None and exc.rcvd.code == SERVER_RESTART_CLOSE_CODE:
-                return None
-            return f"the server closed the connection ({exc})"
-        except TimeoutError:
-            return "the server didn't answer"
+    except ConnectionClosed as exc:
+        if exc.rcvd is not None and exc.rcvd.code == SERVER_RESTART_CLOSE_CODE:
+            return None
+        return f"the server closed the connection ({exc})"
+    except TimeoutError:
+        return "the server didn't answer"
+    except OSError as exc:
+        return f"couldn't reach the server ({exc})"
 
     return "the server closed the connection"
 

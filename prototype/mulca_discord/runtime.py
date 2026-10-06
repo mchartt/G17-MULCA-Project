@@ -291,6 +291,14 @@ class BotRuntime:
 
         await self.leave_voice(link)
         await self.registry.close(link.conversation_id, wait=RESTART_WAIT_SECONDS)
+        await self.close_dms_of(link)
+
+    async def close_dms_of(self, link: Link) -> None:
+        """Close the DM sessions reading this link's memory (DMs turned off)."""
+
+        for conversation_id, session in list(self.registry.sessions.items()):
+            if session.scope.linked_conversation_id == link.conversation_id:
+                await self.registry.close(conversation_id, wait=RESTART_WAIT_SECONDS)
 
     # ------------------------------------------------------------------
     # Control: /restart, /mulca stop|start|restart

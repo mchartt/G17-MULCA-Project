@@ -252,6 +252,8 @@ async def set_dms(manager: BotManager, channel_id: int, enabled: bool) -> str:
 
     bot, link = found
     bot.store.save(replace(link, allow_dms=enabled))
+    if not enabled:
+        await bot.close_dms_of(link)
 
     if enabled:
         return (

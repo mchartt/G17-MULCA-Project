@@ -125,6 +125,34 @@ async def test_a_session_that_keeps_dying_young_is_reopened_ever_more_slowly(
     assert scope not in registry._backoff
 
 
+async def test_an_idle_session_is_closed_but_one_kept_in_use_is_not(
+    registry,
+    monkeypatch,
+):
+    monkeypatch.setattr(sessions_module, "IDLE_SECONDS", 0.15)
+    monkeypatch.setattr(sessions_module, "REAP_INTERVAL_SECONDS", 0.02)
+
+    async def tick(client) -> None:
+        pass
+
+    idle = await open_scope(registry, "channel:1")
+    voice = Scope(conversation_id="channel:2")
+    in_use = await registry.run(voice, tick, reply_channel=None)
+
+    # Voice sends a frame every 100 ms; here, every 20 ms.
+    for _ in range(20):
+        await asyncio.sleep(0.02)
+        await registry.run(voice, tick, reply_channel=None)
+
+    assert not idle.client.is_open
+    assert idle.client.closes == [sessions_module.RESTART_WAIT_SECONDS]
+    assert in_use.client.is_open
+    assert registry.open_count() == 1
+
+    await registry.close_all()
+    assert registry._reaper is None
+
+
 # ----------------------------------------------------------------------
 # Voice after a reopen
 # ----------------------------------------------------------------------
@@ -626,6 +654,25 @@ async def test_dms_are_turned_on_and_off_per_linked_channel():
     assert runtime.links() == [ALPHA]
 
     assert "isn't linked" in await set_dms(manager, 999, True)
+
+
+async def test_turning_dms_off_closes_the_dm_sessions_reading_that_channel(registry):
+    runtime = make_runtime(link=replace(ALPHA, allow_dms=True))
+    runtime.registry = registry
+    reading_alpha = await registry.get(
+        Scope("dm:5", is_dm=True, linked_conversation_id=ALPHA.conversation_id),
+        reply_channel=None,
+    )
+    reading_other = await registry.get(
+        Scope("dm:6", is_dm=True, linked_conversation_id="channel:999"),
+        reply_channel=None,
+    )
+
+    await set_dms(BotManager([runtime]), 111, False)
+
+    assert not reading_alpha.client.is_open
+    assert reading_other.client.is_open
+    await registry.close_all()
 
 
 async def test_relinking_without_saying_keeps_the_dm_setting():

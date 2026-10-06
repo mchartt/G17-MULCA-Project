@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -36,6 +37,13 @@ RECONNECT_DELAYS_SECONDS = (0.0, 0.5, 1.0, 2.0)
 SHORT_LIVED_SECONDS = 10.0
 SHORT_LIVED_BACKOFF_SECONDS = (1.0, 30.0)
 
+# A session nobody used for this long (no text message, no voice frame) is
+# closed: each one holds two OpenAI Realtime connections on the server. The
+# next message reopens it, with its memory. Voice sends a frame every 100 ms,
+# so a session stays open for as long as the bot is in its voice channel.
+IDLE_SECONDS = float(os.environ.get("MULCA_SESSION_IDLE_SECONDS", "600"))
+REAP_INTERVAL_SECONDS = 60.0
+
 # How long a restart waits for the server to confirm the old session saved
 # its memory before the new one is opened.
 RESTART_WAIT_SECONDS = 5.0
@@ -59,6 +67,7 @@ class ScopeSession:
     on_state_update: StateUpdateHandler | None = None
 
     opened_at: float = field(default_factory=time.monotonic)
+    last_used: float = field(default_factory=time.monotonic)
 
     async def handle_state_update(self, data: dict) -> None:
         if self.on_state_update is not None:
@@ -90,6 +99,7 @@ class SessionRegistry:
         # save) must not hold up every other scope.
         self._locks: dict[str, asyncio.Lock] = {}
         self._backoff: dict[str, float] = {}
+        self._reaper: asyncio.Task[None] | None = None
 
     @property
     def url(self) -> str:
@@ -135,6 +145,13 @@ class SessionRegistry:
             client.on_state_update = session.handle_state_update
 
             self._sessions[scope.conversation_id] = session
+            logger.info(
+                "Opened the session for %s (%d open)",
+                scope.conversation_id,
+                self.open_count(),
+            )
+            if self._reaper is None or self._reaper.done():
+                self._reaper = asyncio.create_task(self._reap_idle())
             return session
 
     async def run(
@@ -166,6 +183,7 @@ class SessionRegistry:
             reply_channel=reply_channel,
             post_voice_transcripts=post_voice_transcripts,
         )
+        session.last_used = time.monotonic()
 
         try:
             await action(session.client)
@@ -205,7 +223,13 @@ class SessionRegistry:
             if session is None or not session.client.is_open:
                 return True
 
-            return await session.client.close(wait_for_server=wait)
+            saved = await session.client.close(wait_for_server=wait)
+            logger.info(
+                "Closed the session for %s (%d open)",
+                conversation_id,
+                self.open_count(),
+            )
+            return saved
 
     async def restart(
         self,
@@ -223,8 +247,32 @@ class SessionRegistry:
         return await self.close(conversation_id, wait=wait)
 
     async def close_all(self) -> None:
+        if self._reaper is not None:
+            self._reaper.cancel()
+            self._reaper = None
+
         for conversation_id in list(self._sessions):
             await self.close(conversation_id)
+
+    def open_count(self) -> int:
+        return sum(1 for session in self._sessions.values() if session.client.is_open)
+
+    async def _reap_idle(self) -> None:
+        while True:
+            await asyncio.sleep(REAP_INTERVAL_SECONDS)
+
+            now = time.monotonic()
+            for conversation_id, session in list(self._sessions.items()):
+                if session.client.is_open and now - session.last_used > IDLE_SECONDS:
+                    logger.info(
+                        "Closing the session for %s: unused for %.0f s",
+                        conversation_id,
+                        now - session.last_used,
+                    )
+                    try:
+                        await self.close(conversation_id, wait=RESTART_WAIT_SECONDS)
+                    except Exception:
+                        logger.exception("Could not close idle session %s", conversation_id)
 
     def _lock_for(self, conversation_id: str) -> asyncio.Lock:
         return self._locks.setdefault(conversation_id, asyncio.Lock())

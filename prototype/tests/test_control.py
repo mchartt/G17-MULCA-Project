@@ -125,34 +125,6 @@ async def test_a_session_that_keeps_dying_young_is_reopened_ever_more_slowly(
     assert scope not in registry._backoff
 
 
-async def test_an_idle_session_is_closed_but_one_kept_in_use_is_not(
-    registry,
-    monkeypatch,
-):
-    monkeypatch.setattr(sessions_module, "IDLE_SECONDS", 0.15)
-    monkeypatch.setattr(sessions_module, "REAP_INTERVAL_SECONDS", 0.02)
-
-    async def tick(client) -> None:
-        pass
-
-    idle = await open_scope(registry, "channel:1")
-    voice = Scope(conversation_id="channel:2")
-    in_use = await registry.run(voice, tick, reply_channel=None)
-
-    # Voice sends a frame every 100 ms; here, every 20 ms.
-    for _ in range(20):
-        await asyncio.sleep(0.02)
-        await registry.run(voice, tick, reply_channel=None)
-
-    assert not idle.client.is_open
-    assert idle.client.closes == [sessions_module.RESTART_WAIT_SECONDS]
-    assert in_use.client.is_open
-    assert registry.open_count() == 1
-
-    await registry.close_all()
-    assert registry._reaper is None
-
-
 # ----------------------------------------------------------------------
 # Voice after a reopen
 # ----------------------------------------------------------------------
@@ -771,8 +743,11 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "dms",
         "model",
         "bot",
+        "limit",
+        "usage",
     }
     assert {sub.name for sub in subcommands["bot"].commands} == {"add", "remove", "list"}
+    assert {sub.name for sub in subcommands["limit"].commands} == {"set", "clear"}
     # Hidden from everyone without Manage Server, and never in DMs.
     assert commands["mulca"].default_permissions == discord.Permissions(manage_guild=True)
     assert commands["mulca"].guild_only

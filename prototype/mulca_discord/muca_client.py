@@ -44,11 +44,17 @@ NO_SPEAKER = -1
 AssistantTextHandler = Callable[[str, bool, str], Awaitable[None]]
 StateUpdateHandler = Callable[[dict], Awaitable[None]]
 ClosedHandler = Callable[[], Awaitable[None]]
+ErrorHandler = Callable[[str], Awaitable[None]]
 
 
 # MUCA-Server closes a session with this ("service restart") when its
 # provider connection ended, e.g. OpenAI's 60-minute Realtime limit.
 SERVER_RESTART_CLOSE_CODE = 1012
+
+# How long connect() waits for the server to accept the session: its first
+# frame (the intervention agent's guid, or an error creating it). A server
+# that refuses (too many sessions, no provider) closes without a word.
+HANDSHAKE_TIMEOUT_SECONDS = 10.0
 
 
 class MucaConnectionLost(ConnectionError):
@@ -131,11 +137,13 @@ class MucaWsClient:
 
         # Guids of the observers the server created for this session.
         self.agent_guids: list[str] = []
+        self._accepted = asyncio.Event()
 
         # Set by the caller before connect().
         self.on_assistant_text: AssistantTextHandler | None = None
         self.on_state_update: StateUpdateHandler | None = None
         self.on_closed: ClosedHandler | None = None
+        self.on_error: ErrorHandler | None = None
 
     @property
     def conversation_id(self) -> str:
@@ -175,6 +183,20 @@ class MucaWsClient:
             self._receive_loop(),
             name=f"muca-receive-{self._conversation_id}",
         )
+
+        # Open only once the server accepted it: one that refuses (too many
+        # sessions, or no provider) closes the socket instead, and a message
+        # sent meanwhile would be lost without a word.
+        accepted = asyncio.create_task(self._accepted.wait())
+        await asyncio.wait(
+            {accepted, self._receive_task},
+            timeout=HANDSHAKE_TIMEOUT_SECONDS,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        accepted.cancel()
+        if not self._accepted.is_set():
+            await self.close()
+            raise MucaConnectionLost(self._conversation_id)
 
     async def send_participants(
         self,
@@ -328,6 +350,7 @@ class MucaWsClient:
             return
 
         event = data.get("event")
+        self._accepted.set()
 
         try:
             if event == "assistant_text":
@@ -348,6 +371,8 @@ class MucaWsClient:
                     self._conversation_id,
                     data.get("message"),
                 )
+                if self.on_error is not None:
+                    await self.on_error(str(data.get("message")))
             else:
                 # agent_message: observability only.
                 logger.debug("server event %s: %s", event, data)

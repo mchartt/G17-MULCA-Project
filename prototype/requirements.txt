@@ -7,4 +7,6 @@ websockets>=13,<16
 python-dotenv>=1.0,<2
 pyyaml>=6,<7
 numpy>=1.26,<3
+# Time zones for usage limits (usage.py); slim images and Windows have none.
+tzdata
 -e ../../MUCA-Server

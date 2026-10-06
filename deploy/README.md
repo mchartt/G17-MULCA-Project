@@ -95,6 +95,25 @@ intervention agent too. With `bot:<name>` it changes just that bot, which then k
 model even when the model is set for everyone. Both are saved across redeploys. To undo a
 bot's own choice, set it again to the model you want.
 
+## Limiting use
+
+`/mulca limit set target:<bot|all|pool> daily:<hours> weekly:<hours>` caps how long MULCA may
+be used. Time counts in active minutes per channel: a minute in which someone wrote or spoke,
+or MULCA replied. Two busy channels for an hour use two hours. There are three limits, and
+whichever runs out first stops the bot:
+
+- **A single bot:** that bot's own limit.
+- **`all`:** the default for every bot without a limit of its own.
+- **`pool`:** all bots together. It defaults to 10 times `all`.
+
+Days reset at midnight Europe/Rome (`MULCA_TIMEZONE`), and weeks on Monday. `/restart` never
+resets usage.
+
+A bot that reaches a limit says so once in the channel, leaves voice and stops answering until
+the reset; after that it answers only an @mention, with the same message. `/mulca limit clear`
+removes a limit. `/mulca usage` and `/mulca status` show what each bot used today and this
+week.
+
 ## Security
 
 - **Added bots' tokens are stored unencrypted** in the `mulca-data` volume on `i3lab`

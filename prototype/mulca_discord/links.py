@@ -12,8 +12,8 @@ see that link's text channel may DM the bot.
 
 LinkStore keeps the links, the bots added with /mulca bot add (with their
 tokens, unencrypted -- the file is readable only by the bot's own user), each
-bot's paused state and where each user last spoke (what a DM from them gets
-read access to) in a small SQLite file, on a volume, so all of it survives a
+bot's paused state, where each user last spoke (what a DM from them gets
+read access to), and each bot's usage and limits (usage.py) in a small SQLite file, on a volume, so all of it survives a
 redeploy.
 """
 
@@ -28,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -62,6 +62,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_voice_per_bot_per_guild
 CREATE TABLE IF NOT EXISTS last_link_by_user (
     user_id INTEGER PRIMARY KEY,
     text_channel_id INTEGER NOT NULL
+);
+-- Active minutes per bot and local day (usage.py), summed over its channels.
+CREATE TABLE IF NOT EXISTS usage (
+    bot_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    active_minutes INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (bot_id, day)
+);
+-- Usage limits, in minutes (NULL: none). scope is "bot:<id>", "each" (every
+-- bot without its own) or "pool" (all bots together).
+CREATE TABLE IF NOT EXISTS limits (
+    scope TEXT PRIMARY KEY,
+    daily_minutes INTEGER,
+    weekly_minutes INTEGER
 );
 """
 
@@ -395,3 +409,47 @@ class LinkStore:
     def last_link_for(self, user_id: int) -> Link | None:
         text_channel_id = self._last_by_user.get(user_id)
         return self._links.get(text_channel_id) if text_channel_id else None
+
+    # -- usage and limits (usage.py) ---------------------------------------
+
+    def add_active_minute(self, bot_id: int, day: str) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT INTO usage (bot_id, day, active_minutes) VALUES (?, ?, 1) "
+                "ON CONFLICT (bot_id, day) DO UPDATE SET "
+                "active_minutes = active_minutes + 1",
+                (bot_id, day),
+            )
+
+    def active_minutes(self, bot_id: int | None, first_day: str, last_day: str) -> int:
+        """A bot's active minutes over these days (inclusive); None: all bots."""
+
+        row = self._db.execute(
+            "SELECT COALESCE(SUM(active_minutes), 0) FROM usage "
+            "WHERE day BETWEEN ? AND ? AND (? IS NULL OR bot_id = ?)",
+            (first_day, last_day, bot_id, bot_id),
+        ).fetchone()
+        return row[0]
+
+    def limit(self, scope: str) -> tuple[int | None, int | None] | None:
+        """(daily, weekly) minutes for this scope, or None if it has none."""
+
+        row = self._db.execute(
+            "SELECT daily_minutes, weekly_minutes FROM limits WHERE scope = ?",
+            (scope,),
+        ).fetchone()
+        return (row[0], row[1]) if row else None
+
+    def set_limit(self, scope: str, daily: int | None, weekly: int | None) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT INTO limits (scope, daily_minutes, weekly_minutes) "
+                "VALUES (?, ?, ?) ON CONFLICT (scope) DO UPDATE SET "
+                "daily_minutes = excluded.daily_minutes, "
+                "weekly_minutes = excluded.weekly_minutes",
+                (scope, daily, weekly),
+            )
+
+    def clear_limit(self, scope: str) -> None:
+        with self._db:
+            self._db.execute("DELETE FROM limits WHERE scope = ?", (scope,))

@@ -12,6 +12,9 @@ Discord's "/" menu).
   the people of a channel may DM it (off by default).
 - /mulca model: members with Manage Server -- the realtime model of every
   MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
+- /mulca limit set|clear, /mulca usage: members with Manage Server -- how
+  many hours of active use a bot, every bot, or all bots together get per
+  day and per week (usage.py), and how much they used. Deployment-wide too.
 - /mulca bot add|remove|list: members with Manage Server -- more bot
   accounts, run by this same process. These act on the whole deployment,
   not just the server they're used in (see deploy/README.md, Security).
@@ -34,7 +37,8 @@ from discord import app_commands
 from .links import BotRecord, Link
 from .muca_client import set_server_model
 from .permissions import missing_permissions
-from .runtime import AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
+from .runtime import LIMIT, AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
+from .usage import EACH, POOL, POOL_FACTOR, bot_scope
 
 logger = logging.getLogger(__name__)
 
@@ -391,6 +395,114 @@ async def set_model(
     return f"{names} now use `{model}`; their sessions were restarted."
 
 
+def _hours(minutes: int | None) -> str:
+    if minutes is None:
+        return "no limit"
+    return _duration(minutes * 60) if minutes else "0m"
+
+
+def _limit_target(
+    manager: BotManager,
+    target: str | None,
+    guild_id: int,
+) -> tuple[str, str] | str:
+    """The (store scope, label) a /mulca limit target means, or why none."""
+
+    wanted = (target or ALL).strip().lower()
+    if wanted == ALL:
+        return EACH, "Every bot"
+    if wanted == POOL:
+        return POOL, "All bots together"
+
+    try:
+        bots = manager.resolve(target, guild_id)
+    except AmbiguousBotName as exc:
+        return _ambiguous_bot_message(exc)
+    if not bots:
+        return f"No MULCA bot called {target!r} in this server."
+    return bot_scope(bots[0].user_id), f"**{bots[0].name}**"
+
+
+async def set_limit(
+    manager: BotManager,
+    target: str | None,
+    daily_hours: float | None,
+    weekly_hours: float | None,
+    guild_id: int,
+) -> str:
+    """/mulca limit set: hours of active use per day and per week."""
+
+    if daily_hours is None and weekly_hours is None:
+        return "Give a daily or a weekly limit, in hours."
+
+    found = _limit_target(manager, target, guild_id)
+    if isinstance(found, str):
+        return found
+    scope, label = found
+
+    daily, weekly = (
+        None if hours is None else max(0, round(hours * 60))
+        for hours in (daily_hours, weekly_hours)
+    )
+    manager.store.set_limit(scope, daily, weekly)
+    for bot in manager.bots:
+        await bot.recheck_limits()
+
+    reply = f"{label}: {_hours(daily)} a day, {_hours(weekly)} a week of active use."
+    if scope == EACH and manager.store.limit(POOL) is None:
+        reply += (
+            f" All bots together get {POOL_FACTOR}x that, until "
+            "`/mulca limit set target:pool` sets it on its own."
+        )
+    return reply
+
+
+async def clear_limit(manager: BotManager, target: str | None, guild_id: int) -> str:
+    """/mulca limit clear."""
+
+    found = _limit_target(manager, target, guild_id)
+    if isinstance(found, str):
+        return found
+    scope, label = found
+
+    manager.store.clear_limit(scope)
+    for bot in manager.bots:
+        await bot.recheck_limits()
+    return f"{label}: no limit of its own any more."
+
+
+def format_usage(manager: BotManager, target: str | None, guild_id: int) -> str:
+    """/mulca usage: active use today and this week, against the limits."""
+
+    try:
+        bots = manager.resolve(target, guild_id)
+    except AmbiguousBotName as exc:
+        return _ambiguous_bot_message(exc)
+    if not bots:
+        return f"No MULCA bot called {target!r} in this server."
+
+    def line(label: str, used: tuple[int, int], limits) -> str:
+        daily, weekly = limits or (None, None)
+        return (
+            f"{label}: today {_hours(used[0])} of {_hours(daily)}, "
+            f"this week {_hours(used[1])} of {_hours(weekly)}"
+        )
+
+    lines = []
+    for bot in bots:
+        limits = bot.usage.limits(bot.user_id)
+        lines.append(
+            line(f"**{bot.name}**", bot.usage.used(bot.user_id), limits.get("bot"))
+            + (" -- over its limit now" if bot.notices.is_active(LIMIT) else "")
+        )
+
+    meter = bots[0].usage
+    lines.append(
+        line("All bots together", meter.used(None), meter.limits(bots[0].user_id).get("pool"))
+    )
+    return "\n".join(lines)
+
+
 def invite_url(application_id: int) -> str:
     return discord.utils.oauth_url(
         application_id,
@@ -611,9 +723,11 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot, link = found
         await interaction.response.defer(thinking=True)
         outcome = await bot.restart_link(link)
-        await interaction.followup.send(
-            restart_message(interaction.user.mention, outcome),
-        )
+        reply = restart_message(interaction.user.mention, outcome)
+        if bot.notices.is_active(LIMIT):
+            # A restart never resets usage: the limit still holds.
+            reply += " It's still over its usage limit, though."
+        await interaction.followup.send(reply)
 
     # -- /mulca ... -----------------------------------------------------
 
@@ -630,7 +744,12 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             bot.status(interaction.guild_id)
             for bot in manager.in_guild(interaction.guild_id)
         ]
-        await interaction.response.send_message(format_status(statuses), ephemeral=True)
+        await interaction.response.send_message(
+            format_status(statuses)
+            + "\n\nActive use:\n"
+            + format_usage(manager, None, interaction.guild_id),
+            ephemeral=True,
+        )
 
     @mulca.command(
         name="link",
@@ -821,6 +940,56 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
     @bots.command(name="list", description="Every MULCA bot account, and what it's doing.")
     async def bot_list(interaction: discord.Interaction) -> None:
         await interaction.response.send_message(list_bots(manager), ephemeral=True)
+
+    # -- /mulca limit ..., /mulca usage ----------------------------------
+
+    limit = app_commands.Group(
+        name="limit",
+        description="Hours of active use per day and week (for the whole deployment).",
+        parent=mulca,
+    )
+
+    async def limit_choices(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        pool = app_commands.Choice(name=f"{POOL} (all bots together)", value=POOL)
+        choices = await bot_choices(interaction, current)
+        return ([pool] if current.lower() in pool.name else []) + choices[:24]
+
+    @limit.command(name="set", description="Limit how long MULCA may be used per day and per week.")
+    @app_commands.describe(
+        target="One bot, all (each bot, by default), or pool (all bots together).",
+        daily="Hours of active use per day, e.g. 4 or 1.5.",
+        weekly="Hours of active use per week, e.g. 10.",
+    )
+    @app_commands.autocomplete(target=limit_choices)
+    async def limit_set(
+        interaction: discord.Interaction,
+        target: str,
+        daily: float | None = None,
+        weekly: float | None = None,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await set_limit(manager, target, daily, weekly, interaction.guild_id)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @limit.command(name="clear", description="Remove a usage limit.")
+    @app_commands.describe(target="One bot, all (each bot), or pool (all bots together).")
+    @app_commands.autocomplete(target=limit_choices)
+    async def limit_clear(interaction: discord.Interaction, target: str) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await clear_limit(manager, target, interaction.guild_id)
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(name="usage", description="How long MULCA was used today and this week.")
+    @app_commands.describe(bot="One bot, or all of them in this server (default).")
+    @app_commands.autocomplete(bot=bot_choices)
+    async def usage_command(interaction: discord.Interaction, bot: str | None = None) -> None:
+        await interaction.response.send_message(
+            format_usage(manager, bot, interaction.guild_id),
+            ephemeral=True,
+        )
 
     tree.add_command(mulca)
 

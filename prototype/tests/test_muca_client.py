@@ -367,3 +367,17 @@ async def test_an_unreachable_server_is_reported_not_raised():
     problem = await set_server_model(f"ws://127.0.0.1:{free_port()}/", "secret", "m")
 
     assert problem is not None and "couldn't reach" in problem
+
+
+async def test_a_server_that_refuses_the_session_is_not_taken_for_open(server, monkeypatch):
+    from muca_server.sessions.session_runtime import SessionRuntime
+
+    # MUCA-Server at its session limit closes with 1013 before any agent.
+    monkeypatch.setattr(SessionRuntime, "max_sessions", 0)
+    client = MucaWsClient(server.url, conversation_id="channel:1", is_dm=False)
+
+    with pytest.raises(MucaConnectionLost):
+        await client.connect()
+
+    assert not client.is_open
+    assert client.close_code == 1013

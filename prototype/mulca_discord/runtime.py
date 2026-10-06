@@ -22,9 +22,12 @@ from dataclasses import dataclass, field
 
 import discord
 
+from . import messages
 from .links import BotRecord, Link, LinkStore, link_for_channel
+from .messages import Notices
 from .permissions import missing_permissions
-from .sessions import RESTART_WAIT_SECONDS, Scope, SessionRegistry
+from .sessions import RESTART_WAIT_SECONDS, Scope, ScopeSession, SessionRegistry
+from .usage import WARNING_MINUTES, UsageMeter
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +45,18 @@ class AmbiguousBotName(Exception):
         )
 
 # The answer to a DM the bot doesn't take.
-DMS_OFF_REPLY = (
-    "I don't take direct messages here. Talk to me in a server channel I'm "
-    "in -- or ask a server admin to turn DMs on for that channel (/mulca dms)."
-)
+DMS_OFF_REPLY = messages.DMS_OFF
+
+# The problems a bot tells its users about (messages.Notices), besides one
+# "voice:<link>" per voice channel it can't join.
+LIMIT = "limit"
+WARNING = "warning"
+OFFLINE = "offline"
+PAUSED = "paused"
+TURN_FAILED = "turn_failed"
+
+# How often a bot over its limit checks whether it may answer again.
+LIMIT_CHECK_SECONDS = 60.0
 
 
 async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
@@ -115,6 +126,17 @@ class BotRuntime:
 
     # Called after each on_ready, e.g. to sync slash commands.
     after_ready: list[ReadyHook] = field(default_factory=list)
+
+    usage: UsageMeter | None = None
+    notices: Notices = field(default_factory=Notices)
+    _tasks: set[asyncio.Task[None]] = field(default_factory=set, repr=False)
+    _watch: asyncio.Task[None] | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.usage is None:
+            self.usage = UsageMeter(self.store)
+        self.registry.on_reply = self._on_reply
+        self.registry.on_server_error = self._on_server_error
 
     def install(self) -> None:
         """Route this client's Discord events here."""
@@ -218,6 +240,18 @@ class BotRuntime:
             )
             return
 
+        text_channel = self.client.get_channel(link.text_channel_id)
+        me = getattr(getattr(channel, "guild", None), "me", None)
+        missing = missing_permissions(channel, me, voice=True) if me is not None else []
+        if missing:
+            await self.notices.raise_(
+                f"voice:{link.name}",
+                text_channel,
+                messages.voice_join_failed(link.voice_channel_id, missing),
+            )
+            return
+        self.notices.forget(f"voice:{link.name}")
+
         logger.info("Joining voice channel %s for %s", channel, link.name)
         voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
 
@@ -229,6 +263,8 @@ class BotRuntime:
             post_voice_transcripts=link.post_voice_transcripts,
             roster=lambda: self.roster_voice(link),
             on_unhealthy=lambda: self._rejoin_voice(link),
+            on_active=lambda: self.voice_active(link),
+            on_reachable=lambda reachable: self.server_reachable(text_channel, reachable),
         )
         self.voice[link.name] = bridge
         await bridge.start()
@@ -258,7 +294,7 @@ class BotRuntime:
             if link.voice_channel_id is not None
             else None
         )
-        if _humans(channel) and not self.paused:
+        if _humans(channel) and not self.paused and not self.notices.is_active(LIMIT):
             await self.join_voice(link)
         else:
             await self.leave_voice(link)
@@ -358,6 +394,7 @@ class BotRuntime:
             return
 
         self.paused = False
+        self.notices.forget(PAUSED)
         logger.info("Resuming %s", self.name)
         await self._sync_all_voice()
 
@@ -458,6 +495,9 @@ class BotRuntime:
             )
 
         await self._sync_all_voice()
+        # on_ready comes again after every reconnect to Discord: one watch.
+        if self._watch is None or self._watch.done():
+            self._watch = asyncio.create_task(self._watch_limits())
 
         for hook in self.after_ready:
             try:
@@ -511,10 +551,14 @@ class BotRuntime:
             message.content,
         )
 
-        if self.paused or message.author.bot or not message.content:
+        if message.author.bot or not message.content:
             return
 
-        is_dm = isinstance(message.channel, discord.DMChannel)
+        channel = message.channel
+        tagged = self.client.user is not None and self.client.user in getattr(
+            message, "mentions", []
+        )
+        is_dm = isinstance(channel, discord.DMChannel)
         link: Link | None = None
 
         if is_dm:
@@ -523,10 +567,8 @@ class BotRuntime:
             # channel. Such a DM may also read that channel's group memory.
             linked = self.dm_link(message.author.id)
             if linked is None:
-                try:
-                    await message.channel.send(DMS_OFF_REPLY)
-                except Exception:
-                    logger.warning("Could not answer a refused DM")
+                if not self.paused:
+                    await messages.post(channel, DMS_OFF_REPLY)
                 return
 
             scope = Scope(
@@ -540,7 +582,20 @@ class BotRuntime:
                 # Not a channel linked to this bot.
                 return
             scope = Scope(conversation_id=link.conversation_id)
+
+        if self.paused:
+            await self._announce(PAUSED, channel, messages.PAUSED, tagged=tagged)
+            return
+
+        if link is not None:
             self.store.remember_speaker(message.author.id, link.text_channel_id)
+
+        if await self.over_limit(channel, tagged=tagged):
+            return
+
+        warned = False
+        if self.usage.mark_active(self.user_id, scope.conversation_id):
+            warned = await self._warn_if_low(channel)
 
         roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
@@ -576,8 +631,129 @@ class BotRuntime:
                 "MUCA-Server is unreachable; dropping a message for %s",
                 scope.conversation_id,
             )
+            await self._announce(OFFLINE, channel, messages.OFFLINE, tagged=tagged)
+            return
+
+        await self.notices.resolve(OFFLINE, messages.BACK_ONLINE)
+
+        if tagged:
+            if getattr(message, "attachments", None) or getattr(message, "stickers", None):
+                await messages.post(channel, messages.ATTACHMENTS)
+            await self.notices.remind(channel, skip=(WARNING,) if warned else ())
+
+    # ------------------------------------------------------------------
+    # Usage limits, and telling users what's wrong (messages.py)
+    # ------------------------------------------------------------------
+
+    async def _announce(self, problem: str, channel, text: str, *, tagged: bool) -> None:
+        """Once when the problem is raised; again only for an @mention."""
+
+        if not await self.notices.raise_(problem, channel, text) and tagged:
+            await messages.post(channel, self.notices.text(problem) or text)
+
+    async def over_limit(self, channel, *, tagged: bool = False) -> bool:
+        """
+        Whether this bot is over a usage limit. The first time, it says so
+        and stops: out of voice, its sessions closed (memory saved).
+        """
+
+        budget = self.usage.check(self.user_id)
+        if budget is None:
+            return False
+
+        if await self.notices.raise_(LIMIT, channel, messages.limit_reached(budget)):
+            logger.info(
+                "%s is over its %s %s limit (%d/%d min)",
+                self.name,
+                budget.scope,
+                budget.kind,
+                budget.used,
+                budget.limit,
+            )
+            # Not awaited: this may run inside a voice bridge's own tick,
+            # which leaving voice cancels.
+            self._spawn(self._stop_for_limit())
+        elif tagged:
+            await messages.post(channel, self.notices.text(LIMIT))
+
+        return True
+
+    async def _stop_for_limit(self) -> None:
+        for link in self.links():
+            await self.leave_voice(link)
+        for conversation_id in list(self.registry.sessions):
+            await self.registry.close(conversation_id, wait=RESTART_WAIT_SECONDS)
+
+    async def _warn_if_low(self, channel) -> bool:
+        """The heads-up before a limit, once; True if it was just posted."""
+
+        budget = self.usage.tightest(self.user_id)
+        if budget is None or budget.left > WARNING_MINUTES:
+            return False
+
+        return await self.notices.raise_(WARNING, channel, messages.limit_warning(budget))
+
+    async def voice_active(self, link: Link) -> bool:
+        """
+        Someone holds the floor in voice, or MULCA is heard: counts this
+        minute. False when over a limit, so the bridge sends nothing.
+        """
+
+        if not self.usage.is_new_minute(link.conversation_id):
+            return True
+
+        channel = self.client.get_channel(link.text_channel_id)
+        if await self.over_limit(channel):
+            return False
+
+        self.usage.mark_active(self.user_id, link.conversation_id)
+        await self._warn_if_low(channel)
+        return True
+
+    async def server_reachable(self, channel, reachable: bool) -> None:
+        if reachable:
+            await self.notices.resolve(OFFLINE, messages.BACK_ONLINE)
+        else:
+            await self.notices.raise_(OFFLINE, channel, messages.OFFLINE)
+
+    def _on_reply(self, session: ScopeSession, is_final: bool) -> None:
+        self.usage.mark_active(self.user_id, session.scope.conversation_id)
+        if is_final:
+            self.notices.forget(TURN_FAILED)
+
+    async def _on_server_error(self, session: ScopeSession, message: str) -> None:
+        await self.notices.raise_(TURN_FAILED, session.replies.channel, messages.TURN_FAILED)
+
+    async def recheck_limits(self) -> None:
+        """After a new day or week, or a changed limit: lift what's over."""
+
+        if self.notices.is_active(LIMIT) and self.usage.check(self.user_id) is None:
+            logger.info("%s is back under its usage limits", self.name)
+            await self.notices.resolve(LIMIT, messages.AVAILABLE_AGAIN)
+            await self._sync_all_voice()
+
+        budget = self.usage.tightest(self.user_id)
+        if budget is None or budget.left > WARNING_MINUTES:
+            self.notices.forget(WARNING)
+
+    async def _watch_limits(self) -> None:
+        while True:
+            await asyncio.sleep(LIMIT_CHECK_SECONDS)
+            try:
+                await self.recheck_limits()
+            except Exception:
+                logger.exception("Checking %s's usage limits failed", self.name)
+
+    def _spawn(self, coroutine) -> None:
+        task = asyncio.create_task(coroutine)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def close(self) -> None:
+        for task in [*self._tasks, self._watch]:
+            if task is not None:
+                task.cancel()
+
         for bridge in list(self.voice.values()):
             await bridge.disconnect()
         self.voice.clear()

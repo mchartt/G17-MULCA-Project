@@ -99,6 +99,10 @@ class ReplyDispatcher:
         self.post_voice_transcripts = post_voice_transcripts
         self._replies: dict[str, _Reply] = {}
 
+    @property
+    def channel(self):
+        return self._channel
+
     async def on_delta(
         self,
         text: str,

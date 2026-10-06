@@ -18,7 +18,7 @@ import base64
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
@@ -75,6 +75,8 @@ class VoiceBridge:
         post_voice_transcripts: bool = False,
         roster: Callable[[], dict[int, str]] = dict,
         on_unhealthy: Callable[[], Any] | None = None,
+        on_active: Callable[[], Awaitable[bool]] | None = None,
+        on_reachable: Callable[[bool], Awaitable[None]] | None = None,
     ) -> None:
         self._scope = scope
         self._registry = registry
@@ -88,6 +90,11 @@ class VoiceBridge:
         # reach whenever tier 1 (just reopening the MUCA-Server session)
         # doesn't verifiably fix things -- not a scary last resort to avoid.
         self._on_unhealthy = on_unhealthy
+        # Someone holds the floor or MULCA is heard: counts toward the bot's
+        # usage, and False means it's over its limit (send nothing). And
+        # whether MUCA-Server could be reached, for the users to hear of.
+        self._on_active = on_active
+        self._on_reachable = on_reachable
 
         self.synchronizer = SpeakerSynchronizer()
         self.player = AssistantPlayer()
@@ -245,6 +252,8 @@ class VoiceBridge:
                     "Voice for %s: MUCA-Server unreachable",
                     self._scope.conversation_id,
                 )
+                if self._on_reachable is not None:
+                    await self._on_reachable(False)
                 await asyncio.sleep(1)
                 await self._watchdog_tick_failed()
             except Exception:
@@ -252,6 +261,8 @@ class VoiceBridge:
                 await self._watchdog_tick_failed()
             else:
                 self._consecutive_tick_failures = 0
+                if self._on_reachable is not None:
+                    await self._on_reachable(True)
 
     async def _watchdog_tick_failed(self) -> None:
         """
@@ -306,6 +317,13 @@ class VoiceBridge:
     async def _tick(self) -> None:
         speaker, samples = self.synchronizer.take_frame(_now_ms())
         played = self.player.take_played()
+
+        if (
+            (speaker is not None or played)
+            and self._on_active is not None
+            and not await self._on_active()
+        ):
+            return
 
         if self._recorder is not None:
             self._recorder.write_tick(speaker, samples, TICK_SAMPLES)

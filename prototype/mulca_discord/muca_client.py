@@ -23,6 +23,7 @@ from websockets.exceptions import ConnectionClosed
 
 from muca_server.agents.options import INTERVENTION_DETECTION
 from muca_server.protocol import (
+    ArmListeningMessage,
     AudioStreamMessage,
     ConnectAgentMessage,
     CreateAuxiliaryAgentMessage,
@@ -162,6 +163,7 @@ class MucaWsClient:
         is_dm: bool,
         linked_conversation_id: str | None = None,
         bot_name: str = "",
+        listening_mode: str = "",
         main_model: str = "",
         intervention_model: str = "",
     ) -> None:
@@ -171,6 +173,10 @@ class MucaWsClient:
         self._intervention_model = intervention_model
         self._conversation_id = conversation_id
         self._bot_name = bot_name
+        # "" means unset -- use MUCA-Server's own MUCA_LISTENING_MODE
+        # default; the Link this came from otherwise always has "ambient"
+        # or "push_to_talk" (links.py's own default), never "".
+        self._listening_mode = listening_mode
         self._is_dm = is_dm
         # For a DM only: the group conversation_id of the linked channel
         # its sender last spoke in (and can still see), so MUCA-Server can
@@ -219,6 +225,7 @@ class MucaWsClient:
                 is_dm=self._is_dm,
                 linked_conversation_id=self._linked_conversation_id,
                 bot_name=self._bot_name,
+                listening_mode=self._listening_mode or None,
                 main_model=self._main_model,
                 intervention_model=self._intervention_model,
             )
@@ -248,6 +255,11 @@ class MucaWsClient:
         if not self._accepted.is_set():
             await self.close()
             raise MucaConnectionLost(self._conversation_id)
+
+    async def arm_listening(self) -> None:
+        """push_to_talk mode: a participant pressed the button."""
+
+        await self._send(ArmListeningMessage(event="arm_listening"))
 
     async def send_participants(
         self,

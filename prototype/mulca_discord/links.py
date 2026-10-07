@@ -28,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS links (
     voice_channel_id INTEGER UNIQUE,
     post_voice_transcripts INTEGER NOT NULL DEFAULT 0,
     allow_dms INTEGER NOT NULL DEFAULT 0,
+    listening_mode TEXT NOT NULL DEFAULT 'ambient',
     created_by INTEGER,
     created_at REAL
 );
@@ -102,6 +103,10 @@ class Link:
     post_voice_transcripts: bool = False
     # Whether people who can see this text channel may DM the bot.
     allow_dms: bool = False
+    # Per-link override of MUCA-Server's own MUCA_LISTENING_MODE default
+    # (sent in the connect handshake, see muca_client.py) -- lets different
+    # teams run different modes without a server-wide redeploy.
+    listening_mode: str = "ambient"
 
     @property
     def conversation_id(self) -> str:
@@ -161,10 +166,11 @@ class LinkStore:
                 voice_channel_id=row[3],
                 post_voice_transcripts=bool(row[4]),
                 allow_dms=bool(row[5]),
+                listening_mode=row[6],
             )
             for row in self._db.execute(
                 "SELECT text_channel_id, guild_id, bot_id, voice_channel_id, "
-                "post_voice_transcripts, allow_dms FROM links"
+                "post_voice_transcripts, allow_dms, listening_mode FROM links"
             )
         }
 
@@ -192,6 +198,14 @@ class LinkStore:
                 self._db.execute(
                     f"ALTER TABLE bots ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
                 )
+
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(links)")}
+        if "listening_mode" not in columns:
+            # Version 4: every link was ambient (MUCA-Server's own default).
+            self._db.execute(
+                "ALTER TABLE links ADD COLUMN listening_mode TEXT NOT NULL "
+                "DEFAULT 'ambient'"
+            )
 
     # -- links -------------------------------------------------------------
 
@@ -268,13 +282,15 @@ class LinkStore:
         with self._db:
             self._db.execute(
                 "INSERT INTO links (text_channel_id, guild_id, bot_id, "
-                "voice_channel_id, post_voice_transcripts, allow_dms, created_by, "
-                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "voice_channel_id, post_voice_transcripts, allow_dms, "
+                "listening_mode, created_by, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (text_channel_id) DO UPDATE SET "
                 "guild_id = excluded.guild_id, bot_id = excluded.bot_id, "
                 "voice_channel_id = excluded.voice_channel_id, "
                 "post_voice_transcripts = excluded.post_voice_transcripts, "
-                "allow_dms = excluded.allow_dms",
+                "allow_dms = excluded.allow_dms, "
+                "listening_mode = excluded.listening_mode",
                 (
                     link.text_channel_id,
                     link.guild_id,
@@ -282,6 +298,7 @@ class LinkStore:
                     link.voice_channel_id,
                     int(link.post_voice_transcripts),
                     int(link.allow_dms),
+                    link.listening_mode,
                     created_by,
                     time.time(),
                 ),

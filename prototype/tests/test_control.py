@@ -731,7 +731,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
     tree = install_commands(BotManager([client.mulca_runtime]))
 
     commands = {command.name: command for command in tree.get_commands()}
-    assert set(commands) == {"restart", "mulca"}
+    assert set(commands) == {"restart", "listen", "mulca"}
     subcommands = {sub.name: sub for sub in commands["mulca"].commands}
     assert set(subcommands) == {
         "status",

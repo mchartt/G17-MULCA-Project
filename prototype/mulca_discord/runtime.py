@@ -258,7 +258,11 @@ class BotRuntime:
         voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
 
         bridge = VoiceBridge(
-            scope=Scope(conversation_id=link.conversation_id, bot_name=self.name),
+            scope=Scope(
+                conversation_id=link.conversation_id,
+                bot_name=self.name,
+                listening_mode=link.listening_mode,
+            ),
             registry=self.registry,
             voice_client=voice_client,
             reply_channel=self.client.get_channel(link.text_channel_id),
@@ -341,6 +345,23 @@ class BotRuntime:
     # ------------------------------------------------------------------
     # Control: /restart, /mulca stop|start|restart
     # ------------------------------------------------------------------
+
+    async def arm_listening(self, link: Link, *, reply_channel) -> None:
+        """
+        push_to_talk mode only: a participant pressed /listen. A no-op
+        server-side in ambient mode (Conversation.arm_listening), so this
+        is safe to call regardless of which mode MUCA-Server is running.
+        """
+
+        await self.registry.run(
+            Scope(
+                conversation_id=link.conversation_id,
+                bot_name=self.name,
+                listening_mode=link.listening_mode,
+            ),
+            lambda client: client.arm_listening(),
+            reply_channel=reply_channel,
+        )
 
     async def restart_link(self, link: Link) -> RestartOutcome:
         """
@@ -595,7 +616,11 @@ class BotRuntime:
             if link is None:
                 # Not a channel linked to this bot.
                 return
-            scope = Scope(conversation_id=link.conversation_id, bot_name=self.name)
+            scope = Scope(
+                conversation_id=link.conversation_id,
+                bot_name=self.name,
+                listening_mode=link.listening_mode,
+            )
 
         if self.paused:
             await self._announce(PAUSED, channel, messages.PAUSED, tagged=tagged)

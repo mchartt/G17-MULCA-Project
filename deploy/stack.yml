@@ -19,6 +19,12 @@ services:
       # Deliberately noisy for now, to confirm live alerting actually
       # works end to end -- raise this (e.g. to "1") once confirmed.
       MUCA_COST_ALERT_THRESHOLD_STEP_USD: "0.01"
+      # "ambient" (today's behavior, every turn judged) or "push_to_talk"
+      # (intervention agent only judges inside a /listen-opened window --
+      # see conversation.py). Left at "ambient" here on purpose: flip this
+      # once local testing looks good, not as a side effect of this push.
+      MUCA_LISTENING_MODE: "ambient"
+      MUCA_PTT_SILENCE_MS: "5000"
     secrets:
       - source: muca_openai_api_key
         target: OPENAI_API_KEY

@@ -54,6 +54,9 @@ class Scope:
     # attribution (usage_report.py) -- conversation_id alone never reveals
     # that, since many bots share one MUCA-Server.
     bot_name: str = ""
+    # This link's own listening mode (Link.listening_mode), overriding
+    # MUCA-Server's own default -- "" means unset/use the server's.
+    listening_mode: str = ""
 
 
 @dataclass(slots=True)
@@ -299,6 +302,7 @@ class SessionRegistry:
                 is_dm=scope.is_dm,
                 linked_conversation_id=scope.linked_conversation_id,
                 bot_name=scope.bot_name,
+                listening_mode=scope.listening_mode,
                 main_model=main_model,
                 intervention_model=intervention_model,
             )

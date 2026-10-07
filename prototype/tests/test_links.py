@@ -48,6 +48,19 @@ def test_links_survive_reopening_the_store(tmp_path):
     assert reopened.link_for_channel(222) == link(111, 222, transcripts=True)
 
 
+def test_a_links_listening_mode_defaults_to_ambient_and_survives_a_restart(tmp_path):
+    path = tmp_path / "mulca.db"
+    store = LinkStore(path)
+
+    store.save(link(111, 222))
+    assert store.all_links()[0].listening_mode == "ambient"
+
+    store.save(Link(111, GUILD, 1, 222, listening_mode="push_to_talk"))
+    store.close()
+
+    assert LinkStore(path).all_links()[0].listening_mode == "push_to_talk"
+
+
 def test_saving_a_linked_text_channel_again_updates_it():
     store = LinkStore(":memory:")
     store.save(link(111))
@@ -165,6 +178,40 @@ def test_a_store_from_before_per_link_dms_is_upgraded_with_dms_off(tmp_path):
     store.save(Link(111, 900, 1, 222, allow_dms=True))
     store.close()
     assert LinkStore(path).all_links()[0].allow_dms
+
+
+def test_a_store_from_before_per_link_listening_mode_is_upgraded_to_ambient(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "mulca.db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta VALUES ('schema_version', '4');
+        CREATE TABLE links (
+            text_channel_id INTEGER PRIMARY KEY,
+            guild_id INTEGER NOT NULL,
+            bot_id INTEGER NOT NULL,
+            voice_channel_id INTEGER UNIQUE,
+            post_voice_transcripts INTEGER NOT NULL DEFAULT 0,
+            allow_dms INTEGER NOT NULL DEFAULT 0,
+            created_by INTEGER,
+            created_at REAL
+        );
+        INSERT INTO links (text_channel_id, guild_id, bot_id, voice_channel_id)
+            VALUES (111, 900, 1, 222);
+        """
+    )
+    old.commit()
+    old.close()
+
+    store = LinkStore(path)
+
+    assert store.all_links()[0].listening_mode == "ambient"
+    store.save(Link(111, 900, 1, 222, listening_mode="push_to_talk"))
+    store.close()
+    assert LinkStore(path).all_links()[0].listening_mode == "push_to_talk"
 
 
 def test_a_bots_models_default_to_the_servers_and_survive_a_restart(tmp_path):

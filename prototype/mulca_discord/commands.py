@@ -5,6 +5,9 @@ Discord's "/" menu).
 
 - /restart: anyone, in a channel MULCA serves -- restarts that channel's
   MULCA (fresh OpenAI connections, same memory).
+- /listen: anyone, in a channel MULCA serves -- push_to_talk mode only
+  (MUCA_LISTENING_MODE=push_to_talk): opens a listening window. A no-op
+  (but still succeeds) if that channel's MULCA is running ambient mode.
 - /mulca status|restart|stop|start: members with Manage Server, acting only
   on the bots in the server it's used in.
 - /mulca link|unlink|dms: members with Manage Server -- which channels a
@@ -33,12 +36,13 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from typing import Literal
 
 import discord
 from discord import app_commands
 
 from .links import BotRecord, Link
-from .muca_client import set_server_cost_alert, set_server_model
+from .muca_client import MucaConnectionLost, set_server_cost_alert, set_server_model
 from .permissions import missing_permissions
 from .runtime import LIMIT, AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
 from .usage import EACH, POOL, POOL_FACTOR, bot_scope
@@ -184,11 +188,13 @@ async def link_channels(
     voice_channel=None,
     post_voice_transcripts: bool = False,
     allow_dms: bool | None = None,
+    listening_mode: str | None = None,
     created_by: int | None = None,
 ) -> str:
     """
     /mulca link: check, save, put into effect, and say what happened.
-    `allow_dms` None keeps what the channel had (off for a new link).
+    `allow_dms`/`listening_mode` None keeps what the channel had (off, and
+    "ambient", for a new link).
     """
 
     guild = bot.client.get_guild(guild_id)
@@ -204,6 +210,8 @@ async def link_channels(
     existing = bot.store.link_for_channel(text_channel.id)
     if allow_dms is None:
         allow_dms = existing.allow_dms if existing is not None else False
+    if listening_mode is None:
+        listening_mode = existing.listening_mode if existing is not None else "ambient"
 
     link = Link(
         text_channel_id=text_channel.id,
@@ -212,6 +220,7 @@ async def link_channels(
         voice_channel_id=voice_channel.id if voice_channel is not None else None,
         post_voice_transcripts=post_voice_transcripts,
         allow_dms=allow_dms,
+        listening_mode=listening_mode,
     )
 
     problems = bot.store.conflicts(link)
@@ -235,6 +244,11 @@ async def link_channels(
             " People who can see this channel may DM it."
             if allow_dms
             else " DMs are off (`/mulca dms` turns them on)."
+        )
+        + (
+            " Listening mode: push_to_talk (`/listen` opens a window)."
+            if listening_mode == "push_to_talk"
+            else ""
         ),
         "If MULCA was linked to this channel before, it still remembers that conversation.",
     ]
@@ -772,6 +786,36 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             reply += " It's still over its usage limit, though."
         await interaction.followup.send(reply)
 
+    # -- /listen ----------------------------------------------------------
+
+    @tree.command(
+        name="listen",
+        description="push_to_talk mode: MULCA starts listening for a bit.",
+    )
+    @app_commands.guild_only()
+    async def listen(interaction: discord.Interaction) -> None:
+        found = manager.link_for_channel(interaction.channel_id)
+        if found is None:
+            await interaction.response.send_message(
+                "MULCA doesn't run in this channel.",
+                ephemeral=True,
+            )
+            return
+
+        bot, link = found
+        await interaction.response.defer(thinking=True)
+        try:
+            await bot.arm_listening(link, reply_channel=interaction.channel)
+        except MucaConnectionLost:
+            await interaction.followup.send(
+                "Couldn't reach MULCA just now -- try again in a moment."
+            )
+            return
+
+        await interaction.followup.send(
+            f"🎙️ {bot.name} is listening for a bit -- go ahead."
+        )
+
     # -- /mulca ... -----------------------------------------------------
 
     mulca = MulcaGroup(
@@ -804,6 +848,10 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot="Which MULCA bot (default: the main one).",
         transcripts="Also post what MULCA says out loud in the text channel.",
         dms="Let people who can see the text channel DM MULCA (default: unchanged, off for a new link).",
+        mode=(
+            "ambient (every turn judged) or push_to_talk (/listen opens a "
+            "window) -- default: unchanged, ambient for a new link."
+        ),
     )
     @app_commands.autocomplete(bot=bot_choices)
     async def link(
@@ -813,6 +861,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot: str | None = None,
         transcripts: bool = False,
         dms: bool | None = None,
+        mode: Literal["ambient", "push_to_talk"] | None = None,
     ) -> None:
         text = text or interaction.channel
         if not isinstance(text, discord.TextChannel):
@@ -849,6 +898,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             voice_channel=voice,
             post_voice_transcripts=transcripts,
             allow_dms=dms,
+            listening_mode=mode,
             created_by=interaction.user.id,
         )
         await interaction.followup.send(reply, ephemeral=True)

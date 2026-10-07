@@ -18,10 +18,13 @@ import discord
 from mulca_discord.commands import (
     control,
     format_status,
+    format_usage,
     link_channels,
     restart_message,
+    send_long,
     set_dms,
     set_model,
+    split_message,
     unlink_channel,
 )
 from mulca_discord.links import Link, LinkStore
@@ -824,6 +827,68 @@ async def test_without_a_bot_the_servers_model_changes_and_no_bot_is_touched(tar
     assert store.server_models() == ("gpt-new", "gpt-new")
     assert runtimes[0].registry.restarted == []
     assert "MUCA-Server now uses `gpt-new`" in reply
+
+
+def test_a_long_reply_is_split_between_lines_into_messages_discord_accepts():
+    lines = [f"line {i}: " + "x" * (i % 70) for i in range(200)]
+    text = "\n".join(lines)
+
+    chunks = split_message(text)
+
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+    assert "\n".join(chunks) == text  # nothing lost, no line cut
+    assert split_message("short") == ["short"]
+
+
+def test_only_an_absurdly_long_line_is_cut_and_order_is_kept():
+    text = "before\n" + "x" * 4500 + "\nafter"
+
+    assert split_message(text) == ["before", "x" * 2000, "x" * 2000, "x" * 500 + "\nafter"]
+
+
+async def test_send_long_sends_every_chunk_ephemerally_and_never_an_empty_one():
+    sent = []
+
+    class Followup:
+        async def send(self, content, *, ephemeral):
+            sent.append((content, ephemeral))
+
+    class Interaction:
+        followup = Followup()
+
+    await send_long(Interaction(), "a" * 1500 + "\n\n" + "b" * 1500)
+    assert sent == [("a" * 1500 + "\n", True), ("b" * 1500, True)]
+
+    sent.clear()
+    await send_long(Interaction(), "")
+    assert sent == [("(nothing to show)", True)]
+
+
+def test_a_status_of_twenty_bots_fits_in_discord_messages():
+    store = LinkStore(":memory:")
+    bots = []
+    for i in range(1, 21):
+        store.register_bot(i, f"MULCA-team-{i:02d}", is_primary=i == 1)
+        bot = make_runtime(
+            store,
+            link=Link(1000 + i, GUILD, i, 2000 + i),
+            name=f"MULCA-team-{i:02d}",
+            id=i,
+        )
+        bot.client.add_channel(1000 + i)
+        bot.client.add_channel(2000 + i)
+        bots.append(bot)
+    manager = BotManager(bots, store=store)
+
+    text = (
+        format_status([bot.status(GUILD) for bot in bots])
+        + "\n\nActive use:\n"
+        + format_usage(manager, None, GUILD)
+    )
+
+    assert len(text) > 2000  # what Discord refused in one message
+    assert all(len(chunk) <= 2000 for chunk in split_message(text))
 
 
 def test_status_shows_each_bots_models_and_where_they_come_from():

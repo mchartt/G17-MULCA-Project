@@ -97,6 +97,7 @@ def format_status(statuses: list[BotStatus]) -> str:
             f"**{status.name}**: {state}{latency}, up {_duration(status.uptime_seconds)}"
             + (f", {status.dm_sessions} open DM session(s)" if status.dm_sessions else "")
         )
+        lines.append(f"  models: main {status.models[0]}, intervention {status.models[1]}")
 
         if not status.links:
             lines.append("  no channel linked in this server (`/mulca link`)")
@@ -370,6 +371,8 @@ async def set_model(
         )
         if problem:
             return f"MUCA-Server wouldn't change its model: {problem}."
+        # Kept here too: MUCA-Server saves it, but /mulca status reads it here.
+        manager.store.set_server_models(model, model if include_intervention else None)
         return (
             f"MUCA-Server now uses `{model}`; every session was restarted. "
             "A bot set on its own keeps its own model."

@@ -98,6 +98,8 @@ class BotStatus:
     uptime_seconds: float | None
     links: tuple[LinkStatus, ...]
     dm_sessions: int
+    # (main, intervention), each with where it comes from.
+    models: tuple[str, str] = ("server default", "server default")
 
 
 @dataclass(frozen=True, slots=True)
@@ -449,6 +451,16 @@ class BotRuntime:
             if conversation_id.startswith("dm:") and session.client.is_open
         )
 
+        # A bot's own model outranks the one set for every bot, which
+        # outranks MUCA-Server's own default (unknown here).
+        models = tuple(
+            f"{own} (this bot)" if own else f"{everyone} (all bots)" if everyone else "server default"
+            for own, everyone in zip(
+                self.store.models_for(self.user_id),
+                self.store.server_models(),
+            )
+        )
+
         latency = self.client.latency
         return BotStatus(
             name=self.name,
@@ -458,6 +470,7 @@ class BotRuntime:
             uptime_seconds=now - self.ready_at if self.ready_at is not None else None,
             links=tuple(links),
             dm_sessions=dm_sessions,
+            models=models,
         )
 
     # ------------------------------------------------------------------

@@ -34,6 +34,13 @@ class EchoMainAgent(MainAgent):
             EchoMainAgent.heard.append(text)
 
     async def _trigger_response(self, **kwargs) -> None:
+        if EchoMainAgent.heard[-1].endswith("costly"):
+            # What the server's estimator does after each provider call.
+            from muca_server.usage_report import usage_sink
+
+            _, send = usage_sink.get()
+            await send("main", (10, 20, 30, 40, 50, 60), 0.25)
+
         if EchoMainAgent.heard[-1].endswith("drop"):
             # As OpenAI does after 60 minutes: the provider connection ends.
             await self._connection_lost("the provider ended the session")
@@ -389,3 +396,39 @@ async def test_a_server_that_refuses_the_session_is_not_taken_for_open(server, m
 
     assert not client.is_open
     assert client.close_code == 1013
+
+
+async def test_spending_reaches_the_client_and_it_can_switch_replies_to_text(server):
+    client = MucaWsClient(server.url, conversation_id="instance:c", is_dm=False)
+    client.text_replies = True
+    usages: list[dict] = []
+
+    async def on_usage(usage: dict) -> None:
+        usages.append(usage)
+
+    client.on_usage = on_usage
+    frames, done = await collect_reply(client)
+    EchoMainAgent.sessions = []
+    await client.connect()
+
+    await client.send_user_text(speaker=5, speaker_name="Ada", text="costly")
+    await asyncio.wait_for(done.wait(), timeout=5)
+    await client.set_text_replies(False)
+    await client.close()
+
+    assert usages == [
+        {
+            "event": "usage",
+            "agent": "main",
+            "freshText": 10,
+            "cachedText": 20,
+            "freshAudio": 30,
+            "cachedAudio": 40,
+            "outText": 50,
+            "outAudio": 60,
+            "costUsd": 0.25,
+        }
+    ]
+    first, second = EchoMainAgent.sessions
+    assert first["output_modalities"] == ["text"]
+    assert second == {"output_modalities": ["audio"]}

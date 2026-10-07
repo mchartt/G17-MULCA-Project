@@ -49,6 +49,7 @@ AssistantTextHandler = Callable[[str, bool, str], Awaitable[None]]
 StateUpdateHandler = Callable[[dict], Awaitable[None]]
 ClosedHandler = Callable[[], Awaitable[None]]
 ErrorHandler = Callable[[str], Awaitable[None]]
+UsageHandler = Callable[[dict], Awaitable[None]]
 
 
 # MUCA-Server closes a session with this ("service restart") when its
@@ -197,6 +198,11 @@ class MucaWsClient:
         self.on_state_update: StateUpdateHandler | None = None
         self.on_closed: ClosedHandler | None = None
         self.on_error: ErrorHandler | None = None
+        self.on_usage: UsageHandler | None = None
+
+        # Every reply in text, spoken turns included (a bot keeping its
+        # spending down, runtime.py); sent with the session.update.
+        self.text_replies = False
 
     @property
     def conversation_id(self) -> str:
@@ -232,7 +238,10 @@ class MucaWsClient:
             json.dumps(
                 {
                     "type": "session.update",
-                    "session": {"instructions": aui.main_instructions()},
+                    "session": {
+                        "instructions": aui.main_instructions(),
+                        **({"output_modalities": ["text"]} if self.text_replies else {}),
+                    },
                 }
             )
         )
@@ -367,6 +376,28 @@ class MucaWsClient:
 
         return server_closed
 
+    async def set_text_replies(self, text_replies: bool) -> None:
+        """Have the server answer every turn in text, or each in its own medium."""
+
+        self.text_replies = text_replies
+        if self._connection is None or not self._open:
+            return
+
+        try:
+            await self._connection.send(
+                json.dumps(
+                    {
+                        "type": "session.update",
+                        "session": {
+                            "output_modalities": ["text"] if text_replies else ["audio"],
+                        },
+                    }
+                )
+            )
+        except ConnectionClosed as exc:
+            self._open = False
+            raise MucaConnectionLost(self._conversation_id) from exc
+
     async def _send(self, message: IncomingMessage) -> None:
         if self._connection is None or not self._open:
             raise MucaConnectionLost(self._conversation_id)
@@ -427,6 +458,9 @@ class MucaWsClient:
             elif event == "state_update":
                 if self.on_state_update is not None:
                     await self.on_state_update(data)
+            elif event == "usage":
+                if self.on_usage is not None:
+                    await self.on_usage(data)
             elif event == "agent_guid":
                 self.agent_guids.append(data.get("guid", ""))
             elif event == "error":

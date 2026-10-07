@@ -101,22 +101,39 @@ bot's own choice, set it again to the model you want.
 
 ## Limiting use
 
-`/mulca limit set target:<bot|all|pool> daily:<hours> weekly:<hours>` caps how long MULCA may
-be used. Time counts in active minutes per channel: a minute in which someone wrote or spoke,
-or MULCA replied. Two busy channels for an hour use two hours. There are three limits, and
-whichever runs out first stops the bot:
+MULCA limits what each bot **spends**, in USD, using MUCA-Server's own estimate of every OpenAI
+call a session makes. That covers the main agent, the observer, speech transcription, the
+summarizer and embeddings, sent to MULCA as `usage` events.
 
-- **A single bot:** that bot's own limit.
-- **`all`:** the default for every bot without a limit of its own.
+`/mulca limit set target:<bot|all|pool> daily:<usd> weekly:<usd> monthly:<usd>` sets the limits.
+Any value left out stays as it was. There are three limits, and the most used one decides:
+
+- **A single bot:** that bot's own limits.
+- **`all`:** the default for every bot without its own. Unless set, it is $30 a day, $50 a week
+  and $100 a month.
 - **`pool`:** all bots together. It defaults to 10 times `all`.
 
-Days reset at midnight Europe/Rome (`MULCA_TIMEZONE`), and weeks on Monday. `/restart` never
-resets usage.
+Days reset at midnight Europe/Rome (`MULCA_TIMEZONE`), weeks on Monday, and months on the 1st.
+`/restart` never resets spending.
 
-A bot that reaches a limit says so once in the channel, leaves voice and stops answering until
-the reset; after that it answers only an @mention, with the same message. `/mulca limit clear`
-removes a limit. `/mulca usage` and `/mulca status` show what each bot used today and this
-week.
+As a bot gets through a limit, it scales down in stages. It announces each stage once in the
+channel, and again only on an @mention. The announcements never mention money.
+
+| Share of the limit | What the bot does |
+|---|---|
+| 50% | Warns that it will soon answer voice in text, then take typed messages only. |
+| 70% | Keeps listening in voice, but answers in the text channel instead of speaking. |
+| 90% | Leaves voice and answers typed messages only. |
+| 100% | Stops answering until the limit resets. |
+
+When the limit resets, or an admin raises it, the bot says so and goes back as far as the new
+share allows, rejoining voice if it can. `/mulca limit clear` puts a bot (or `all`, or `pool`)
+back on the defaults.
+
+`/mulca usage` and `/mulca status` show each bot's spending today, this week and this month
+against its limits, and the stage it is at. `/mulca usage details:True` adds what the money
+went on, per agent and period: text in, audio in (fresh and cached), text out and audio out.
+These replies are visible only to the admin who asked.
 
 ## Security
 

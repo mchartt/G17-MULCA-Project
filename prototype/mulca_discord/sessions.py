@@ -14,6 +14,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 
 from websockets.exceptions import WebSocketException
@@ -29,6 +30,7 @@ StateUpdateHandler = Callable[[dict], Awaitable[None]]
 # error the server reported.
 ReplyHook = Callable[["ScopeSession", bool], None]
 ServerErrorHook = Callable[["ScopeSession", str], Awaitable[None]]
+UsageHook = Callable[["ScopeSession", dict], Awaitable[None]]
 
 # Waits between attempts to (re)open a session.
 RECONNECT_DELAYS_SECONDS = (0.0, 0.5, 1.0, 2.0)
@@ -103,6 +105,10 @@ class SessionRegistry:
         # server's errors are told to the users.
         self.on_reply: ReplyHook | None = None
         self.on_server_error: ServerErrorHook | None = None
+        # Set by the bot too: what each server call cost, and whether its
+        # sessions answer every turn in text (set_text_replies).
+        self.on_usage: UsageHook | None = None
+        self.text_replies = False
 
     @property
     def url(self) -> str:
@@ -153,8 +159,13 @@ class SessionRegistry:
                 if self.on_server_error is not None:
                     await self.on_server_error(session, message)
 
+            async def on_usage(usage: dict) -> None:
+                if self.on_usage is not None:
+                    await self.on_usage(session, usage)
+
             client.on_assistant_text = on_text
             client.on_error = on_error
+            client.on_usage = on_usage
             client.on_state_update = session.handle_state_update
 
             self._sessions[scope.conversation_id] = session
@@ -285,6 +296,18 @@ class SessionRegistry:
         )
         await asyncio.sleep(delay)
 
+    async def set_text_replies(self, text_replies: bool) -> None:
+        """Every open session, and every later one, answers in text (or not)."""
+
+        if text_replies == self.text_replies:
+            return
+
+        self.text_replies = text_replies
+        for session in list(self._sessions.values()):
+            if session.client.is_open:
+                with suppress(MucaConnectionLost):
+                    await session.client.set_text_replies(text_replies)
+
     async def _open(self, scope: Scope) -> MucaWsClient:
         last_error: Exception | None = None
 
@@ -303,6 +326,7 @@ class SessionRegistry:
                 intervention_model=intervention_model,
             )
 
+            client.text_replies = self.text_replies
             try:
                 await client.connect()
                 return client

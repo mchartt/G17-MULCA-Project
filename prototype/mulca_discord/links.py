@@ -28,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -63,19 +63,29 @@ CREATE TABLE IF NOT EXISTS last_link_by_user (
     user_id INTEGER PRIMARY KEY,
     text_channel_id INTEGER NOT NULL
 );
--- Active minutes per bot and local day (usage.py), summed over its channels.
-CREATE TABLE IF NOT EXISTS usage (
+-- What each bot's sessions cost per local day, by what made the calls
+-- ("main", "intervention", "transcription", "summary", "embedding"), as
+-- MUCA-Server estimates it in its `usage` events (usage.py).
+CREATE TABLE IF NOT EXISTS costs (
     bot_id INTEGER NOT NULL,
     day TEXT NOT NULL,
-    active_minutes INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (bot_id, day)
+    agent TEXT NOT NULL,
+    fresh_text INTEGER NOT NULL DEFAULT 0,
+    cached_text INTEGER NOT NULL DEFAULT 0,
+    fresh_audio INTEGER NOT NULL DEFAULT 0,
+    cached_audio INTEGER NOT NULL DEFAULT 0,
+    out_text INTEGER NOT NULL DEFAULT 0,
+    out_audio INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (bot_id, day, agent)
 );
--- Usage limits, in minutes (NULL: none). scope is "bot:<id>", "each" (every
+-- Usage limits, in USD (NULL: none). scope is "bot:<id>", "each" (every
 -- bot without its own) or "pool" (all bots together).
 CREATE TABLE IF NOT EXISTS limits (
     scope TEXT PRIMARY KEY,
-    daily_minutes INTEGER,
-    weekly_minutes INTEGER
+    daily_usd REAL,
+    weekly_usd REAL,
+    monthly_usd REAL
 );
 """
 
@@ -192,6 +202,14 @@ class LinkStore:
                 self._db.execute(
                     f"ALTER TABLE bots ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
                 )
+
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(limits)")}
+        if "daily_minutes" in columns:
+            # Version 4: limits were hours of active use, which don't convert
+            # to money. They go, and the default dollar limits apply.
+            self._db.executescript(
+                "DROP TABLE limits; DROP TABLE IF EXISTS usage;" + _SCHEMA
+            )
 
     # -- links -------------------------------------------------------------
 
@@ -441,42 +459,85 @@ class LinkStore:
 
     # -- usage and limits (usage.py) ---------------------------------------
 
-    def add_active_minute(self, bot_id: int, day: str) -> None:
+    def add_cost(
+        self,
+        bot_id: int,
+        day: str,
+        agent: str,
+        tokens: tuple[int, int, int, int, int, int],
+        cost_usd: float,
+    ) -> None:
         with self._db:
             self._db.execute(
-                "INSERT INTO usage (bot_id, day, active_minutes) VALUES (?, ?, 1) "
-                "ON CONFLICT (bot_id, day) DO UPDATE SET "
-                "active_minutes = active_minutes + 1",
-                (bot_id, day),
+                "INSERT INTO costs (bot_id, day, agent, fresh_text, cached_text, "
+                "fresh_audio, cached_audio, out_text, out_audio, cost_usd) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (bot_id, day, agent) DO UPDATE SET "
+                "fresh_text = fresh_text + excluded.fresh_text, "
+                "cached_text = cached_text + excluded.cached_text, "
+                "fresh_audio = fresh_audio + excluded.fresh_audio, "
+                "cached_audio = cached_audio + excluded.cached_audio, "
+                "out_text = out_text + excluded.out_text, "
+                "out_audio = out_audio + excluded.out_audio, "
+                "cost_usd = cost_usd + excluded.cost_usd",
+                (bot_id, day, agent, *tokens, cost_usd),
             )
 
-    def active_minutes(self, bot_id: int | None, first_day: str, last_day: str) -> int:
-        """A bot's active minutes over these days (inclusive); None: all bots."""
+    def cost(self, bot_id: int | None, first_day: str, last_day: str) -> float:
+        """A bot's spending over these days (inclusive); None: all bots."""
 
         row = self._db.execute(
-            "SELECT COALESCE(SUM(active_minutes), 0) FROM usage "
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM costs "
             "WHERE day BETWEEN ? AND ? AND (? IS NULL OR bot_id = ?)",
             (first_day, last_day, bot_id, bot_id),
         ).fetchone()
         return row[0]
 
-    def limit(self, scope: str) -> tuple[int | None, int | None] | None:
-        """(daily, weekly) minutes for this scope, or None if it has none."""
+    def cost_details(
+        self,
+        bot_id: int,
+        first_day: str,
+        last_day: str,
+    ) -> dict[str, tuple[int, int, int, int, int, int, float]]:
+        """By agent: (fresh text, cached text, fresh audio, cached audio,
+        text out, audio out, USD) over these days (inclusive)."""
+
+        return {
+            row[0]: tuple(row[1:])
+            for row in self._db.execute(
+                "SELECT agent, SUM(fresh_text), SUM(cached_text), "
+                "SUM(fresh_audio), SUM(cached_audio), SUM(out_text), "
+                "SUM(out_audio), SUM(cost_usd) FROM costs "
+                "WHERE bot_id = ? AND day BETWEEN ? AND ? "
+                "GROUP BY agent ORDER BY SUM(cost_usd) DESC",
+                (bot_id, first_day, last_day),
+            )
+        }
+
+    def limit(self, scope: str) -> tuple[float | None, float | None, float | None] | None:
+        """(daily, weekly, monthly) USD for this scope, or None if it has none."""
 
         row = self._db.execute(
-            "SELECT daily_minutes, weekly_minutes FROM limits WHERE scope = ?",
+            "SELECT daily_usd, weekly_usd, monthly_usd FROM limits WHERE scope = ?",
             (scope,),
         ).fetchone()
-        return (row[0], row[1]) if row else None
+        return tuple(row) if row else None
 
-    def set_limit(self, scope: str, daily: int | None, weekly: int | None) -> None:
+    def set_limit(
+        self,
+        scope: str,
+        daily: float | None,
+        weekly: float | None,
+        monthly: float | None,
+    ) -> None:
         with self._db:
             self._db.execute(
-                "INSERT INTO limits (scope, daily_minutes, weekly_minutes) "
-                "VALUES (?, ?, ?) ON CONFLICT (scope) DO UPDATE SET "
-                "daily_minutes = excluded.daily_minutes, "
-                "weekly_minutes = excluded.weekly_minutes",
-                (scope, daily, weekly),
+                "INSERT INTO limits (scope, daily_usd, weekly_usd, monthly_usd) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT (scope) DO UPDATE SET "
+                "daily_usd = excluded.daily_usd, "
+                "weekly_usd = excluded.weekly_usd, "
+                "monthly_usd = excluded.monthly_usd",
+                (scope, daily, weekly, monthly),
             )
 
     def clear_limit(self, scope: str) -> None:

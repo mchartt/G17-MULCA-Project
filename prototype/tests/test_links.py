@@ -209,3 +209,41 @@ def test_a_file_from_before_per_bot_models_gains_the_columns(tmp_path):
     assert store.models_for(1) == ("", "")
     store.set_models(1, "gpt-a")
     assert store.models_for(1) == ("gpt-a", "")
+
+
+def test_hour_limits_from_before_dollars_are_dropped_for_the_defaults(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "mulca.db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta VALUES ('schema_version', '4');
+        CREATE TABLE usage (
+            bot_id INTEGER NOT NULL,
+            day TEXT NOT NULL,
+            active_minutes INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (bot_id, day)
+        );
+        CREATE TABLE limits (
+            scope TEXT PRIMARY KEY,
+            daily_minutes INTEGER,
+            weekly_minutes INTEGER
+        );
+        INSERT INTO limits VALUES ('each', 240, 600);
+        """
+    )
+    old.commit()
+    old.close()
+
+    store = LinkStore(path)
+
+    assert store.limit("each") is None
+    store.set_limit("each", 1.0, 2.0, 3.0)
+    store.add_cost(1, "2026-10-07", "main", (1, 2, 3, 4, 5, 6), 0.5)
+    store.close()
+
+    reopened = LinkStore(path)
+    assert reopened.limit("each") == (1.0, 2.0, 3.0)
+    assert reopened.cost(1, "2026-10-07", "2026-10-07") == 0.5

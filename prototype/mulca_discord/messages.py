@@ -30,19 +30,55 @@ ATTACHMENTS = "I can only read text messages -- I can't see attachments, images 
 
 
 def _period(budget: Budget) -> tuple[str, str]:
-    """("for today", "midnight") or ("for this week", "Monday")."""
+    """("for today", "midnight"), ("for this week", "Monday") or the month's."""
 
     if budget.kind == "daily":
         return "for today", "midnight"
-    return "for this week", "Monday"
+    if budget.kind == "weekly":
+        return "for this week", "Monday"
+    return "for this month", "the 1st of next month"
+
+
+def _whose(budget: Budget) -> str:
+    return "my usage limit" if budget.scope == "bot" else "MULCA's shared usage limit"
+
+
+# The stage notices (usage.STAGES) never say what anything costs.
 
 
 def limit_warning(budget: Budget) -> str:
+    period, _ = _period(budget)
+    return (
+        f"Heads-up: I'm getting close to {_whose(budget)} {period}. If it "
+        "keeps up, I'll first answer voice here in text, then take typed "
+        "messages only."
+    )
+
+
+def listening_only(budget: Budget) -> str:
     period, until = _period(budget)
     return (
-        f"Heads-up: I have about {budget.left} minutes left {period}. "
-        f"After that I'll take a break until {until}."
+        f"To stay within {_whose(budget)} {period}, I'll keep listening in "
+        f"voice but answer here in text until {until}."
     )
+
+
+def text_only(budget: Budget) -> str:
+    period, until = _period(budget)
+    return (
+        f"To stay within {_whose(budget)} {period}, I've left the voice "
+        f"channel until {until}. Type here and I'll answer."
+    )
+
+
+def stage_lifted(level: int) -> str:
+    """What a bot says when a limit resets or is raised, by the stage it's at now."""
+
+    if level >= 3:
+        return "I'm available again, in text only for now: type here and I'll answer."
+    if level == 2:
+        return "I'm back in voice: I'll listen there and answer here in text for now."
+    return "I'm fully available again, voice included."
 
 
 def limit_reached(budget: Budget) -> str:
@@ -102,6 +138,11 @@ class Notices:
         await post(channel, text)
         return True
 
+    def hold(self, problem: str, channel) -> None:
+        """The problem holds too, but a later one already says it all."""
+
+        self._active.setdefault(problem, (channel, ""))
+
     async def resolve(self, problem: str, text: str | None = None) -> None:
         """The problem is over; say `text` where it was announced, if given."""
 
@@ -118,5 +159,5 @@ class Notices:
         """For an @mention: every problem that still holds, again."""
 
         for problem, (_, text) in list(self._active.items()):
-            if problem not in skip:
+            if problem not in skip and text:
                 await post(channel, text)

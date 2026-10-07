@@ -743,6 +743,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "dms",
         "model",
         "costalert",
+        "button",
         "bot",
         "limit",
         "usage",

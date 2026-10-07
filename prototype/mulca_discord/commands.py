@@ -8,6 +8,10 @@ Discord's "/" menu).
 - /listen: anyone, in a channel MULCA serves -- push_to_talk mode only
   (MUCA_LISTENING_MODE=push_to_talk): opens a listening window. A no-op
   (but still succeeds) if that channel's MULCA is running ambient mode.
+- /mulca button: members with Manage Server -- posts a persistent "Talk to
+  MULCA" button (ListenView) in the channel; anyone can press it, same
+  effect as /listen. Survives a bot restart (a fixed custom_id, registered
+  once via add_view(), not per-message state).
 - /mulca status|restart|stop|start: members with Manage Server, acting only
   on the bots in the server it's used in.
 - /mulca link|unlink|dms: members with Manage Server -- which channels a
@@ -714,6 +718,57 @@ class AddBotModal(discord.ui.Modal, title="Add a MULCA bot"):
         await interaction.followup.send(reply, ephemeral=True)
 
 
+# custom_id, not the view instance, is what Discord remembers across a
+# restart -- registered once via add_view() below, so a button on a
+# message posted days ago still reaches this same callback after a
+# redeploy, with no per-message state to reconstruct.
+LISTEN_BUTTON_CUSTOM_ID = "mulca:listen"
+
+
+class ListenView(discord.ui.View):
+    """
+    push_to_talk mode: the button form of /listen. Persistent (timeout=None,
+    a fixed custom_id) so it keeps working on old messages after a restart --
+    see install_commands' add_view() call.
+    """
+
+    def __init__(self, manager: BotManager) -> None:
+        super().__init__(timeout=None)
+        self._manager = manager
+
+    @discord.ui.button(
+        label="🎙️ Talk to MULCA",
+        style=discord.ButtonStyle.primary,
+        custom_id=LISTEN_BUTTON_CUSTOM_ID,
+    )
+    async def listen(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        found = self._manager.link_for_channel(interaction.channel_id)
+        if found is None:
+            await interaction.response.send_message(
+                "MULCA doesn't run in this channel.",
+                ephemeral=True,
+            )
+            return
+
+        bot, link = found
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            await bot.arm_listening(link, reply_channel=interaction.channel)
+        except MucaConnectionLost:
+            await interaction.followup.send(
+                "Couldn't reach MULCA just now -- try again in a moment."
+            )
+            return
+
+        await interaction.followup.send(
+            f"🎙️ {bot.name} is listening for a bit -- go ahead."
+        )
+
+
 class MulcaGroup(app_commands.Group):
     """/mulca: hidden from members without Manage Server, and checked too."""
 
@@ -727,6 +782,11 @@ class MulcaGroup(app_commands.Group):
 def install_commands(manager: BotManager) -> app_commands.CommandTree:
     primary = manager.primary
     tree = app_commands.CommandTree(primary.client)
+
+    # Registers the custom_id -> callback mapping only -- no Discord API
+    # call, so this doesn't need to wait for on_ready, and it makes a
+    # button on a message posted before a restart work again immediately.
+    primary.client.add_view(ListenView(manager))
 
     async def bot_choices(
         interaction: discord.Interaction,
@@ -836,6 +896,32 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             + "\n\nActive use:\n"
             + format_usage(manager, None, interaction.guild_id),
             ephemeral=True,
+        )
+
+    @mulca.command(
+        name="button",
+        description="Post a push-to-talk button in this channel (push_to_talk mode only).",
+    )
+    async def button(interaction: discord.Interaction) -> None:
+        found = manager.link_for_channel(interaction.channel_id)
+        if found is None:
+            await interaction.response.send_message(
+                "MULCA doesn't run in this channel.",
+                ephemeral=True,
+            )
+            return
+
+        _, link = found
+        await interaction.response.send_message(
+            "Press to let MULCA listen for a bit (push_to_talk mode only; "
+            "does nothing in ambient mode)."
+            + (
+                ""
+                if link.listening_mode == "push_to_talk"
+                else " This channel isn't in push_to_talk mode right now "
+                "(`/mulca link mode:push_to_talk`)."
+            ),
+            view=ListenView(manager),
         )
 
     @mulca.command(

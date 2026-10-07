@@ -13,10 +13,12 @@ services:
       MUCA_LOG_LEVEL: INFO
       MUCA_SERVER_NAME: production
       # Posts to Discord every time the running total crosses another
-      # dollar; see usage_report.py. This is the one and only MUCA-Server
+      # cent; see usage_report.py. This is the one and only MUCA-Server
       # (replicas: 1 below), so its own total already is the
       # deployment-wide one -- no cross-server aggregation needed.
-      MUCA_COST_ALERT_THRESHOLD_STEP_USD: "1"
+      # Deliberately noisy for now, to confirm live alerting actually
+      # works end to end -- raise this (e.g. to "1") once confirmed.
+      MUCA_COST_ALERT_THRESHOLD_STEP_USD: "0.01"
     secrets:
       - source: muca_openai_api_key
         target: OPENAI_API_KEY

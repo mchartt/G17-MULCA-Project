@@ -23,6 +23,10 @@ build-image:
     # Buildx's record of its builders, kept in the project directory so
     # after_script (a fresh shell) can still find the job's builder to remove.
     BUILDX_CONFIG: "$CI_PROJECT_DIR/.buildx"
+    # This job's own registry login: the host daemon (and, with it, the
+    # login) is shared with concurrent jobs, e.g. MUCA-Server's, which
+    # would otherwise overwrite it with a token this project can't use.
+    DOCKER_CONFIG: "$CI_PROJECT_DIR/.docker"
   rules:
     - if: $CI_COMMIT_BRANCH
   before_script:

@@ -12,6 +12,9 @@ Discord's "/" menu).
   the people of a channel may DM it (off by default).
 - /mulca model: members with Manage Server -- the realtime model of every
   MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
+- /mulca costalert: members with Manage Server -- MUCA-Server's own
+  cost-alert webhook/$ threshold (usage_report.py). Deployment-wide, like
+  /mulca model, but nothing restarts for it.
 - /mulca limit set|clear, /mulca usage: members with Manage Server -- how
   many hours of active use a bot, every bot, or all bots together get per
   day and per week (usage.py), and how much they used. Deployment-wide too.
@@ -35,7 +38,7 @@ import discord
 from discord import app_commands
 
 from .links import BotRecord, Link
-from .muca_client import set_server_model
+from .muca_client import set_server_cost_alert, set_server_model
 from .permissions import missing_permissions
 from .runtime import LIMIT, AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
 from .usage import EACH, POOL, POOL_FACTOR, bot_scope
@@ -393,6 +396,43 @@ async def set_model(
 
     names = ", ".join(f"**{bot.name}**" for bot in bots)
     return f"{names} now use `{model}`; their sessions were restarted."
+
+
+async def set_cost_alert(
+    manager: BotManager,
+    *,
+    webhook_url: str | None,
+    threshold_usd: float | None,
+    admin_token: str | None = None,
+    set_server: Callable[..., Awaitable[str | None]] = set_server_cost_alert,
+) -> str:
+    """
+    /mulca costalert: MUCA-Server's own cost-alert webhook/threshold --
+    deployment-wide, like /mulca model, but unlike it nothing needs to
+    restart since no live session depends on these.
+    """
+
+    if webhook_url is None and threshold_usd is None:
+        return "Set a webhook, a threshold, or both."
+
+    if not admin_token:
+        return "MUCA_ADMIN_TOKEN isn't set, so MULCA can't change this."
+
+    problem = await set_server(
+        manager.primary.registry.url,
+        admin_token,
+        webhook_url=webhook_url,
+        threshold_usd=threshold_usd,
+    )
+    if problem:
+        return f"MUCA-Server wouldn't change its cost-alert settings: {problem}."
+
+    changed = []
+    if webhook_url is not None:
+        changed.append("webhook")
+    if threshold_usd is not None:
+        changed.append(f"${threshold_usd:g} threshold")
+    return f"MUCA-Server's cost alert {' and '.join(changed)} updated."
 
 
 def _hours(minutes: int | None) -> str:
@@ -896,6 +936,28 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             bot,
             interaction.guild_id,
             include_intervention=include_intervention,
+            admin_token=os.environ.get("MUCA_ADMIN_TOKEN"),
+        )
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="costalert",
+        description="Set MUCA-Server's cost-alert Discord webhook and/or $ threshold step.",
+    )
+    @app_commands.describe(
+        webhook="A Discord channel webhook URL to post spend alerts to.",
+        threshold_usd="Post an alert every time total spend crosses another this-many dollars (e.g. 1, or 0.01).",
+    )
+    async def cost_alert_command(
+        interaction: discord.Interaction,
+        webhook: str | None = None,
+        threshold_usd: float | None = None,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await set_cost_alert(
+            manager,
+            webhook_url=webhook,
+            threshold_usd=threshold_usd,
             admin_token=os.environ.get("MUCA_ADMIN_TOKEN"),
         )
         await interaction.followup.send(reply, ephemeral=True)

@@ -742,6 +742,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "unlink",
         "dms",
         "model",
+        "costalert",
         "bot",
         "limit",
         "usage",

@@ -31,6 +31,7 @@ from muca_server.protocol import (
     Participant,
     ParticipantsMessage,
     PlaybackFrameMessage,
+    SetCostAlertMessage,
     SetModelMessage,
     UserTextMessage,
 )
@@ -96,6 +97,53 @@ async def set_server_model(
     except ConnectionClosed as exc:
         if exc.rcvd is not None and exc.rcvd.code == SERVER_RESTART_CLOSE_CODE:
             return None
+        return f"the server closed the connection ({exc})"
+    except TimeoutError:
+        return "the server didn't answer"
+    except OSError as exc:
+        return f"couldn't reach the server ({exc})"
+
+    return "the server closed the connection"
+
+
+async def set_server_cost_alert(
+    url: str,
+    admin_token: str,
+    *,
+    webhook_url: str | None = None,
+    threshold_usd: float | None = None,
+    timeout: float = 15.0,
+) -> str | None:
+    """
+    Change MUCA-Server's cost-alert webhook/threshold. None when it worked
+    (the server closes with 1000, no session needs to reopen for this --
+    unlike set_server_model), otherwise why not.
+    """
+
+    try:
+        async with websockets.connect(url) as connection:
+            await connection.send(
+                SetCostAlertMessage(
+                    event="set_cost_alert",
+                    admin_token=admin_token,
+                    webhook_url=webhook_url,
+                    threshold_usd=threshold_usd,
+                ).model_dump_json(by_alias=True)
+            )
+
+            async with asyncio.timeout(timeout):
+                async for raw in connection:
+                    data = json.loads(raw)
+                    if data.get("event") == "error":
+                        return str(data.get("message"))
+
+            # Unlike set_server_model's 1012, a clean 1000 close (this
+            # function's own success code) ends the above loop normally
+            # without ever raising ConnectionClosed -- there is nothing to
+            # catch below for it, so the close code has to be read here.
+            if connection.close_code == 1000:
+                return None
+    except ConnectionClosed as exc:
         return f"the server closed the connection ({exc})"
     except TimeoutError:
         return "the server didn't answer"

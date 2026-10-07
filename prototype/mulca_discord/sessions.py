@@ -50,6 +50,10 @@ class Scope:
     conversation_id: str
     is_dm: bool = False
     linked_conversation_id: str | None = None
+    # Which bot this scope belongs to, purely for MUCA-Server's cost-report
+    # attribution (usage_report.py) -- conversation_id alone never reveals
+    # that, since many bots share one MUCA-Server.
+    bot_name: str = ""
 
 
 @dataclass(slots=True)
@@ -294,6 +298,7 @@ class SessionRegistry:
                 conversation_id=scope.conversation_id,
                 is_dm=scope.is_dm,
                 linked_conversation_id=scope.linked_conversation_id,
+                bot_name=scope.bot_name,
                 main_model=main_model,
                 intervention_model=intervention_model,
             )

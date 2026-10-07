@@ -11,11 +11,19 @@ services:
     image: registry.gitlab.com/i3lab/muca/muca-server:gitlab-deployment
     environment:
       MUCA_LOG_LEVEL: INFO
+      MUCA_SERVER_NAME: production
+      # Posts to Discord every time the running total crosses another
+      # dollar; see usage_report.py. This is the one and only MUCA-Server
+      # (replicas: 1 below), so its own total already is the
+      # deployment-wide one -- no cross-server aggregation needed.
+      MUCA_COST_ALERT_THRESHOLD_STEP_USD: "1"
     secrets:
       - source: muca_openai_api_key
         target: OPENAI_API_KEY
       - source: muca_admin_token
         target: MUCA_ADMIN_TOKEN
+      - source: muca_cost_alert_webhook_url
+        target: MUCA_COST_ALERT_WEBHOOK_URL
     volumes:
       - muca-data:/data
     networks:
@@ -92,4 +100,8 @@ secrets:
     external: true
   # Shared by both services: /mulca model uses it to change MUCA-Server's model.
   muca_admin_token:
+    external: true
+  # A Discord channel webhook URL (Channel Settings > Integrations >
+  # Webhooks); the $-threshold alerts from usage_report.py post there.
+  muca_cost_alert_webhook_url:
     external: true

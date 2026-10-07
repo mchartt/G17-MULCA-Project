@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS links (
     voice_channel_id INTEGER UNIQUE,
     post_voice_transcripts INTEGER NOT NULL DEFAULT 0,
     allow_dms INTEGER NOT NULL DEFAULT 0,
-    listening_mode TEXT NOT NULL DEFAULT 'ambient',
+    listening_mode TEXT NOT NULL DEFAULT '',
     created_by INTEGER,
     created_at REAL
 );
@@ -105,8 +105,12 @@ class Link:
     allow_dms: bool = False
     # Per-link override of MUCA-Server's own MUCA_LISTENING_MODE default
     # (sent in the connect handshake, see muca_client.py) -- lets different
-    # teams run different modes without a server-wide redeploy.
-    listening_mode: str = "ambient"
+    # teams run different modes without a server-wide redeploy. "" means
+    # unset: defer to the server's own default, same convention as
+    # main_model/intervention_model below -- NOT "ambient", which would
+    # always win over the server's setting even for a link nobody ever
+    # explicitly chose a mode for (confirmed live: this was a real bug).
+    listening_mode: str = ""
 
     @property
     def conversation_id(self) -> str:
@@ -201,10 +205,12 @@ class LinkStore:
 
         columns = {row[1] for row in self._db.execute("PRAGMA table_info(links)")}
         if "listening_mode" not in columns:
-            # Version 4: every link was ambient (MUCA-Server's own default).
+            # Version 4: no link had chosen one -- "" defers to the
+            # server's own MUCA_LISTENING_MODE, not a hardcoded "ambient"
+            # that would always win over it.
             self._db.execute(
                 "ALTER TABLE links ADD COLUMN listening_mode TEXT NOT NULL "
-                "DEFAULT 'ambient'"
+                "DEFAULT ''"
             )
 
     # -- links -------------------------------------------------------------

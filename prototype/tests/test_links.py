@@ -48,12 +48,16 @@ def test_links_survive_reopening_the_store(tmp_path):
     assert reopened.link_for_channel(222) == link(111, 222, transcripts=True)
 
 
-def test_a_links_listening_mode_defaults_to_ambient_and_survives_a_restart(tmp_path):
+def test_a_links_listening_mode_defaults_to_unset_and_survives_a_restart(tmp_path):
+    # "" (not "ambient"): unset means defer to MUCA-Server's own default,
+    # same convention as main_model/intervention_model -- a hardcoded
+    # "ambient" here would always win over the server's own setting even
+    # for a link nobody ever explicitly chose a mode for.
     path = tmp_path / "mulca.db"
     store = LinkStore(path)
 
     store.save(link(111, 222))
-    assert store.all_links()[0].listening_mode == "ambient"
+    assert store.all_links()[0].listening_mode == ""
 
     store.save(Link(111, GUILD, 1, 222, listening_mode="push_to_talk"))
     store.close()
@@ -180,7 +184,7 @@ def test_a_store_from_before_per_link_dms_is_upgraded_with_dms_off(tmp_path):
     assert LinkStore(path).all_links()[0].allow_dms
 
 
-def test_a_store_from_before_per_link_listening_mode_is_upgraded_to_ambient(tmp_path):
+def test_a_store_from_before_per_link_listening_mode_is_upgraded_unset(tmp_path):
     import sqlite3
 
     path = tmp_path / "mulca.db"
@@ -208,7 +212,7 @@ def test_a_store_from_before_per_link_listening_mode_is_upgraded_to_ambient(tmp_
 
     store = LinkStore(path)
 
-    assert store.all_links()[0].listening_mode == "ambient"
+    assert store.all_links()[0].listening_mode == ""
     store.save(Link(111, 900, 1, 222, listening_mode="push_to_talk"))
     store.close()
     assert LinkStore(path).all_links()[0].listening_mode == "push_to_talk"

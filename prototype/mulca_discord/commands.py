@@ -194,7 +194,7 @@ async def link_channels(
     """
     /mulca link: check, save, put into effect, and say what happened.
     `allow_dms`/`listening_mode` None keeps what the channel had (off, and
-    "ambient", for a new link).
+    unset -- deferring to MUCA-Server's own default -- for a new link).
     """
 
     guild = bot.client.get_guild(guild_id)
@@ -211,7 +211,7 @@ async def link_channels(
     if allow_dms is None:
         allow_dms = existing.allow_dms if existing is not None else False
     if listening_mode is None:
-        listening_mode = existing.listening_mode if existing is not None else "ambient"
+        listening_mode = existing.listening_mode if existing is not None else ""
 
     link = Link(
         text_channel_id=text_channel.id,

@@ -256,7 +256,7 @@ class BotRuntime:
         voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
 
         bridge = VoiceBridge(
-            scope=Scope(conversation_id=link.conversation_id),
+            scope=Scope(conversation_id=link.conversation_id, bot_name=self.name),
             registry=self.registry,
             voice_client=voice_client,
             reply_channel=self.client.get_channel(link.text_channel_id),
@@ -575,13 +575,14 @@ class BotRuntime:
                 conversation_id=f"dm:{message.author.id}",
                 is_dm=True,
                 linked_conversation_id=linked.conversation_id,
+                bot_name=self.name,
             )
         else:
             link = self.link_for_channel(message.channel.id)
             if link is None:
                 # Not a channel linked to this bot.
                 return
-            scope = Scope(conversation_id=link.conversation_id)
+            scope = Scope(conversation_id=link.conversation_id, bot_name=self.name)
 
         if self.paused:
             await self._announce(PAUSED, channel, messages.PAUSED, tagged=tagged)

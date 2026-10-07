@@ -113,6 +113,7 @@ class MucaWsClient:
         conversation_id: str,
         is_dm: bool,
         linked_conversation_id: str | None = None,
+        bot_name: str = "",
         main_model: str = "",
         intervention_model: str = "",
     ) -> None:
@@ -121,6 +122,7 @@ class MucaWsClient:
         self._main_model = main_model
         self._intervention_model = intervention_model
         self._conversation_id = conversation_id
+        self._bot_name = bot_name
         self._is_dm = is_dm
         # For a DM only: the group conversation_id of the linked channel
         # its sender last spoke in (and can still see), so MUCA-Server can
@@ -168,6 +170,7 @@ class MucaWsClient:
                 conversation_id=self._conversation_id,
                 is_dm=self._is_dm,
                 linked_conversation_id=self._linked_conversation_id,
+                bot_name=self._bot_name,
                 main_model=self._main_model,
                 intervention_model=self._intervention_model,
             )

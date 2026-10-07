@@ -376,6 +376,35 @@ class LinkStore:
                 (main, intervention, bot_id),
             )
 
+    def server_models(self) -> tuple[str, str]:
+        """
+        The (main, intervention) models last set for every bot with /mulca
+        model; "" where none was, i.e. the server's own default applies.
+        """
+
+        saved = dict(
+            self._db.execute(
+                "SELECT key, value FROM meta WHERE key IN "
+                "('server_main_model', 'server_intervention_model')"
+            )
+        )
+        return saved.get("server_main_model", ""), saved.get("server_intervention_model", "")
+
+    def set_server_models(self, main: str, intervention: str | None = None) -> None:
+        """Remember the models set for every bot; the intervention one unless None."""
+
+        with self._db:
+            for key, value in (
+                ("server_main_model", main),
+                ("server_intervention_model", intervention),
+            ):
+                if value is not None:
+                    self._db.execute(
+                        "INSERT INTO meta (key, value) VALUES (?, ?) "
+                        "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                        (key, value),
+                    )
+
     def is_paused(self, bot_id: int) -> bool:
         row = self._db.execute(
             "SELECT paused FROM bots WHERE bot_id = ?",

@@ -821,8 +821,28 @@ async def test_without_a_bot_the_servers_model_changes_and_no_bot_is_touched(tar
 
     assert calls == [("ws://muca/", "secret", "gpt-new", True)]
     assert store.models_for(1) == ("", "")
+    assert store.server_models() == ("gpt-new", "gpt-new")
     assert runtimes[0].registry.restarted == []
     assert "MUCA-Server now uses `gpt-new`" in reply
+
+
+def test_status_shows_each_bots_models_and_where_they_come_from():
+    manager, store, runtimes = model_manager("Alpha", "Beta")
+
+    def models_line(runtime):
+        return format_status([runtime.status(GUILD)]).splitlines()[1]
+
+    assert models_line(runtimes[0]) == "  models: main server default, intervention server default"
+
+    store.set_server_models("gpt-all")  # main only, as without include_intervention
+    store.set_models(2, "gpt-beta")
+    assert models_line(runtimes[0]) == "  models: main gpt-all (all bots), intervention server default"
+    assert models_line(runtimes[1]) == "  models: main gpt-beta (this bot), intervention server default"
+
+    store.set_server_models("gpt-all-2", "gpt-all-2")
+    assert models_line(runtimes[1]) == (
+        "  models: main gpt-beta (this bot), intervention gpt-all-2 (all bots)"
+    )
 
 
 async def test_the_servers_model_needs_the_admin_token_and_reports_a_refusal():

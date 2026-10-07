@@ -95,6 +95,10 @@ intervention agent too. With `bot:<name>` it changes just that bot, which then k
 model even when the model is set for everyone. Both are saved across redeploys. To undo a
 bot's own choice, set it again to the model you want.
 
+`/mulca status` shows each bot's main and intervention models and where they come from:
+`(this bot)`, `(all bots)`, or `server default` when nothing has been set from Discord yet
+(MUCA-Server's own default, which MULCA can't see).
+
 ## Limiting use
 
 `/mulca limit set target:<bot|all|pool> daily:<hours> weekly:<hours>` caps how long MULCA may

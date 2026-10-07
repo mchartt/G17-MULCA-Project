@@ -348,9 +348,11 @@ class BotRuntime:
 
     async def arm_listening(self, link: Link, *, reply_channel) -> None:
         """
-        push_to_talk mode only: a participant pressed /listen. A no-op
-        server-side in ambient mode (Conversation.arm_listening), so this
-        is safe to call regardless of which mode MUCA-Server is running.
+        push_to_talk mode only: a participant pressed /listen or the
+        button -- a toggle, the server decides whether this starts or
+        stops a window. A no-op server-side in ambient mode
+        (Conversation.arm_listening), so this is safe to call regardless
+        of which mode MUCA-Server is running.
         """
 
         await self.registry.run(

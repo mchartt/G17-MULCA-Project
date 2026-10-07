@@ -6,8 +6,10 @@ Discord's "/" menu).
 - /restart: anyone, in a channel MULCA serves -- restarts that channel's
   MULCA (fresh OpenAI connections, same memory).
 - /listen: anyone, in a channel MULCA serves -- push_to_talk mode only
-  (MUCA_LISTENING_MODE=push_to_talk): opens a listening window. A no-op
-  (but still succeeds) if that channel's MULCA is running ambient mode.
+  (MUCA_LISTENING_MODE=push_to_talk): a toggle, same command starts and
+  stops a listening window (the server decides which, not the client). A
+  no-op (but still succeeds) if that channel's MULCA is running ambient
+  mode.
 - /mulca button: members with Manage Server -- posts a persistent "Talk to
   MULCA" button (ListenView) in the channel; anyone can press it, same
   effect as /listen. Survives a bot restart (a fixed custom_id, registered
@@ -250,7 +252,7 @@ async def link_channels(
             else " DMs are off (`/mulca dms` turns them on)."
         )
         + (
-            " Listening mode: push_to_talk (`/listen` opens a window)."
+            " Listening mode: push_to_talk (`/listen` toggles a window)."
             if listening_mode == "push_to_talk"
             else ""
         ),
@@ -764,8 +766,12 @@ class ListenView(discord.ui.View):
             )
             return
 
+        # A toggle: this press just as likely stopped a window as started
+        # one, and the server (the only side that knows which, including
+        # whether it had already auto-closed from silence) doesn't report
+        # back which -- so this can't honestly claim a specific direction.
         await interaction.followup.send(
-            f"🎙️ {bot.name} is listening for a bit -- go ahead."
+            f"🎙️ Toggled {bot.name}'s listening -- press again to switch it back."
         )
 
 
@@ -872,8 +878,10 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             )
             return
 
+        # A toggle, same as the button -- see ListenView's own comment on
+        # why this can't claim a specific direction.
         await interaction.followup.send(
-            f"🎙️ {bot.name} is listening for a bit -- go ahead."
+            f"🎙️ Toggled {bot.name}'s listening -- press again to switch it back."
         )
 
     # -- /mulca ... -----------------------------------------------------

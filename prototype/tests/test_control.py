@@ -887,11 +887,12 @@ def test_the_restart_reply_says_whether_the_memory_was_saved():
 def test_the_help_message_covers_text_voice_and_wake_sessions():
     assert "tutoring assistant" in HELP_MESSAGE
     assert "mention it by name" in HELP_MESSAGE
-    assert '"MULCA", "assistant", or "bot"' in HELP_MESSAGE
+    assert '"assistant", "MULCA", "bot" or "chatbot"' in HELP_MESSAGE
     # Starting and ending a "wake" voice conversation -- the least
     # self-explanatory of the listening modes, so the one worth spelling
     # out explicitly here.
-    assert "Say MULCA's name" in HELP_MESSAGE
+    assert "get its attention" in HELP_MESSAGE
+    assert "bystander mode" in HELP_MESSAGE
     assert "stop" in HELP_MESSAGE and "go to sleep" in HELP_MESSAGE
     # No admin-only commands (/link and friends) belong in member-facing help.
     assert "/mulca link" not in HELP_MESSAGE

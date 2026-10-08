@@ -345,11 +345,14 @@ class BotRuntime:
     async def apply_link(self, link: Link, previous: Link | None) -> None:
         """
         Put a just-saved link into effect: a changed voice channel or
-        transcript setting starts a new voice bridge.
+        transcript setting starts a new voice bridge; a changed listening
+        mode also restarts the session, so it reopens in that mode.
         """
 
         if previous is not None and previous != link:
             await self.leave_voice(previous)
+        if previous is not None and previous.listening_mode != link.listening_mode:
+            await self.registry.restart(link.conversation_id)
 
         if link.voice_channel_id is not None:
             await self.sync_voice(link)

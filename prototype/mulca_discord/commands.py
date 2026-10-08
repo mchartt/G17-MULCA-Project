@@ -363,6 +363,31 @@ async def set_dms(manager: BotManager, channel_id: int, enabled: bool) -> str:
     )
 
 
+async def set_mode(manager: BotManager, mode: str, target: str | None, guild_id: int) -> str:
+    """/mulca mode: every link of every bot here (or of one bot) switched to `mode`, live."""
+
+    try:
+        bots = manager.resolve(target, guild_id)
+    except AmbiguousBotName as exc:
+        return _ambiguous_bot_message(exc)
+
+    if not bots:
+        return f"No MULCA bot called {target!r} in this server."
+
+    changed = []
+    for bot in bots:
+        for link in bot.links():
+            if link.guild_id != guild_id or link.listening_mode == mode:
+                continue
+            updated = replace(link, listening_mode=mode)
+            await bot.apply_link(updated, bot.store.save(updated))
+            changed.append(f"<#{link.text_channel_id}>")
+
+    if not changed:
+        return f"Every linked channel is already in {mode} mode."
+    return f"Now in {mode} mode (sessions restarted, memory kept): " + ", ".join(changed) + "."
+
+
 async def unlink_channel(manager: BotManager, channel_id: int) -> str:
     """/mulca unlink: stop serving the link that owns this channel."""
 
@@ -1124,6 +1149,24 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         channel_id = channel.id if channel is not None else interaction.channel_id
         reply = await set_dms(manager, channel_id, enabled)
         await interaction.response.send_message(reply, ephemeral=True)
+
+    @mulca.command(
+        name="mode",
+        description="Switch every linked channel (or one bot's) to a listening mode, no relink needed.",
+    )
+    @app_commands.describe(
+        mode="ambient, toggle, transcribe or wake (see /mulca link).",
+        bot="One bot (default: every bot in this server).",
+    )
+    @app_commands.autocomplete(bot=bot_choices)
+    async def mode_command(
+        interaction: discord.Interaction,
+        mode: Literal["ambient", "toggle", "transcribe", "wake"],
+        bot: str | None = None,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await set_mode(manager, mode, bot, interaction.guild_id)
+        await interaction.followup.send(reply, ephemeral=True)
 
     @mulca.command(
         name="unlink",

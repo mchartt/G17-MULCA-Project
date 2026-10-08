@@ -23,6 +23,7 @@ from mulca_discord.commands import (
     restart_message,
     send_long,
     set_dms,
+    set_mode,
     set_model,
     split_message,
     unlink_channel,
@@ -791,6 +792,46 @@ async def test_relinking_without_saying_keeps_the_dm_setting():
     assert "DMs are off" in reply
 
 
+async def test_changing_the_mode_on_relink_restarts_the_session():
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111)
+    voice = runtime.client.add_channel(222)
+
+    for _ in range(2):  # the second time, the mode is unchanged
+        await link_channels(
+            bot=runtime,
+            guild_id=GUILD,
+            text_channel=text,
+            voice_channel=voice,
+            listening_mode="wake",
+        )
+
+    assert runtime.links()[0].listening_mode == "wake"
+    assert runtime.registry.restarted == ["channel:111"]
+
+
+async def test_mode_switches_every_link_here_and_restarts_only_changed_ones():
+    store = LinkStore(":memory:")
+    other_guild = Link(text_channel_id=444, guild_id=901, bot_id=1)
+    alpha = make_runtime(store, name="MULCA", id=1)
+    store.save(other_guild)
+    beta = make_runtime(
+        store,
+        link=Link(text_channel_id=333, guild_id=GUILD, bot_id=2, listening_mode="wake"),
+        name="MULCA 2",
+        id=2,
+    )
+
+    reply = await set_mode(BotManager([alpha, beta]), "wake", None, GUILD)
+
+    assert "<#111>" in reply and "<#333>" not in reply
+    assert store.link_for_channel(111).listening_mode == "wake"
+    assert store.link_for_channel(444) == other_guild
+    assert alpha.registry.restarted == ["channel:111"]
+    assert beta.registry.restarted == []
+    assert "already" in await set_mode(BotManager([alpha, beta]), "wake", None, GUILD)
+
+
 async def test_unlinking_closes_the_session_and_forgets_the_link():
     runtime = make_runtime()
     manager = BotManager([runtime])
@@ -866,6 +907,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "link",
         "unlink",
         "dms",
+        "mode",
         "model",
         "costalert",
         "button",

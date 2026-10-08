@@ -235,6 +235,7 @@ per server):
 | `/mulca start [bot]` | Manage Server | Undoes `/mulca stop`. |
 | `/mulca link [text] [voice] [bot] [transcripts] [dms]` | Manage Server | Makes MULCA serve a text channel (default: this one), and optionally a voice channel with it. Linking a linked channel again updates it (`dms` left out keeps its DM setting). One voice channel per bot per server. |
 | `/mulca dms enabled [channel]` | Manage Server | Lets the people who can see a linked channel DM MULCA (`True`), or stops them (`False`). Off by default. |
+| `/mulca mode mode [bot]` | Manage Server | Switches every linked channel of one bot, or of all (default), to a listening mode (`ambient`, `toggle`, `transcribe`, `wake`). Takes effect at once, no relink needed: changed channels restart their session and keep their memory. `/mulca link mode:…` on a linked channel applies the same way. |
 | `/mulca unlink [channel]` | Manage Server | Stops MULCA serving a channel. Its memory is kept; linking it again brings it back. |
 | `/mulca bot add` | Manage Server | Adds another bot account: its token goes in a private form, it starts at once, and the reply has its invite link. Needed for two voice groups talking at once in one server. |
 | `/mulca bot remove bot [force]` | Manage Server | Stops an added bot and deletes its token. Refused while it still serves channels, unless `force` (which unlinks them). |

@@ -344,15 +344,67 @@ def message(author_id: int, channel, content: str = "hello"):
     return msg
 
 
-async def test_restarting_a_link_restarts_its_session_and_refreshes_voice():
+async def test_restarting_a_link_already_in_voice_does_a_full_rejoin():
+    # Found live: running /restart while already in voice left the voice
+    # connection itself untouched, only silently refreshing its roster
+    # (update_participants() alone) -- not an actual fresh reconnect, just
+    # a no-op from the user's perspective. Now it leaves and rejoins for
+    # real, same full reset the watchdog's own recovery path uses.
     runtime = make_runtime()
     bridge = runtime.voice[ALPHA.name] = FakeBridge()
+    rejoined = []
+
+    async def join_voice(link):
+        rejoined.append(link)
+
+    runtime.join_voice = join_voice
 
     outcome = await runtime.restart_link(ALPHA)
 
     assert outcome == RestartOutcome(link=ALPHA, confirmed=True)
     assert runtime.registry.restarted == ["channel:111"]
-    assert bridge.roster_updates == 1
+    assert bridge.disconnected
+    assert rejoined == [ALPHA]
+
+
+async def test_restarting_a_link_rejoins_voice_if_it_had_left():
+    # Found live: /restart on a link whose bot wasn't currently in voice
+    # (it had left because the channel was empty, or never joined) did
+    # nothing for voice at all -- update_participants() only ever refreshed
+    # an *already* joined bridge's roster.
+    runtime = make_runtime()
+    runtime.client.add_channel(
+        ALPHA.voice_channel_id, members=[FakeMember(5, "Ada")],
+    )
+    joined = []
+
+    async def join_voice(link):
+        joined.append(link)
+
+    runtime.join_voice = join_voice
+    assert ALPHA.name not in runtime.voice
+
+    await runtime.restart_link(ALPHA)
+
+    assert joined == [ALPHA]
+
+
+async def test_restarting_a_link_with_nobody_in_an_empty_voice_channel_stays_out():
+    # Restarting shouldn't make it join an empty channel just because
+    # nobody's there is unrelated to whether the session itself restarted.
+    runtime = make_runtime()
+    runtime.client.add_channel(ALPHA.voice_channel_id, members=[])
+    joined = []
+
+    async def join_voice(link):
+        joined.append(link)
+
+    runtime.join_voice = join_voice
+
+    await runtime.restart_link(ALPHA)
+
+    assert joined == []
+    assert ALPHA.name not in runtime.voice
 
 
 async def test_a_paused_bot_leaves_voice_closes_sessions_and_ignores_messages():

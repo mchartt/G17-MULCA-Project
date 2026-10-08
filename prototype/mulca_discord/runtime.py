@@ -400,10 +400,24 @@ class BotRuntime:
         """
         Restart one link's MUCA-Server session: the server reconnects its
         provider (OpenAI) from scratch and reloads the saved memory. In
-        voice, the bridge reopens it right away, roster included.
+        voice: a genuine fresh connection too, not just a roster refresh --
+        found live, running /restart while in voice left the existing
+        voice connection untouched, only silently refreshing its roster
+        (update_participants() alone), not actually reconnecting anything.
+        Already in voice: a full leave-and-rejoin (_rejoin_voice, the same
+        full reset the watchdog uses). Not currently in voice at all (it
+        had left because it was empty, or never joined): joins now if
+        someone's actually there (sync_voice), rather than staying out
+        just because restarting doesn't on its own imply anyone's present.
         """
 
         confirmed = await self.registry.restart(link.conversation_id)
+
+        if link.voice_channel_id is not None:
+            if link.name in self.voice:
+                await self._rejoin_voice(link)
+            else:
+                await self.sync_voice(link)
 
         bridge = self.voice.get(link.name)
         if bridge is not None:

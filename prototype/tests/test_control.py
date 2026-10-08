@@ -16,6 +16,9 @@ from dataclasses import replace
 import discord
 
 from mulca_discord.commands import (
+    DIARY_FORM_URL,
+    DIARY_MESSAGE,
+    HELP_MESSAGE,
     control,
     format_status,
     format_usage,
@@ -857,6 +860,28 @@ def test_the_restart_reply_says_whether_the_memory_was_saved():
     assert "didn't confirm" in unsure
 
 
+def test_the_help_message_covers_text_voice_and_wake_sessions():
+    assert "tutoring assistant" in HELP_MESSAGE
+    assert "mention it by name" in HELP_MESSAGE
+    assert '"MULCA", "assistant", or "bot"' in HELP_MESSAGE
+    # Starting and ending a "wake" voice conversation -- the least
+    # self-explanatory of the listening modes, so the one worth spelling
+    # out explicitly here.
+    assert "Say MULCA's name" in HELP_MESSAGE
+    assert "stop" in HELP_MESSAGE and "go to sleep" in HELP_MESSAGE
+    # No admin-only commands (/link and friends) belong in member-facing help.
+    assert "/mulca link" not in HELP_MESSAGE
+    assert "/mulca" not in HELP_MESSAGE
+
+
+def test_the_diary_message_links_the_form():
+    assert DIARY_FORM_URL in DIARY_MESSAGE
+    assert "after" in DIARY_MESSAGE
+    # A quick nudge for manual feedback, alongside the diary reminder.
+    assert "\N{THUMBS UP SIGN}" in DIARY_MESSAGE
+    assert "\N{THUMBS DOWN SIGN}" in DIARY_MESSAGE
+
+
 async def test_control_stops_and_starts_only_the_named_bot():
     store = LinkStore(":memory:")
     alpha = make_runtime(store, name="MULCA", id=1)
@@ -897,7 +922,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
     tree = install_commands(BotManager([client.mulca_runtime]))
 
     commands = {command.name: command for command in tree.get_commands()}
-    assert set(commands) == {"restart", "listen", "mulca"}
+    assert set(commands) == {"restart", "listen", "help", "diary", "mulca"}
     subcommands = {sub.name: sub for sub in commands["mulca"].commands}
     assert set(subcommands) == {
         "status",

@@ -11,6 +11,10 @@ Discord's "/" menu).
   (but still succeeds) if that channel's MULCA is running ambient or
   "transcribe" mode (the latter arms hands-free, via a spoken wake phrase,
   instead).
+- /help: anyone, anywhere -- what MULCA is and how to talk to it (text,
+  voice, starting/ending a "wake" voice conversation). Static; doesn't
+  depend on any one channel's own configuration.
+- /diary: anyone, anywhere -- the link to the post-session diary form.
 - /mulca button: members with Manage Server -- posts a persistent "Talk to
   MULCA" button (ListenView) in the channel; anyone can press it, same
   effect as /listen. Survives a bot restart (a fixed custom_id, registered
@@ -63,6 +67,17 @@ logger = logging.getLogger(__name__)
 RESTART_COOLDOWN_SECONDS = 30.0
 
 ALL = "all"
+
+# The diary every participant fills in after a session -- same link for
+# everyone, not per-deployment config, so it's a plain constant here rather
+# than something an admin sets.
+DIARY_FORM_URL = "https://forms.gle/ZSXMM9oFDFUUyU9HA"
+DIARY_MESSAGE = (
+    f"Please fill in your diary after this session: {DIARY_FORM_URL}\n\n"
+    "Tip: react \N{THUMBS UP SIGN} to a MULCA text reply that was useful, "
+    "or \N{THUMBS DOWN SIGN} to one that wasn't -- it helps us see what's "
+    "working."
+)
 
 # Discord rejects longer messages; replies that grow with the number of bots
 # (status, usage, the bot list) are sent in several.
@@ -145,6 +160,33 @@ def listening_toggle_message(bot_name: str, now_listening: bool | None) -> str:
         "this channel may not be in \"toggle\" mode "
         "(`/mulca link mode:toggle`)."
     )
+
+
+# /help: deliberately static, not tailored to one channel's own listening
+# mode (toggle/transcribe/wake/ambient, set per-link by an admin) -- a
+# member asking for help may not even be in a channel MULCA is linked to
+# yet. Describes the voice behaviour most worth explaining ("wake": say
+# its name to start, a closing phrase to end), since that one is the least
+# self-explanatory; a channel in a different mode works simply enough
+# (ambient: it just listens; toggle/transcribe: a button or /listen).
+HELP_MESSAGE = (
+    "**What MULCA is**\n"
+    "MULCA is a tutoring assistant here to support your group's project "
+    "work, in both text and voice.\n\n"
+    "**How to talk to it**\n"
+    "- In text: mention it by name, or reply to one of its own messages, "
+    "and it'll answer. It may also speak up on its own sometimes -- e.g. "
+    "to keep participation fair or nudge the conversation back on topic.\n"
+    "- In voice: say its name (\"MULCA\", \"assistant\", or \"bot\") to "
+    "get its attention.\n\n"
+    "**Starting and ending a voice conversation**\n"
+    "- Say MULCA's name at any point to start one -- it'll then follow "
+    "the conversation and answer when it's addressed, the same as in "
+    "text.\n"
+    "- Say something like \"stop\", \"thanks MULCA\", \"that's all\", or "
+    "\"go to sleep\" to end it -- MULCA stops listening until its name is "
+    "said again."
+)
 
 
 def restart_message(user_mention: str, outcome: RestartOutcome) -> str:
@@ -1015,6 +1057,24 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         await interaction.followup.send(
             listening_toggle_message(bot.name, now_listening)
         )
+
+    # -- /help ------------------------------------------------------------
+
+    @tree.command(
+        name="help",
+        description="What MULCA is and how to talk to it.",
+    )
+    async def help_command(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(HELP_MESSAGE, ephemeral=True)
+
+    # -- /diary -----------------------------------------------------------
+
+    @tree.command(
+        name="diary",
+        description="Link to the diary you fill in after every session.",
+    )
+    async def diary(interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(DIARY_MESSAGE, ephemeral=True)
 
     # -- /mulca ... -----------------------------------------------------
 

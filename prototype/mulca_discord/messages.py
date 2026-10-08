@@ -40,6 +40,37 @@ DIARY_MESSAGE = (
 )
 
 
+REGISTRATION_FORM_URL = "https://forms.gle/jhRZmGmtEvRNVpEUA"
+
+# Posted to a channel's text channel when an admin links it (/mulca link,
+# a brand-new link) or explicitly re-announces it (/mulca announce) --
+# not per-message or per-day like DAILY_GREETING, since it's the same
+# static explanation every time, not something worth repeating often.
+INTRO_MESSAGE = (
+    "**Welcome to your group's Discord channels!**\n\n"
+    "Thank you for taking part in this study -- we really appreciate it.\n\n"
+    "We believe Multi-User LLM-based Conversational Assistants (MULCAs) "
+    "can be genuinely useful during group project work -- we're giving "
+    "your team one, and using your experience to help us improve it. To "
+    "make that work, please follow these guidelines:\n\n"
+    "1. **Text channel** -- use it for anything you'd normally type to "
+    "each other.\n"
+    "2. **Voice channel** -- do all spoken discussion here, even if "
+    "you're sitting together in person. Keeping the channel open gives "
+    "MULCA the context it needs to respond more relevantly.\n"
+    "3. **No other LLMs during collaborative tasks** -- please use only "
+    "MULCA when working together as a group.\n"
+    "4. **Individual tasks** -- try MULCA first. If it isn't enough and "
+    "you need another LLM, note why in your diary.\n\n"
+    f"If you haven't already, please complete the registration form: "
+    f"{REGISTRATION_FORM_URL}. At the end of each session, fill in the "
+    "short diary (find the link any time with `/diary`). At the end of "
+    "the study, we'll send a post-study questionnaire.\n\n"
+    "Type `/help` any time for a reminder of what MULCA is and how to "
+    "talk to it."
+)
+
+
 # Posted once per linked conversation per day (BotRuntime.on_message, keyed
 # on the first text message of the day), not per message -- so people see
 # the usefulness-signal and diary reminders without having to remember to

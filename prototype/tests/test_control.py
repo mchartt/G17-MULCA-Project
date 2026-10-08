@@ -21,6 +21,7 @@ from mulca_discord.commands import (
     DIARY_FORM_URL,
     DIARY_MESSAGE,
     HELP_MESSAGE,
+    announce_intro,
     control,
     format_status,
     format_usage,
@@ -715,6 +716,8 @@ async def test_linking_saves_the_link_and_joins_voice_if_someone_is_there():
     assert "Linked" in reply
     assert runtime.links() == [ALPHA]
     assert joined == [ALPHA]
+    # A brand-new link -- greet the group once, right away.
+    assert text.sent == [messages.INTRO_MESSAGE]
 
 
 async def test_linking_a_linked_channel_again_updates_it():
@@ -725,6 +728,33 @@ async def test_linking_a_linked_channel_again_updates_it():
 
     assert "Updated" in reply
     assert runtime.links() == [Link(text_channel_id=111, guild_id=GUILD, bot_id=1)]
+    # Not a new link -- no repeat of the intro message for a settings tweak.
+    assert text.sent == []
+
+
+async def test_announce_reposts_the_intro_in_an_already_linked_channel():
+    # For channels linked before the message existed, or any time it's
+    # worth sending again -- unlike link_channels' own auto-post, which
+    # only fires once, on a brand-new link.
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111)
+
+    reply = await announce_intro(manager, text)
+
+    assert "Posted" in reply
+    assert text.sent == [messages.INTRO_MESSAGE]
+
+
+async def test_announce_refuses_an_unlinked_channel():
+    runtime = make_runtime(link=None)
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(999)
+
+    reply = await announce_intro(manager, text)
+
+    assert "doesn't serve" in reply
+    assert text.sent == []
 
 
 async def test_a_bot_that_cant_see_the_channel_is_not_linked():
@@ -955,6 +985,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "start",
         "link",
         "unlink",
+        "announce",
         "dms",
         "mode",
         "model",

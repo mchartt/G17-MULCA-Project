@@ -24,6 +24,11 @@ Discord's "/" menu).
 - /mulca link|unlink|dms: members with Manage Server -- which channels a
   bot serves (links.py), with no code or config file involved, and whether
   the people of a channel may DM it (off by default).
+- /mulca announce: members with Manage Server -- re-posts the welcome/
+  guidelines message (messages.INTRO_MESSAGE) in a linked channel.
+  /mulca link already posts it once, automatically, the first time a
+  channel is newly linked; this is for re-sending it later (e.g. to
+  channels linked before the message existed).
 - /mulca model: members with Manage Server -- the realtime model of every
   MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
 - /mulca costalert: members with Manage Server -- MUCA-Server's own
@@ -54,6 +59,7 @@ from typing import Literal
 import discord
 from discord import app_commands
 
+from . import messages
 from .links import BotRecord, Link
 from .messages import DIARY_FORM_URL, DIARY_MESSAGE
 from .muca_client import MucaConnectionLost, set_server_cost_alert, set_server_model
@@ -324,6 +330,12 @@ async def link_channels(
     previous = bot.store.save(link, created_by=created_by)
     await bot.apply_link(link, previous)
 
+    if previous is None:
+        # A brand-new link, not a settings change to one that already
+        # existed -- the group's first time seeing this channel, so this
+        # is the moment to greet them, not every later /mulca link tweak.
+        await messages.post(text_channel, messages.INTRO_MESSAGE)
+
     where = f"<#{text_channel.id}>" + (
         f" and <#{voice_channel.id}>" if voice_channel is not None else ""
     )
@@ -366,6 +378,25 @@ async def link_channels(
         lines.append("It can't work fully yet: " + "; ".join(warnings) + ".")
 
     return "\n".join(lines)
+
+
+async def announce_intro(manager: BotManager, channel) -> str:
+    """
+    /mulca announce: re-post messages.INTRO_MESSAGE in a linked channel --
+    /mulca link already posts it once, automatically, on a brand-new link;
+    this is for sending it again later (e.g. to channels linked before the
+    message existed, which is why this exists at all).
+    """
+
+    if channel is None:
+        return "Pick a text channel, or run this in one."
+
+    found = manager.link_for_channel(channel.id)
+    if found is None:
+        return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
+
+    await messages.post(channel, messages.INTRO_MESSAGE)
+    return f"Posted in <#{channel.id}>."
 
 
 async def set_dms(manager: BotManager, channel_id: int, enabled: bool) -> str:
@@ -1178,6 +1209,20 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             created_by=interaction.user.id,
         )
         await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="announce",
+        description="Re-post the welcome/guidelines message in a linked channel.",
+    )
+    @app_commands.describe(
+        channel="The linked text channel (default: this one).",
+    )
+    async def announce(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | None = None,
+    ) -> None:
+        reply = await announce_intro(manager, channel or interaction.channel)
+        await interaction.response.send_message(reply, ephemeral=True)
 
     @mulca.command(
         name="dms",

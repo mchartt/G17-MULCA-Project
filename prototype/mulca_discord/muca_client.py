@@ -4,7 +4,8 @@ One WebSocket session against MUCA-Server, for one conversation scope.
 Speaks the exact protocol muca_server.protocol defines -- imported from the
 muca-server package rather than duplicated, so the two sides cannot drift.
 Mirrors what MUCA-Server's own tests and the Unity client do over the wire:
-connect, stand up the intervention observer, push the roster, then stream
+connect, give the main agent the AUI instructions (aui/), stand up the
+intervention observer, push the roster, then stream
 user_text turns (and, for voice, audio_stream frames) and read
 assistant_text / state_update back. See MUCA-Server's docs/PROTOCOL.md.
 """
@@ -36,6 +37,8 @@ from muca_server.protocol import (
     SetModelMessage,
     UserTextMessage,
 )
+
+from . import aui
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +235,16 @@ class MucaWsClient:
                 listening_mode=self._listening_mode or None,
                 main_model=self._main_model,
                 intervention_model=self._intervention_model,
+            )
+        )
+        # The AUI teaching assistant: MUCA-Server's main agent is generic
+        # until this replaces its instructions (a raw provider session.update).
+        await self._connection.send(
+            json.dumps(
+                {
+                    "type": "session.update",
+                    "session": {"instructions": aui.main_instructions()},
+                }
             )
         )
         await self._send(

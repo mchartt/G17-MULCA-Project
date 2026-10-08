@@ -62,6 +62,40 @@ RESTART_COOLDOWN_SECONDS = 30.0
 
 ALL = "all"
 
+# Discord rejects longer messages; replies that grow with the number of bots
+# (status, usage, the bot list) are sent in several.
+DISCORD_MESSAGE_LIMIT = 2000
+
+
+def split_message(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
+    """`text` in chunks of at most `limit` characters, cut between lines."""
+
+    chunks: list[str] = []
+    current: str | None = None
+    for line in text.split("\n"):
+        if len(line) > limit:  # Only an absurdly long line is cut.
+            if current is not None:
+                chunks.append(current)
+            *pieces, line = [line[i : i + limit] for i in range(0, len(line), limit)]
+            chunks.extend(pieces)
+            current = None
+        if current is not None and len(current) + 1 + len(line) <= limit:
+            current += "\n" + line
+        else:
+            if current is not None:
+                chunks.append(current)
+            current = line
+    chunks.append(current or "")
+    return chunks
+
+
+async def send_long(interaction: discord.Interaction, text: str) -> None:
+    """An ephemeral reply, after a defer, in as many messages as it takes."""
+
+    # Discord rejects empty messages too.
+    for chunk in [c for c in split_message(text) if c.strip()] or ["(nothing to show)"]:
+        await interaction.followup.send(chunk, ephemeral=True)
+
 
 def _ambiguous_bot_message(exc: AmbiguousBotName) -> str:
     ids = ", ".join(f"`{bot.user_id}`" for bot in exc.matches)
@@ -917,15 +951,16 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     @mulca.command(name="status", description="Show every MULCA bot in this server.")
     async def status(interaction: discord.Interaction) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
         statuses = [
             bot.status(interaction.guild_id)
             for bot in manager.in_guild(interaction.guild_id)
         ]
-        await interaction.response.send_message(
+        await send_long(
+            interaction,
             format_status(statuses)
             + "\n\nActive use:\n"
             + format_usage(manager, None, interaction.guild_id),
-            ephemeral=True,
         )
 
     @mulca.command(
@@ -1061,7 +1096,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
     ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
         reply = await control(manager, action, bot, interaction.guild_id)
-        await interaction.followup.send(reply, ephemeral=True)
+        await send_long(interaction, reply)
 
     @mulca.command(
         name="restart",
@@ -1172,7 +1207,8 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     @bots.command(name="list", description="Every MULCA bot account, and what it's doing.")
     async def bot_list(interaction: discord.Interaction) -> None:
-        await interaction.response.send_message(list_bots(manager), ephemeral=True)
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        await send_long(interaction, list_bots(manager))
 
     # -- /mulca limit ..., /mulca usage ----------------------------------
 
@@ -1219,10 +1255,8 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
     @app_commands.describe(bot="One bot, or all of them in this server (default).")
     @app_commands.autocomplete(bot=bot_choices)
     async def usage_command(interaction: discord.Interaction, bot: str | None = None) -> None:
-        await interaction.response.send_message(
-            format_usage(manager, bot, interaction.guild_id),
-            ephemeral=True,
-        )
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        await send_long(interaction, format_usage(manager, bot, interaction.guild_id))
 
     tree.add_command(mulca)
 

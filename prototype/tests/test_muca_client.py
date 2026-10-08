@@ -24,6 +24,10 @@ class EchoMainAgent(MainAgent):
     """Replies to every instruction with the last thing it was told."""
 
     heard: list[str] = []
+    sessions: list[dict] = []
+
+    async def _update_session(self, session) -> None:
+        EchoMainAgent.sessions.append(session)
 
     async def _send_text(self, text: str, *, role: str) -> None:
         if role == "user":
@@ -146,6 +150,7 @@ async def test_the_handshake_carries_the_scope_and_a_reply_streams_back(server):
         linked_conversation_id="instance:team-alpha",
     )
     frames, done = await collect_reply(client)
+    EchoMainAgent.sessions = []
     await client.connect()
 
     await client.send_user_text(speaker=42, speaker_name="Ada", text="hello")
@@ -153,6 +158,9 @@ async def test_the_handshake_carries_the_scope_and_a_reply_streams_back(server):
     await client.close()
 
     assert AnswerEverything.seen == [("dm:42", True, "instance:team-alpha")]
+    # The main agent became the AUI teaching assistant before the first turn.
+    [session] = EchoMainAgent.sessions
+    assert "Advanced User Interfaces" in session["instructions"]
     assert "".join(text for text, _, _ in frames) == "echo: Ada: hello"
     assert frames[-1][1:] == (True, "text")
 

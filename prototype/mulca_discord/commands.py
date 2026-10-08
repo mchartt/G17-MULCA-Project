@@ -346,7 +346,11 @@ async def link_channels(
         # A brand-new link, not a settings change to one that already
         # existed -- the group's first time seeing this channel, so this
         # is the moment to greet them, not every later /mulca link tweak.
-        await messages.post(text_channel, messages.INTRO_MESSAGE)
+        # _channel_for_bot: text_channel came from the slash command's own
+        # interaction, always bound to the primary bot's connection --
+        # re-resolved through `bot`'s own client in case this link is for
+        # a different bot account (one per simultaneous voice channel).
+        await messages.post(_channel_for_bot(bot, text_channel), messages.INTRO_MESSAGE)
 
     where = f"<#{text_channel.id}>" + (
         f" and <#{voice_channel.id}>" if voice_channel is not None else ""
@@ -403,6 +407,27 @@ async def _post(channel, text: str) -> str | None:
         return str(exc) or type(exc).__name__
 
 
+def _channel_for_bot(bot: BotRuntime, channel):
+    """
+    The channel object to actually post through -- re-resolved via the bot
+    that owns this channel's link, not necessarily the one a slash
+    command's own interaction handed in. Slash commands are only ever
+    registered and handled by the primary bot, so a channel option Discord
+    resolves for one is always bound to the primary bot's own connection,
+    regardless of which bot (in a multi-bot deployment, one account per
+    simultaneous voice channel) actually serves that channel. Found live:
+    posting through that interaction-resolved object sent via the primary
+    bot's own token, which 403'd (Missing Access) on a private channel
+    only the serving bot's account had actually been added to -- MULCA
+    still replied there fine conversationally, since a normal reply always
+    goes out through the serving bot's own live message event, never the
+    primary bot at all. Falls back to the given channel if the owning
+    bot's own client doesn't have it cached, rather than failing outright.
+    """
+
+    return bot.client.get_channel(channel.id) or channel
+
+
 async def announce_intro(manager: BotManager, channel) -> str:
     """
     /mulca announce: re-post messages.INTRO_MESSAGE in a linked channel --
@@ -418,7 +443,8 @@ async def announce_intro(manager: BotManager, channel) -> str:
     if found is None:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
-    error = await _post(channel, messages.INTRO_MESSAGE)
+    bot, _link = found
+    error = await _post(_channel_for_bot(bot, channel), messages.INTRO_MESSAGE)
     if error is not None:
         # Found live: this used to unconditionally say "Posted", even when
         # channel.send() itself failed (that specific channel's own
@@ -479,7 +505,8 @@ async def post_help(manager: BotManager, channel) -> str:
     if found is None:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
-    error = await _post(channel, HELP_MESSAGE)
+    bot, _link = found
+    error = await _post(_channel_for_bot(bot, channel), HELP_MESSAGE)
     if error is not None:
         return f"Could not post in <#{channel.id}>: {error}"
     return f"Posted in <#{channel.id}>."
@@ -542,7 +569,9 @@ async def greet_first_session(manager: BotManager, channel) -> str:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
     bot, link = found
-    error = await bot.post_first_session_greeting(channel, link.conversation_id)
+    error = await bot.post_first_session_greeting(
+        _channel_for_bot(bot, channel), link.conversation_id
+    )
     if error is not None:
         return f"Could not post in <#{channel.id}>: {error}"
     return f"Posted in <#{channel.id}>."

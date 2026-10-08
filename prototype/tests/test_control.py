@@ -814,6 +814,29 @@ async def test_linking_saves_the_link_and_joins_voice_if_someone_is_there():
     assert text.sent == [messages.INTRO_MESSAGE]
 
 
+async def test_linking_posts_the_intro_through_the_linked_bots_own_client():
+    # text_channel, same as /mulca announce's channel parameter, comes from
+    # the slash command's own interaction -- always the primary bot's
+    # connection, regardless of which bot account `bot:` actually targets.
+    primary = make_runtime(link=None, name="MULCA-parent", id=1)
+    serving_bot = make_runtime(store=primary.store, link=None, name="mulca-10", id=2)
+
+    from_primary = primary.client.add_channel(111)
+    from_primary.send_fails_with = RuntimeError("403 Forbidden (Missing Access)")
+    from_serving_bot = serving_bot.client.add_channel(111)
+
+    reply = await link_channels(
+        bot=serving_bot,
+        guild_id=GUILD,
+        text_channel=from_primary,
+        created_by=5,
+    )
+
+    assert "Linked" in reply
+    assert from_serving_bot.sent == [messages.INTRO_MESSAGE]
+    assert from_primary.sent == []
+
+
 async def test_linking_a_linked_channel_again_updates_it():
     runtime = make_runtime()
     text = runtime.client.add_channel(111)
@@ -838,6 +861,36 @@ async def test_announce_reposts_the_intro_in_an_already_linked_channel():
 
     assert "Posted" in reply
     assert text.sent == [messages.INTRO_MESSAGE]
+
+
+async def test_announce_posts_through_the_serving_bots_own_client_not_the_primarys():
+    # Found live: a private channel linked to one specific bot account in a
+    # multi-bot deployment (one account per simultaneous voice channel) --
+    # MULCA replied there fine conversationally (that always goes out
+    # through the serving bot's own live message event), but /mulca
+    # announce, run through the primary bot's slash command, 403'd
+    # (Missing Access) by sending through the *primary* bot's own
+    # connection instead, which was never added to that private channel at
+    # all. Same channel ID, two different bot accounts, two different
+    # actual Discord channel objects.
+    primary = make_runtime(link=None, name="MULCA-parent", id=1)
+    serving_bot = make_runtime(link=None, name="mulca-10", id=2)
+    manager = BotManager([primary, serving_bot])
+
+    # What the primary bot's own interaction would hand the command --
+    # it was never added to this private channel.
+    from_primary = primary.client.add_channel(111)
+    from_primary.send_fails_with = RuntimeError("403 Forbidden (Missing Access)")
+
+    # The same channel id, through the bot that's actually linked to it.
+    from_serving_bot = serving_bot.client.add_channel(111)
+    serving_bot.store.save(Link(text_channel_id=111, guild_id=GUILD, bot_id=2))
+
+    reply = await announce_intro(manager, from_primary)
+
+    assert "Posted" in reply
+    assert from_serving_bot.sent == [messages.INTRO_MESSAGE]
+    assert from_primary.sent == []
 
 
 async def test_announce_help_and_greet_all_post_to_every_linked_channel_in_the_server():

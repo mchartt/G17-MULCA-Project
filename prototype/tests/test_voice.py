@@ -11,14 +11,16 @@ import numpy as np
 
 from mulca_discord.voice.bridge import VoiceBridge
 from mulca_discord.voice.capture import VoiceCapture, _now_ms as capture_clock
+from mulca_discord.dispatch import ReplyDispatcher
 from mulca_discord.voice.player import (
     FRAME_BYTES,
     AssistantPlayer,
+    chime,
     discord_audio_to_server,
     server_audio_to_discord,
 )
 from mulca_discord.voice.synchronizer import SpeakerSynchronizer
-from mulca_discord.sessions import Scope
+from mulca_discord.sessions import Scope, ScopeSession
 
 LOUD = np.full(480, 0.3, dtype=np.float32)
 QUIET = np.zeros(480, dtype=np.float32)
@@ -137,6 +139,78 @@ def test_what_was_played_can_be_echoed_to_the_server():
     assert played.size == 480
     assert np.allclose(played, 0.25, atol=1e-3)
     assert player.take_played() == b""
+
+
+def test_a_chime_plays_first_but_is_never_reported_to_the_server():
+    # The server's turn taking runs on what the player reports: a chime
+    # counted as MULCA speaking would throw its playback clock off.
+    player = AssistantPlayer()
+    player.enqueue_cue(chime(rising=True))
+    player.enqueue(floats(*([0.1] * 2400)))  # 100 ms of reply
+
+    cue_frames = 0
+    while player.take_played() == b"":
+        assert len(player.read()) == FRAME_BYTES
+        cue_frames += 1
+
+    assert cue_frames == 13  # 240 ms of chime, then the reply's first frame
+    assert player.playback_time_ms() == 20
+
+
+def test_a_chime_alone_ends_like_any_playback():
+    player = AssistantPlayer()
+    player.enqueue_cue(chime(rising=False))
+
+    assert not player.is_notifying()
+    while player.read():
+        pass
+    assert player.take_played() == b""
+
+
+class FakeChannel:
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    async def send(self, content: str) -> None:
+        self.sent.append(content)
+
+
+async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
+    channel = FakeChannel()
+    chimes: list[bool] = []
+
+    async def on_chime(open_: bool) -> None:
+        chimes.append(open_)
+
+    session = ScopeSession(
+        scope=Scope(conversation_id="c", bot_name="MULCA", listening_mode="wake"),
+        client=None,
+        replies=ReplyDispatcher(channel),
+        on_listening_state=on_chime,
+    )
+
+    await session.handle_listening_state(True)
+    await session.handle_listening_state(False)
+
+    assert channel.sent == [
+        "\N{STUDIO MICROPHONE} MULCA is listening",
+        "\N{SLEEPING SYMBOL} MULCA went back to sleep",
+    ]
+    assert chimes == [True, False]
+
+
+async def test_transcribe_windows_are_not_announced():
+    # One opens and closes on every wake phrase: far too often to post.
+    channel = FakeChannel()
+    session = ScopeSession(
+        scope=Scope(conversation_id="c", listening_mode="transcribe"),
+        client=None,
+        replies=ReplyDispatcher(channel),
+    )
+
+    await session.handle_listening_state(True)
+
+    assert channel.sent == []
 
 
 # ----------------------------------------------------------------------

@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 ClientFactory = Callable[..., MucaWsClient]
 StateUpdateHandler = Callable[[dict], Awaitable[None]]
+ListeningStateHandler = Callable[[bool], Awaitable[None]]
 # (session, is_final) for each piece of a reply; (session, message) for an
 # error the server reported.
 ReplyHook = Callable[["ScopeSession", bool], None]
@@ -70,12 +71,37 @@ class ScopeSession:
     # Set by the voice bridge while the bot is in this scope's voice
     # channel: spoken replies go there.
     on_state_update: StateUpdateHandler | None = None
+    # Set by the voice bridge too: a chime when MULCA starts or stops
+    # listening, for people who aren't watching the text channel.
+    on_listening_state: ListeningStateHandler | None = None
 
     opened_at: float = field(default_factory=time.monotonic)
 
     async def handle_state_update(self, data: dict) -> None:
         if self.on_state_update is not None:
             await self.on_state_update(data)
+
+    async def handle_listening_state(self, open_: bool) -> None:
+        """
+        "wake" mode: MUCA-Server started or ended an engaged session.
+        "transcribe" opens and closes a 5 s window on every wake phrase,
+        too often to announce. ("toggle" never gets here: arm_listening
+        takes these replies itself.)
+        """
+
+        if self.scope.listening_mode == "transcribe":
+            return
+
+        name = self.scope.bot_name or "MULCA"
+        channel = self.replies.channel
+        if channel is not None:
+            await channel.send(
+                f"\N{STUDIO MICROPHONE} {name} is listening"
+                if open_
+                else f"\N{SLEEPING SYMBOL} {name} went back to sleep"
+            )
+        if self.on_listening_state is not None:
+            await self.on_listening_state(open_)
 
 
 class SessionRegistry:
@@ -152,6 +178,7 @@ class SessionRegistry:
             if existing is not None:
                 # A reopened session keeps whatever the old one was wired to.
                 session.on_state_update = existing.on_state_update
+                session.on_listening_state = existing.on_listening_state
 
             async def on_text(text: str, is_final: bool, modality: str = "text") -> None:
                 if self.on_reply is not None:
@@ -170,6 +197,7 @@ class SessionRegistry:
             client.on_error = on_error
             client.on_usage = on_usage
             client.on_state_update = session.handle_state_update
+            client.on_listening_state = session.handle_listening_state
 
             self._sessions[scope.conversation_id] = session
             logger.info(

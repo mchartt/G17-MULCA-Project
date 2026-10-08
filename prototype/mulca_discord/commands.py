@@ -317,7 +317,12 @@ async def link_channels(
             else (
                 " Listening mode: transcribe (say \"assistant\" to open a window)."
                 if listening_mode == "transcribe"
-                else ""
+                else (
+                    " Listening mode: wake (say \"assistant\" and MULCA joins"
+                    " the discussion until it goes quiet)."
+                    if listening_mode == "wake"
+                    else ""
+                )
             )
         ),
         "If MULCA was linked to this channel before, it still remembers that conversation.",
@@ -1047,9 +1052,10 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         dms="Let people who can see the text channel DM MULCA (default: unchanged, off for a new link).",
         mode=(
             "ambient (every turn judged), toggle (/listen or the button "
-            "opens a window), or transcribe (say \"assistant\" to open a "
-            "window hands-free) -- default: unchanged, ambient for a new "
-            "link."
+            "opens a window), transcribe (say \"assistant\" to open a "
+            "window hands-free), or wake (say \"assistant\" and MULCA "
+            "joins the discussion until it goes quiet) -- default: "
+            "unchanged, the server's own for a new link."
         ),
     )
     @app_commands.autocomplete(bot=bot_choices)
@@ -1060,7 +1066,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot: str | None = None,
         transcripts: bool = False,
         dms: bool | None = None,
-        mode: Literal["ambient", "toggle", "transcribe"] | None = None,
+        mode: Literal["ambient", "toggle", "transcribe", "wake"] | None = None,
     ) -> None:
         text = text or interaction.channel
         if not isinstance(text, discord.TextChannel):

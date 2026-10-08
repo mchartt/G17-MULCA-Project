@@ -30,7 +30,7 @@ from ..muca_client import MucaConnectionLost, MucaWsClient
 from ..sessions import Scope, SessionRegistry
 from .capture import VoiceCapture
 from .debug import UpstreamRecorder
-from .player import AssistantPlayer
+from .player import AssistantPlayer, chime
 from .synchronizer import SpeakerSynchronizer
 
 logger = logging.getLogger(__name__)
@@ -363,6 +363,7 @@ class VoiceBridge:
             post_voice_transcripts=self._post_voice_transcripts,
         )
         session.on_state_update = self._on_state_update
+        session.on_listening_state = self._on_listening_state
 
         client = getattr(session, "client", None)
         if client is not self._last_client:
@@ -412,6 +413,10 @@ class VoiceBridge:
         if audio:
             self.player.enqueue(base64.b64decode(audio))
             self._ensure_playing()
+
+    async def _on_listening_state(self, open_: bool) -> None:
+        self.player.enqueue_cue(chime(rising=open_))
+        self._ensure_playing()
 
     def _ensure_playing(self) -> None:
         voice_client = self._voice_client

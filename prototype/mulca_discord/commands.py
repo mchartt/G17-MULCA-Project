@@ -25,15 +25,22 @@ Discord's "/" menu).
   bot serves (links.py), with no code or config file involved, and whether
   the people of a channel may DM it (off by default).
 - /mulca announce: members with Manage Server -- re-posts the welcome/
-  guidelines message (messages.INTRO_MESSAGE) in a linked channel.
-  /mulca link already posts it once, automatically, the first time a
-  channel is newly linked; this is for re-sending it later (e.g. to
-  channels linked before the message existed).
+  guidelines message (messages.INTRO_MESSAGE) in a linked channel, or (with
+  all:true) every linked channel in the server. /mulca link already posts
+  it once, automatically, the first time a channel is newly linked; this
+  is for re-sending it later (e.g. to channels linked before the message
+  existed).
+- /mulca help: members with Manage Server -- posts HELP_MESSAGE (same text
+  as the member-facing /help) in a linked channel, or (all:true) every
+  linked channel -- unlike /help, not ephemeral, so it's a visible part of
+  a channel's setup sequence (announce, then help, then greet) rather than
+  something a member has to ask for themselves.
 - /mulca greet: members with Manage Server -- posts the first-session
   variant of the daily reminder (messages.FIRST_SESSION_MESSAGE, no
-  "welcome back" framing) once, for a channel about to start its first
-  real session, and marks today as already greeted so the automatic daily
-  one (BotRuntime.on_message) doesn't also post later the same day.
+  "welcome back" framing) once, for a channel (or with all:true, every
+  linked channel) about to start its first real session, and marks today
+  as already greeted so the automatic daily one (BotRuntime.on_message)
+  doesn't also post later the same day.
 - /mulca model: members with Manage Server -- the realtime model of every
   MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
 - /mulca costalert: members with Manage Server -- MUCA-Server's own
@@ -402,6 +409,80 @@ async def announce_intro(manager: BotManager, channel) -> str:
 
     await messages.post(channel, messages.INTRO_MESSAGE)
     return f"Posted in <#{channel.id}>."
+
+
+async def _post_everywhere(manager: BotManager, guild_id: int, text: str) -> str:
+    """Posts `text` in every text channel linked (by any bot) in this server."""
+
+    posted = []
+    for bot in manager.resolve(None, guild_id):
+        for link in bot.links():
+            if link.guild_id != guild_id:
+                continue
+            channel = bot.client.get_channel(link.text_channel_id)
+            if channel is None:
+                continue
+            await messages.post(channel, text)
+            posted.append(f"<#{link.text_channel_id}>")
+
+    if not posted:
+        return "No linked channel in this server."
+    return "Posted in: " + ", ".join(posted) + "."
+
+
+async def announce_intro_everywhere(manager: BotManager, guild_id: int) -> str:
+    """/mulca announce all:true -- messages.INTRO_MESSAGE in every linked channel here."""
+
+    return await _post_everywhere(manager, guild_id, messages.INTRO_MESSAGE)
+
+
+async def post_help(manager: BotManager, channel) -> str:
+    """
+    /mulca help: posts messages.HELP_MESSAGE publicly in a linked channel --
+    unlike the member-facing /help (ephemeral, works anywhere), this is for
+    an admin to broadcast it as a visible step of a channel's setup, e.g.
+    right after /mulca announce.
+    """
+
+    if channel is None:
+        return "Pick a text channel, or run this in one."
+
+    found = manager.link_for_channel(channel.id)
+    if found is None:
+        return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
+
+    await messages.post(channel, HELP_MESSAGE)
+    return f"Posted in <#{channel.id}>."
+
+
+async def post_help_everywhere(manager: BotManager, guild_id: int) -> str:
+    """/mulca help all:true -- messages.HELP_MESSAGE in every linked channel here."""
+
+    return await _post_everywhere(manager, guild_id, HELP_MESSAGE)
+
+
+async def greet_first_session_everywhere(manager: BotManager, guild_id: int) -> str:
+    """
+    /mulca greet all:true -- messages.FIRST_SESSION_MESSAGE in every linked
+    channel here, same per-channel bookkeeping as the single-channel
+    version (BotRuntime.post_first_session_greeting): marks today as
+    already greeted, without counting as a real session.
+    """
+
+    posted = []
+    for bot in manager.resolve(None, guild_id):
+        for link in bot.links():
+            if link.guild_id != guild_id:
+                continue
+            channel = bot.client.get_channel(link.text_channel_id)
+            if channel is None:
+                continue
+            await bot.post_first_session_greeting(channel, link.conversation_id)
+            posted.append(f"<#{link.text_channel_id}>")
+
+    if not posted:
+        return "No linked channel in this server."
+    return "Posted in: " + ", ".join(posted) + "."
 
 
 async def greet_first_session(manager: BotManager, channel) -> str:
@@ -1238,30 +1319,62 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     @mulca.command(
         name="announce",
-        description="Re-post the welcome/guidelines message in a linked channel.",
+        description="Re-post the welcome/guidelines message in a linked channel, or every one.",
     )
     @app_commands.describe(
-        channel="The linked text channel (default: this one).",
+        channel="The linked text channel (default: this one). Ignored if all is true.",
+        all="Post in every text channel linked in this server instead of just one.",
     )
     async def announce(
         interaction: discord.Interaction,
         channel: discord.TextChannel | None = None,
+        all: bool = False,
     ) -> None:
-        reply = await announce_intro(manager, channel or interaction.channel)
+        reply = (
+            await announce_intro_everywhere(manager, interaction.guild_id)
+            if all
+            else await announce_intro(manager, channel or interaction.channel)
+        )
+        await interaction.response.send_message(reply, ephemeral=True)
+
+    @mulca.command(
+        name="help",
+        description="Post the help message in a linked channel, or every one (not ephemeral).",
+    )
+    @app_commands.describe(
+        channel="The linked text channel (default: this one). Ignored if all is true.",
+        all="Post in every text channel linked in this server instead of just one.",
+    )
+    async def mulca_help(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | None = None,
+        all: bool = False,
+    ) -> None:
+        reply = (
+            await post_help_everywhere(manager, interaction.guild_id)
+            if all
+            else await post_help(manager, channel or interaction.channel)
+        )
         await interaction.response.send_message(reply, ephemeral=True)
 
     @mulca.command(
         name="greet",
-        description="Post the first-session reminder (no 'welcome back') in a linked channel.",
+        description="Post the first-session reminder in a linked channel, or every one.",
     )
     @app_commands.describe(
-        channel="The linked text channel (default: this one).",
+        channel="The linked text channel (default: this one). Ignored if all is true.",
+        all="Post in every text channel linked in this server instead of just one.",
     )
     async def greet(
         interaction: discord.Interaction,
         channel: discord.TextChannel | None = None,
+        all: bool = False,
     ) -> None:
-        reply = await greet_first_session(manager, channel or interaction.channel)
+        reply = (
+            await greet_first_session_everywhere(manager, interaction.guild_id)
+            if all
+            else await greet_first_session(manager, channel or interaction.channel)
+        )
         await interaction.response.send_message(reply, ephemeral=True)
 
     @mulca.command(

@@ -22,11 +22,14 @@ from mulca_discord.commands import (
     DIARY_MESSAGE,
     HELP_MESSAGE,
     announce_intro,
+    announce_intro_everywhere,
     control,
     format_status,
     format_usage,
     greet_first_session,
+    greet_first_session_everywhere,
     link_channels,
+    post_help_everywhere,
     restart_message,
     send_long,
     set_dms,
@@ -830,6 +833,38 @@ async def test_announce_reposts_the_intro_in_an_already_linked_channel():
     assert text.sent == [messages.INTRO_MESSAGE]
 
 
+async def test_announce_help_and_greet_all_post_to_every_linked_channel_in_the_server():
+    # Setup sequence across a whole server: announce, then help, then
+    # greet, each asked once with all=true instead of one /mulca call per
+    # channel.
+    runtime = make_runtime(guilds=(GUILD, 9999))
+    manager = BotManager([runtime])
+    first = runtime.client.add_channel(111)  # ALPHA, already linked
+    second = runtime.client.add_channel(333)
+    runtime.store.save(Link(text_channel_id=333, guild_id=GUILD, bot_id=1))
+    other_server = runtime.client.add_channel(444, guild_id=9999)
+    runtime.store.save(Link(text_channel_id=444, guild_id=9999, bot_id=1))
+
+    announce_reply = await announce_intro_everywhere(manager, GUILD)
+    help_reply = await post_help_everywhere(manager, GUILD)
+    greet_reply = await greet_first_session_everywhere(manager, GUILD)
+
+    for reply in (announce_reply, help_reply, greet_reply):
+        assert "<#111>" in reply and "<#333>" in reply and "<#444>" not in reply
+
+    assert first.sent == [messages.INTRO_MESSAGE, HELP_MESSAGE, messages.FIRST_SESSION_MESSAGE]
+    assert second.sent == [messages.INTRO_MESSAGE, HELP_MESSAGE, messages.FIRST_SESSION_MESSAGE]
+    # A different server's own linked channel is untouched.
+    assert other_server.sent == []
+
+
+async def test_announce_all_with_no_linked_channel_says_so():
+    runtime = make_runtime(link=None)
+    manager = BotManager([runtime])
+
+    assert "No linked channel" in await announce_intro_everywhere(manager, GUILD)
+
+
 async def test_announce_refuses_an_unlinked_channel():
     runtime = make_runtime(link=None)
     manager = BotManager([runtime])
@@ -1070,6 +1105,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "link",
         "unlink",
         "announce",
+        "help",
         "greet",
         "dms",
         "mode",

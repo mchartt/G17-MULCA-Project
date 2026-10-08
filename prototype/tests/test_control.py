@@ -500,15 +500,20 @@ async def test_the_first_message_of_the_day_gets_a_greeting_later_ones_dont():
     await runtime.on_message(message(5, text))  # same day -- no repeat
 
     assert len(text.sent) == 1
-    assert text.sent[0] == messages.DAILY_GREETING
+    # The group's actual first message ever -- no real session has
+    # happened yet (no /mulca greet, nothing), so this is the
+    # FIRST_SESSION_MESSAGE wording, not "Welcome back!".
+    assert text.sent[0] == messages.FIRST_SESSION_MESSAGE
 
-    # A new day -- greeted again, and the previous day's greeting is
+    # A new day -- a real session has now happened once, so this one is
+    # the usual "Welcome back!" wording. The previous day's greeting is
     # deleted rather than left to pile up.
     first_greeting = text.sent_messages[0]
     runtime._last_greeted["channel:111"] -= timedelta(days=1)
     await runtime.on_message(message(5, text))
 
     assert len(text.sent) == 2
+    assert text.sent[1] == messages.DAILY_GREETING
     assert first_greeting.deleted
 
 
@@ -535,6 +540,30 @@ async def test_greet_posts_the_first_session_variant_and_skips_todays_daily_one(
     await runtime.on_message(message(5, text))
 
     assert text.sent == [messages.FIRST_SESSION_MESSAGE]
+
+
+async def test_a_greeting_run_days_before_the_first_message_still_isnt_a_welcome_back():
+    # /mulca greet 3 days before anyone actually says anything -- the
+    # group's first real message, arriving on a later day, is still their
+    # first session: it must not say "Welcome back!" just because
+    # _last_greeted is stale by the time it arrives.
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+
+    await greet_first_session(manager, text)
+    runtime._last_greeted["channel:111"] -= timedelta(days=3)
+
+    await runtime.on_message(message(5, text))
+
+    assert text.sent == [messages.FIRST_SESSION_MESSAGE, messages.FIRST_SESSION_MESSAGE]
+
+    # Only now has a real session actually happened -- the next day gets
+    # the usual "Welcome back!".
+    runtime._last_greeted["channel:111"] -= timedelta(days=1)
+    await runtime.on_message(message(5, text))
+
+    assert text.sent[2] == messages.DAILY_GREETING
 
 
 async def test_greet_refuses_an_unlinked_channel():

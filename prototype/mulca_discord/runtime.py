@@ -167,6 +167,17 @@ class BotRuntime:
     # as _last_greeted: losing track of it across a restart just means one
     # old copy is left behind once, not a correctness issue.
     _last_greeting_message: dict[str, object] = field(default_factory=dict, repr=False)
+    # Conversations that have had a real, posted greeting at least once --
+    # distinct from _last_greeted (a date), since /mulca greet marks a date
+    # without this ever being a real "session" to welcome someone back
+    # from. Found live: /mulca greet run days before the group's first
+    # actual message meant that first message, arriving on a later day,
+    # still triggered DAILY_GREETING's "Welcome back!" for a channel that
+    # had never actually had a session yet. Checked in on_message to pick
+    # FIRST_SESSION_MESSAGE over DAILY_GREETING for as long as this stays
+    # empty for a conversation -- only a real posted greeting adds to it,
+    # /mulca greet itself does not.
+    _had_a_session: set[str] = field(default_factory=set, repr=False)
 
     def __post_init__(self) -> None:
         if self.usage is None:
@@ -300,6 +311,10 @@ class BotRuntime:
         from -- posts messages.FIRST_SESSION_MESSAGE instead of the usual
         DAILY_GREETING, and marks today as already greeted so on_message's
         automatic daily greeting doesn't also fire later the same day.
+        Deliberately does not add to _had_a_session: this is an admin
+        pre-announcing the channel, not a real session -- if the group's
+        actual first message doesn't arrive until days later, it should
+        still get FIRST_SESSION_MESSAGE too, not "Welcome back!".
         """
 
         await self._replace_greeting(
@@ -753,8 +768,16 @@ class BotRuntime:
         # not the kind of per-session group work the diary/usefulness-signal
         # reminders are about.
         if link is not None and self._greet_if_first_today(scope.conversation_id):
+            # Still no real session yet (e.g. /mulca greet ran days ago,
+            # but this is genuinely the group's first message) -- this one
+            # gets FIRST_SESSION_MESSAGE too, not a "Welcome back!" that
+            # wouldn't be true yet.
+            had_session = scope.conversation_id in self._had_a_session
+            self._had_a_session.add(scope.conversation_id)
             await self._replace_greeting(
-                channel, scope.conversation_id, messages.DAILY_GREETING
+                channel,
+                scope.conversation_id,
+                messages.DAILY_GREETING if had_session else messages.FIRST_SESSION_MESSAGE,
             )
 
         if link is not None:

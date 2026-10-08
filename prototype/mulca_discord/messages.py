@@ -40,19 +40,17 @@ DIARY_MESSAGE = (
 )
 
 
-def daily_greeting(author_name: str) -> str:
-    """
-    Posted once per linked conversation per day (BotRuntime.on_message,
-    keyed on the first text message of the day), not per message -- a
-    lightweight "welcome back" plus the same reminders /diary gives on
-    request, so people see them without having to remember to ask.
-    """
-
-    return (
-        f"Good to see you, {author_name}! Before you dive in:\n\n"
-        f"{DIARY_MESSAGE}\n\n"
-        "What are you working on today?"
-    )
+# Posted once per linked conversation per day (BotRuntime.on_message, keyed
+# on the first text message of the day), not per message -- so people see
+# the usefulness-signal and diary reminders without having to remember to
+# ask (/diary).
+DAILY_GREETING = (
+    "Welcome back! A quick reminder:\n\n"
+    "During this session, please react to messages that were particularly "
+    f"helpful or unhelpful with a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN}.\n\n"
+    f"After this session, please fill in this form: {DIARY_FORM_URL}\n"
+    "Let's get to it"
+)
 
 
 def _period(budget: Budget) -> tuple[str, str]:

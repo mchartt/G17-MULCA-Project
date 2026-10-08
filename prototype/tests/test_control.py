@@ -12,6 +12,7 @@ from datetime import timedelta
 import pytest
 
 import mulca_discord.sessions as sessions_module
+from mulca_discord import messages
 from dataclasses import replace
 
 import discord
@@ -482,9 +483,7 @@ async def test_the_first_message_of_the_day_gets_a_greeting_later_ones_dont():
     await runtime.on_message(message(5, text))  # same day -- no repeat
 
     assert len(text.sent) == 1
-    assert text.sent[0] == "Good to see you, Ada! Before you dive in:\n\n" + (
-        DIARY_MESSAGE + "\n\nWhat are you working on today?"
-    )
+    assert text.sent[0] == messages.DAILY_GREETING
 
     # A new day -- greeted again.
     runtime._last_greeted["channel:111"] -= timedelta(days=1)

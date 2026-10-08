@@ -712,10 +712,7 @@ class BotRuntime:
         # not the kind of per-session group work the diary/usefulness-signal
         # reminders are about.
         if link is not None and self._greet_if_first_today(scope.conversation_id):
-            await messages.post(
-                channel,
-                messages.daily_greeting(message.author.display_name),
-            )
+            await messages.post(channel, messages.DAILY_GREETING)
 
         if link is not None:
             self.store.remember_speaker(message.author.id, link.text_channel_id)

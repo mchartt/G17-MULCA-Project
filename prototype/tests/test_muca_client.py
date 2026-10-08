@@ -157,6 +157,33 @@ async def test_the_handshake_carries_the_scope_and_a_reply_streams_back(server):
     assert frames[-1][1:] == (True, "text")
 
 
+async def test_arm_listening_reports_the_real_toggled_state(server):
+    client = MucaWsClient(
+        server.url,
+        conversation_id="channel:1",
+        is_dm=False,
+        listening_mode="push_to_talk",
+    )
+    await client.connect()
+
+    assert await client.arm_listening() is True
+    assert await client.arm_listening() is False
+
+    await client.close()
+
+
+async def test_arm_listening_times_out_to_none_in_ambient_mode(server):
+    # The fixture's own server defaults to ambient (no listening_mode
+    # override sent), where MUCA-Server's arm_listening is a silent no-op
+    # -- nothing ever confirms a new state back.
+    client = MucaWsClient(server.url, conversation_id="channel:2", is_dm=False)
+    await client.connect()
+
+    assert await client.arm_listening(timeout=0.2) is None
+
+    await client.close()
+
+
 async def test_a_lost_server_is_noticed_and_sending_says_so(server):
     client = MucaWsClient(server.url, conversation_id="instance:a", is_dm=False)
     closed = asyncio.Event()

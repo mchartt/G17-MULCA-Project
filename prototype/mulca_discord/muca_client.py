@@ -47,6 +47,7 @@ AssistantTextHandler = Callable[[str, bool, str], Awaitable[None]]
 StateUpdateHandler = Callable[[dict], Awaitable[None]]
 ClosedHandler = Callable[[], Awaitable[None]]
 ErrorHandler = Callable[[str], Awaitable[None]]
+ListeningStateHandler = Callable[[bool], Awaitable[None]]
 
 
 # MUCA-Server closes a session with this ("service restart") when its
@@ -200,6 +201,9 @@ class MucaWsClient:
         self.on_state_update: StateUpdateHandler | None = None
         self.on_closed: ClosedHandler | None = None
         self.on_error: ErrorHandler | None = None
+        # Set temporarily by arm_listening() itself while it awaits a
+        # reply, not by the caller up front like the others above.
+        self.on_listening_state: ListeningStateHandler | None = None
 
     @property
     def conversation_id(self) -> str:
@@ -256,10 +260,31 @@ class MucaWsClient:
             await self.close()
             raise MucaConnectionLost(self._conversation_id)
 
-    async def arm_listening(self) -> None:
-        """push_to_talk mode: a participant pressed the button."""
+    async def arm_listening(self, *, timeout: float = 5.0) -> bool | None:
+        """
+        push_to_talk mode: a participant pressed the button -- a toggle,
+        so the caller can't know in advance whether this opens or closes
+        a window. Returns the resulting state MUCA-Server reports back
+        (True: now listening, False: now not), or None if nothing came
+        back in time (e.g. this conversation is running ambient mode,
+        where the server treats this as a silent no-op).
+        """
 
-        await self._send(ArmListeningMessage(event="arm_listening"))
+        result: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+
+        async def on_state(open_: bool) -> None:
+            if not result.done():
+                result.set_result(open_)
+
+        previous, self.on_listening_state = self.on_listening_state, on_state
+        try:
+            await self._send(ArmListeningMessage(event="arm_listening"))
+            try:
+                return await asyncio.wait_for(result, timeout=timeout)
+            except asyncio.TimeoutError:
+                return None
+        finally:
+            self.on_listening_state = previous
 
     async def send_participants(
         self,
@@ -426,6 +451,9 @@ class MucaWsClient:
             elif event == "state_update":
                 if self.on_state_update is not None:
                     await self.on_state_update(data)
+            elif event == "listening_state":
+                if self.on_listening_state is not None:
+                    await self.on_listening_state(bool(data.get("open", False)))
             elif event == "agent_guid":
                 self.agent_guids.append(data.get("guid", ""))
             elif event == "error":

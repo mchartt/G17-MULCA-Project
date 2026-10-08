@@ -25,6 +25,7 @@ import discord
 from . import messages
 from .links import BotRecord, Link, LinkStore, link_for_channel
 from .messages import Notices
+from .muca_client import MucaWsClient
 from .permissions import missing_permissions
 from .sessions import RESTART_WAIT_SECONDS, Scope, ScopeSession, SessionRegistry
 from .usage import WARNING_MINUTES, UsageMeter
@@ -346,14 +347,23 @@ class BotRuntime:
     # Control: /restart, /mulca stop|start|restart
     # ------------------------------------------------------------------
 
-    async def arm_listening(self, link: Link, *, reply_channel) -> None:
+    async def arm_listening(self, link: Link, *, reply_channel) -> bool | None:
         """
         push_to_talk mode only: a participant pressed /listen or the
         button -- a toggle, the server decides whether this starts or
         stops a window. A no-op server-side in ambient mode
         (Conversation.arm_listening), so this is safe to call regardless
         of which mode MUCA-Server is running.
+
+        Returns the resulting state MUCA-Server reports back (True: now
+        listening, False: now not), or None if nothing came back (e.g.
+        ambient mode, where the server never replies to this at all).
         """
+
+        result: list[bool | None] = [None]
+
+        async def action(client: MucaWsClient) -> None:
+            result[0] = await client.arm_listening()
 
         await self.registry.run(
             Scope(
@@ -361,9 +371,10 @@ class BotRuntime:
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
             ),
-            lambda client: client.arm_listening(),
+            action,
             reply_channel=reply_channel,
         )
+        return result[0]
 
     async def restart_link(self, link: Link) -> RestartOutcome:
         """

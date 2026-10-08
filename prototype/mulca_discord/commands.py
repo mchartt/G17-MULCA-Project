@@ -87,6 +87,28 @@ def _duration(seconds: float | None) -> str:
     return f"{seconds // 3600}h {seconds % 3600 // 60}m"
 
 
+def listening_toggle_message(bot_name: str, now_listening: bool | None) -> str:
+    """
+    The confirmation for /listen and the button, which both just toggled
+    push_to_talk's listening window. `now_listening` is whatever
+    MUCA-Server actually reported back (BotRuntime.arm_listening's
+    return): True/False for the state it resolved to, or None if nothing
+    came back in time -- typically this channel isn't in push_to_talk
+    mode at all, since the server never replies to this in ambient mode.
+    """
+
+    if now_listening is True:
+        return f"🎙️ {bot_name} is now listening -- go ahead."
+    if now_listening is False:
+        return f"🔇 {bot_name} has stopped listening."
+
+    return (
+        f"Pressed, but {bot_name} didn't confirm a new listening state -- "
+        "this channel may not be in push_to_talk mode "
+        "(`/mulca link mode:push_to_talk`)."
+    )
+
+
 def restart_message(user_mention: str, outcome: RestartOutcome) -> str:
     if outcome.confirmed:
         return f"{user_mention} restarted MULCA here. It still remembers the conversation."
@@ -759,19 +781,15 @@ class ListenView(discord.ui.View):
         bot, link = found
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
-            await bot.arm_listening(link, reply_channel=interaction.channel)
+            now_listening = await bot.arm_listening(link, reply_channel=interaction.channel)
         except MucaConnectionLost:
             await interaction.followup.send(
                 "Couldn't reach MULCA just now -- try again in a moment."
             )
             return
 
-        # A toggle: this press just as likely stopped a window as started
-        # one, and the server (the only side that knows which, including
-        # whether it had already auto-closed from silence) doesn't report
-        # back which -- so this can't honestly claim a specific direction.
         await interaction.followup.send(
-            f"🎙️ Toggled {bot.name}'s listening -- press again to switch it back."
+            listening_toggle_message(bot.name, now_listening)
         )
 
 
@@ -871,17 +889,15 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot, link = found
         await interaction.response.defer(thinking=True)
         try:
-            await bot.arm_listening(link, reply_channel=interaction.channel)
+            now_listening = await bot.arm_listening(link, reply_channel=interaction.channel)
         except MucaConnectionLost:
             await interaction.followup.send(
                 "Couldn't reach MULCA just now -- try again in a moment."
             )
             return
 
-        # A toggle, same as the button -- see ListenView's own comment on
-        # why this can't claim a specific direction.
         await interaction.followup.send(
-            f"🎙️ Toggled {bot.name}'s listening -- press again to switch it back."
+            listening_toggle_message(bot.name, now_listening)
         )
 
     # -- /mulca ... -----------------------------------------------------

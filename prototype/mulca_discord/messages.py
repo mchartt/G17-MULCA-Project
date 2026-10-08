@@ -69,7 +69,8 @@ INTRO_MESSAGE = (
     "short diary (find the link any time with `/diary`). At the end of "
     "the study, we'll send a post-study questionnaire.\n\n"
     "Type `/help` any time for a reminder of what MULCA is and how to "
-    "talk to it."
+    "talk to it.\n\n"
+    "For any problems with MULCA, or feedback on it, please contact Admin."
 )
 
 

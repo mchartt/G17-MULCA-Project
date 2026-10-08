@@ -77,6 +77,15 @@ class ScopeSession:
 
     opened_at: float = field(default_factory=time.monotonic)
 
+    # The last "is taking part"/"stepped back" message posted in this
+    # scope's text channel, kept separately per kind -- handle_listening_
+    # state deletes the previous one of the SAME kind before posting a new
+    # one, so a long session shows only the latest "is taking part" and
+    # the latest "stepped back" instead of every one it's ever said piling
+    # up as channel noise.
+    _last_listening_message: object | None = field(default=None, repr=False)
+    _last_sleeping_message: object | None = field(default=None, repr=False)
+
     async def handle_state_update(self, data: dict) -> None:
         if self.on_state_update is not None:
             await self.on_state_update(data)
@@ -94,18 +103,37 @@ class ScopeSession:
 
         name = self.scope.bot_name or "MULCA"
         channel = self.replies.channel
-        # Flooded the text channel every engage/disengage cycle otherwise --
-        # found live. post_voice_transcripts is the same "this instance
-        # wants voice activity visible as text" opt-in /mulca link already
-        # asks for; an instance that didn't ask for voice transcripts
-        # didn't ask for this either.
-        if channel is not None and self.replies.post_voice_transcripts:
-            await channel.send(
-                f"\N{HAPPY PERSON RAISING ONE HAND} {name} is taking part"
-                if open_
-                else f"\N{STANDING PERSON} {name} stepped back -- it only "
-                "answers to its name now"
+        # Always posted, independent of post_voice_transcripts -- that flag
+        # is specifically about whether spoken *replies* also appear as
+        # text (ReplyDispatcher.on_delta), a separate concern from this
+        # one-line engage/disengage status. Found live: gating this one on
+        # it too (an earlier fix for the text channel getting flooded) also
+        # silently dropped the desktop notification Discord shows for a new
+        # channel message, which is what people were actually relying on
+        # to notice MULCA waking up or going quiet. Piling up is instead
+        # handled by deleting the previous one of the same kind below.
+        if channel is not None:
+            previous = (
+                self._last_listening_message if open_ else self._last_sleeping_message
             )
+            if previous is not None:
+                with suppress(Exception):
+                    await previous.delete()
+
+            sent = None
+            with suppress(Exception):
+                sent = await channel.send(
+                    f"\N{HAPPY PERSON RAISING ONE HAND} {name} is taking part"
+                    if open_
+                    else f"\N{STANDING PERSON} {name} stepped back -- it only "
+                    "answers to its name now"
+                )
+
+            if open_:
+                self._last_listening_message = sent
+            else:
+                self._last_sleeping_message = sent
+
         if self.on_listening_state is not None:
             await self.on_listening_state(open_)
 

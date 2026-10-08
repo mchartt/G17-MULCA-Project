@@ -167,66 +167,86 @@ def test_a_chime_alone_ends_like_any_playback():
     assert player.take_played() == b""
 
 
+class FakeSentMessage:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.deleted = False
+
+    async def delete(self) -> None:
+        self.deleted = True
+
+
 class FakeChannel:
     def __init__(self) -> None:
         self.sent: list[str] = []
+        self.sent_messages: list[FakeSentMessage] = []
 
-    async def send(self, content: str) -> None:
+    async def send(self, content: str) -> FakeSentMessage:
         self.sent.append(content)
+        message = FakeSentMessage(content)
+        self.sent_messages.append(message)
+        return message
 
 
 async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
-    # Text announcement is opt-in, same opt-in as voice transcripts
-    # (post_voice_transcripts) -- see test_an_engaged_session_is_not_
-    # announced_in_text_without_transcripts_enabled for the default-off
-    # case. The chime fires either way -- it's the only signal for anyone
-    # not watching the text channel.
+    # Always announced, regardless of post_voice_transcripts -- that flag
+    # is specifically about whether spoken *replies* also appear as text
+    # (ReplyDispatcher.on_delta), a separate concern from this one-line
+    # engage/disengage status. Found live: gating this one on it too (an
+    # earlier fix for the text channel getting flooded by it) also
+    # silently dropped the desktop notification Discord shows for a new
+    # channel message -- the actual thing people were relying on to notice
+    # MULCA waking up or going quiet.
+    for post_voice_transcripts in (True, False):
+        channel = FakeChannel()
+        chimes: list[bool] = []
+
+        async def on_chime(open_: bool) -> None:
+            chimes.append(open_)
+
+        session = ScopeSession(
+            scope=Scope(conversation_id="c", bot_name="MULCA", listening_mode="wake"),
+            client=None,
+            replies=ReplyDispatcher(
+                channel, post_voice_transcripts=post_voice_transcripts
+            ),
+            on_listening_state=on_chime,
+        )
+
+        await session.handle_listening_state(True)
+        await session.handle_listening_state(False)
+
+        assert channel.sent == [
+            "\N{HAPPY PERSON RAISING ONE HAND} MULCA is taking part",
+            "\N{STANDING PERSON} MULCA stepped back -- it only answers to its name now",
+        ]
+        assert chimes == [True, False]
+
+
+async def test_only_the_latest_engage_and_disengage_message_stays():
+    # A long session engaging and disengaging many times shouldn't leave
+    # every past announcement sitting in the channel -- only the most
+    # recent "is taking part" and the most recent "stepped back" should
+    # still be there; each kind is deleted independently of the other.
     channel = FakeChannel()
-    chimes: list[bool] = []
-
-    async def on_chime(open_: bool) -> None:
-        chimes.append(open_)
-
     session = ScopeSession(
         scope=Scope(conversation_id="c", bot_name="MULCA", listening_mode="wake"),
         client=None,
-        replies=ReplyDispatcher(channel, post_voice_transcripts=True),
-        on_listening_state=on_chime,
+        replies=ReplyDispatcher(channel),
     )
 
     await session.handle_listening_state(True)
     await session.handle_listening_state(False)
-
-    assert channel.sent == [
-        "\N{HAPPY PERSON RAISING ONE HAND} MULCA is taking part",
-        "\N{STANDING PERSON} MULCA stepped back -- it only answers to its name now",
-    ]
-    assert chimes == [True, False]
-
-
-async def test_an_engaged_session_is_not_announced_in_text_without_transcripts_enabled():
-    # Found live: flooded the text channel every engage/disengage cycle for
-    # an instance that never asked for voice activity as text. The chime
-    # (and on_listening_state, used for it) still fire regardless -- only
-    # the text announcement is gated.
-    channel = FakeChannel()
-    chimes: list[bool] = []
-
-    async def on_chime(open_: bool) -> None:
-        chimes.append(open_)
-
-    session = ScopeSession(
-        scope=Scope(conversation_id="c", bot_name="MULCA", listening_mode="wake"),
-        client=None,
-        replies=ReplyDispatcher(channel),  # post_voice_transcripts=False
-        on_listening_state=on_chime,
-    )
-
     await session.handle_listening_state(True)
     await session.handle_listening_state(False)
 
-    assert channel.sent == []
-    assert chimes == [True, False]
+    first_listening, first_sleeping, second_listening, second_sleeping = (
+        channel.sent_messages
+    )
+    assert first_listening.deleted  # replaced by the second "is taking part"
+    assert first_sleeping.deleted  # replaced by the second "stepped back"
+    assert not second_listening.deleted
+    assert not second_sleeping.deleted
 
 
 async def test_transcribe_windows_are_not_announced():

@@ -29,6 +29,11 @@ Discord's "/" menu).
   /mulca link already posts it once, automatically, the first time a
   channel is newly linked; this is for re-sending it later (e.g. to
   channels linked before the message existed).
+- /mulca greet: members with Manage Server -- posts the first-session
+  variant of the daily reminder (messages.FIRST_SESSION_MESSAGE, no
+  "welcome back" framing) once, for a channel about to start its first
+  real session, and marks today as already greeted so the automatic daily
+  one (BotRuntime.on_message) doesn't also post later the same day.
 - /mulca model: members with Manage Server -- the realtime model of every
   MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
 - /mulca costalert: members with Manage Server -- MUCA-Server's own
@@ -396,6 +401,27 @@ async def announce_intro(manager: BotManager, channel) -> str:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
     await messages.post(channel, messages.INTRO_MESSAGE)
+    return f"Posted in <#{channel.id}>."
+
+
+async def greet_first_session(manager: BotManager, channel) -> str:
+    """
+    /mulca greet: post messages.FIRST_SESSION_MESSAGE once, right after a
+    channel is linked and announced, for its first-ever session -- and
+    marks today as already greeted so the automatic daily greeting
+    (BotRuntime.on_message) doesn't also post its own, differently-worded
+    one later the same day.
+    """
+
+    if channel is None:
+        return "Pick a text channel, or run this in one."
+
+    found = manager.link_for_channel(channel.id)
+    if found is None:
+        return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
+
+    bot, link = found
+    await bot.post_first_session_greeting(channel, link.conversation_id)
     return f"Posted in <#{channel.id}>."
 
 
@@ -1222,6 +1248,20 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         channel: discord.TextChannel | None = None,
     ) -> None:
         reply = await announce_intro(manager, channel or interaction.channel)
+        await interaction.response.send_message(reply, ephemeral=True)
+
+    @mulca.command(
+        name="greet",
+        description="Post the first-session reminder (no 'welcome back') in a linked channel.",
+    )
+    @app_commands.describe(
+        channel="The linked text channel (default: this one).",
+    )
+    async def greet(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | None = None,
+    ) -> None:
+        reply = await greet_first_session(manager, channel or interaction.channel)
         await interaction.response.send_message(reply, ephemeral=True)
 
     @mulca.command(

@@ -160,6 +160,13 @@ class BotRuntime:
     # In-memory only: a restart mid-day re-greeting once is a harmless
     # repeat, not worth persisting to the store for.
     _last_greeted: dict[str, date] = field(default_factory=dict, repr=False)
+    # The last greeting message (FIRST_SESSION_MESSAGE or DAILY_GREETING)
+    # actually posted per conversation -- _replace_greeting deletes this
+    # before posting the next one, found live: otherwise every day's own
+    # copy just piles up as channel noise. In-memory only, same reasoning
+    # as _last_greeted: losing track of it across a restart just means one
+    # old copy is left behind once, not a correctness issue.
+    _last_greeting_message: dict[str, object] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if self.usage is None:
@@ -266,6 +273,40 @@ class BotRuntime:
 
         self._last_greeted[conversation_id] = today
         return True
+
+    async def _replace_greeting(self, channel, conversation_id: str, text: str) -> None:
+        """
+        Deletes whichever greeting (FIRST_SESSION_MESSAGE or DAILY_GREETING)
+        was last posted in this conversation, then posts a new one --
+        found live, otherwise every day's own copy just piles up as
+        channel noise. A failed delete (already removed, permissions
+        changed) is not worth failing the new post over.
+        """
+
+        previous = self._last_greeting_message.pop(conversation_id, None)
+        if previous is not None:
+            with suppress(Exception):
+                await previous.delete()
+
+        try:
+            self._last_greeting_message[conversation_id] = await channel.send(text)
+        except Exception:
+            logger.warning("Could not post a greeting in %s", channel, exc_info=True)
+
+    async def post_first_session_greeting(self, channel, conversation_id: str) -> None:
+        """
+        /mulca greet: a channel's first-ever session, right after it's
+        linked and announced, has no earlier visit to welcome them back
+        from -- posts messages.FIRST_SESSION_MESSAGE instead of the usual
+        DAILY_GREETING, and marks today as already greeted so on_message's
+        automatic daily greeting doesn't also fire later the same day.
+        """
+
+        await self._replace_greeting(
+            channel, conversation_id, messages.FIRST_SESSION_MESSAGE
+        )
+        assert self.usage is not None  # set in __post_init__
+        self._last_greeted[conversation_id] = datetime.now(self.usage.tz).date()
 
     # ------------------------------------------------------------------
     # Voice
@@ -712,7 +753,9 @@ class BotRuntime:
         # not the kind of per-session group work the diary/usefulness-signal
         # reminders are about.
         if link is not None and self._greet_if_first_today(scope.conversation_id):
-            await messages.post(channel, messages.DAILY_GREETING)
+            await self._replace_greeting(
+                channel, scope.conversation_id, messages.DAILY_GREETING
+            )
 
         if link is not None:
             self.store.remember_speaker(message.author.id, link.text_channel_id)

@@ -25,6 +25,7 @@ from mulca_discord.commands import (
     control,
     format_status,
     format_usage,
+    greet_first_session,
     link_channels,
     restart_message,
     send_long,
@@ -260,6 +261,17 @@ class FakeTyping:
         return None
 
 
+class FakeMessage:
+    """Enough of discord.Message for _replace_greeting's delete-then-post."""
+
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.deleted = False
+
+    async def delete(self) -> None:
+        self.deleted = True
+
+
 class FakeChannel:
     """A channel, and what each member may do in it."""
 
@@ -270,6 +282,7 @@ class FakeChannel:
         self.allowed: dict[int, set[str]] = {}
         self.typing_entered = 0
         self.sent: list[str] = []
+        self.sent_messages: list[FakeMessage] = []
 
     def permissions_for(self, member):
         return Permissions(self.allowed.get(member.id, ALL_PERMISSIONS))
@@ -277,8 +290,11 @@ class FakeChannel:
     def typing(self) -> FakeTyping:
         return FakeTyping(self)
 
-    async def send(self, content) -> None:
+    async def send(self, content) -> FakeMessage:
         self.sent.append(content)
+        message = FakeMessage(content)
+        self.sent_messages.append(message)
+        return message
 
 
 class FakeUser:
@@ -486,11 +502,50 @@ async def test_the_first_message_of_the_day_gets_a_greeting_later_ones_dont():
     assert len(text.sent) == 1
     assert text.sent[0] == messages.DAILY_GREETING
 
-    # A new day -- greeted again.
+    # A new day -- greeted again, and the previous day's greeting is
+    # deleted rather than left to pile up.
+    first_greeting = text.sent_messages[0]
     runtime._last_greeted["channel:111"] -= timedelta(days=1)
     await runtime.on_message(message(5, text))
 
     assert len(text.sent) == 2
+    assert first_greeting.deleted
+
+
+def test_the_daily_greeting_is_conditional_not_an_instruction():
+    # Not everyone opens Discord every day just to work on the project --
+    # the reminder shouldn't read as though it assumes they are.
+    assert "if you get" in messages.DAILY_GREETING.lower()
+    assert messages.SESSION_REMINDER in messages.DAILY_GREETING
+
+
+async def test_greet_posts_the_first_session_variant_and_skips_todays_daily_one():
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+
+    reply = await greet_first_session(manager, text)
+
+    assert "Posted" in reply
+    assert text.sent == [messages.FIRST_SESSION_MESSAGE]
+    assert "Welcome back" not in messages.FIRST_SESSION_MESSAGE
+
+    # The channel's first real message of the same day doesn't also get
+    # the regular daily greeting -- /mulca greet already covered today.
+    await runtime.on_message(message(5, text))
+
+    assert text.sent == [messages.FIRST_SESSION_MESSAGE]
+
+
+async def test_greet_refuses_an_unlinked_channel():
+    runtime = make_runtime(link=None)
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(999)
+
+    reply = await greet_first_session(manager, text)
+
+    assert "doesn't serve" in reply
+    assert text.sent == []
 
 
 class FakeMucaClientForTyping:
@@ -986,6 +1041,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "link",
         "unlink",
         "announce",
+        "greet",
         "dms",
         "mode",
         "model",

@@ -73,17 +73,28 @@ INTRO_MESSAGE = (
 )
 
 
-# Posted once per linked conversation per day (BotRuntime.on_message, keyed
-# on the first text message of the day), not per message -- so people see
-# the usefulness-signal and diary reminders without having to remember to
-# ask (/diary).
-DAILY_GREETING = (
-    "Welcome back! A quick reminder:\n\n"
+# Shared by FIRST_SESSION_MESSAGE and DAILY_GREETING below -- the actual
+# usefulness-signal/diary reminders, without any "welcome"/"welcome back"
+# framing, since which framing applies differs between the two.
+SESSION_REMINDER = (
     "During this session, please react to messages that were particularly "
     f"helpful or unhelpful with a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN}.\n\n"
     f"After this session, please fill in this form: <{DIARY_FORM_URL}>\n"
     "Let's get to it"
 )
+
+# Posted once, manually (/mulca greet) -- a channel's first-ever session,
+# right after it's linked and announced, has no earlier visit to "welcome
+# back" from, so this skips that framing entirely rather than saying
+# something that isn't true yet.
+FIRST_SESSION_MESSAGE = SESSION_REMINDER
+
+# Posted automatically on the first text message of each day after that
+# (BotRuntime.on_message, keyed on the local day -- see _greet_if_first_
+# today) -- replaces whichever greeting (this, or FIRST_SESSION_MESSAGE)
+# was posted last in the same conversation, so old ones don't pile up as
+# channel noise (BotRuntime._replace_greeting).
+DAILY_GREETING = f"Welcome back! If you get any work done today, a quick reminder:\n\n{SESSION_REMINDER}"
 
 
 def _period(budget: Budget) -> tuple[str, str]:

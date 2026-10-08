@@ -55,6 +55,7 @@ import discord
 from discord import app_commands
 
 from .links import BotRecord, Link
+from .messages import DIARY_FORM_URL, DIARY_MESSAGE
 from .muca_client import MucaConnectionLost, set_server_cost_alert, set_server_model
 from .permissions import missing_permissions
 from .runtime import LIMIT, AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
@@ -67,17 +68,6 @@ logger = logging.getLogger(__name__)
 RESTART_COOLDOWN_SECONDS = 30.0
 
 ALL = "all"
-
-# The diary every participant fills in after a session -- same link for
-# everyone, not per-deployment config, so it's a plain constant here rather
-# than something an admin sets.
-DIARY_FORM_URL = "https://forms.gle/ZSXMM9oFDFUUyU9HA"
-DIARY_MESSAGE = (
-    f"Please fill in your diary after this session: {DIARY_FORM_URL}\n\n"
-    "Tip: react \N{THUMBS UP SIGN} to a MULCA text reply that was useful, "
-    "or \N{THUMBS DOWN SIGN} to one that wasn't -- it helps us see what's "
-    "working."
-)
 
 # Discord rejects longer messages; replies that grow with the number of bots
 # (status, usage, the bot list) are sent in several.

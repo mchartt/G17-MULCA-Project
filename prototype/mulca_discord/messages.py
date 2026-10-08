@@ -28,6 +28,32 @@ PAUSED = "I'm paused by a server admin and won't answer until I'm started again.
 TURN_FAILED = "Sorry, something went wrong and I couldn't answer that. Please try again."
 ATTACHMENTS = "I can only read text messages -- I can't see attachments, images or stickers."
 
+# The diary every participant fills in after a session -- same link for
+# everyone, not per-deployment config, so it's a plain constant here rather
+# than something an admin sets.
+DIARY_FORM_URL = "https://forms.gle/ZSXMM9oFDFUUyU9HA"
+DIARY_MESSAGE = (
+    f"Please fill in your diary after this session: {DIARY_FORM_URL}\n\n"
+    "Tip: react \N{THUMBS UP SIGN} to a MULCA text reply that was useful, "
+    "or \N{THUMBS DOWN SIGN} to one that wasn't -- it helps us see what's "
+    "working."
+)
+
+
+def daily_greeting(author_name: str) -> str:
+    """
+    Posted once per linked conversation per day (BotRuntime.on_message,
+    keyed on the first text message of the day), not per message -- a
+    lightweight "welcome back" plus the same reminders /diary gives on
+    request, so people see them without having to remember to ask.
+    """
+
+    return (
+        f"Good to see you, {author_name}! Before you dive in:\n\n"
+        f"{DIARY_MESSAGE}\n\n"
+        "What are you working on today?"
+    )
+
 
 def _period(budget: Budget) -> tuple[str, str]:
     """("for today", "midnight"), ("for this week", "Monday") or the month's."""

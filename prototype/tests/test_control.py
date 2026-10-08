@@ -7,6 +7,7 @@ commands' replies.
 
 import asyncio
 import time
+from datetime import timedelta
 
 import pytest
 
@@ -266,12 +267,16 @@ class FakeChannel:
         self.members = list(members)
         self.allowed: dict[int, set[str]] = {}
         self.typing_entered = 0
+        self.sent: list[str] = []
 
     def permissions_for(self, member):
         return Permissions(self.allowed.get(member.id, ALL_PERMISSIONS))
 
     def typing(self) -> FakeTyping:
         return FakeTyping(self)
+
+    async def send(self, content) -> None:
+        self.sent.append(content)
 
 
 class FakeUser:
@@ -467,6 +472,25 @@ async def test_a_message_in_a_linked_channel_goes_to_its_memory_and_is_remembere
     [scope] = runtime.registry.scopes
     assert scope.conversation_id == "channel:111"
     assert runtime.store.last_link_for(5) == ALPHA
+
+
+async def test_the_first_message_of_the_day_gets_a_greeting_later_ones_dont():
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+
+    await runtime.on_message(message(5, text))
+    await runtime.on_message(message(5, text))  # same day -- no repeat
+
+    assert len(text.sent) == 1
+    assert text.sent[0] == "Good to see you, Ada! Before you dive in:\n\n" + (
+        DIARY_MESSAGE + "\n\nWhat are you working on today?"
+    )
+
+    # A new day -- greeted again.
+    runtime._last_greeted["channel:111"] -= timedelta(days=1)
+    await runtime.on_message(message(5, text))
+
+    assert len(text.sent) == 2
 
 
 class FakeMucaClientForTyping:

@@ -19,6 +19,7 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
+from datetime import date, datetime
 
 import discord
 
@@ -153,6 +154,12 @@ class BotRuntime:
     notices: Notices = field(default_factory=Notices)
     _tasks: set[asyncio.Task[None]] = field(default_factory=set, repr=False)
     _watch: asyncio.Task[None] | None = field(default=None, repr=False)
+    # The local day (self.usage.tz -- same "day" boundary the usage limits
+    # already use) each conversation was last greeted on, so the daily
+    # greeting fires once per conversation per day, not once per message.
+    # In-memory only: a restart mid-day re-greeting once is a harmless
+    # repeat, not worth persisting to the store for.
+    _last_greeted: dict[str, date] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if self.usage is None:
@@ -241,6 +248,24 @@ class BotRuntime:
 
         last = self.store.last_link_for(user_id)
         return last if last in allowed else allowed[0]
+
+    def _greet_if_first_today(self, conversation_id: str) -> bool:
+        """
+        True (and marks it) only the first time this is called for this
+        conversation on a given local day -- same "day" boundary
+        self.usage already resets limits on, so both line up with one
+        shared notion of a session's day. No await in here on purpose:
+        discord.py dispatches on_message concurrently, and this check-
+        then-mark has to be atomic against two messages arriving at once.
+        """
+
+        assert self.usage is not None  # set in __post_init__
+        today = datetime.now(self.usage.tz).date()
+        if self._last_greeted.get(conversation_id) == today:
+            return False
+
+        self._last_greeted[conversation_id] = today
+        return True
 
     # ------------------------------------------------------------------
     # Voice
@@ -682,6 +707,15 @@ class BotRuntime:
         if self.paused:
             await self._announce(PAUSED, channel, messages.PAUSED, tagged=tagged)
             return
+
+        # Group channels only -- a DM is a private, individual conversation,
+        # not the kind of per-session group work the diary/usefulness-signal
+        # reminders are about.
+        if link is not None and self._greet_if_first_today(scope.conversation_id):
+            await messages.post(
+                channel,
+                messages.daily_greeting(message.author.display_name),
+            )
 
         if link is not None:
             self.store.remember_speaker(message.author.id, link.text_channel_id)

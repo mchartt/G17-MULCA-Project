@@ -145,6 +145,10 @@ def runtime_with_channel():
     runtime = make_runtime()
     channel = SentChannel(111, runtime.client.guilds[GUILD], [FakeMember(5, "Ada")])
     runtime.client.channels[111] = channel
+    # These tests are about usage/offline/attachment notices, not the daily
+    # greeting -- pre-mark it as already sent today so it doesn't show up
+    # in channel.sent alongside what each test actually checks.
+    runtime._last_greeted[ALPHA.conversation_id] = datetime.now(runtime.usage.tz).date()
     return runtime, channel
 
 

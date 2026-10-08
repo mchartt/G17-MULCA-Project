@@ -59,10 +59,10 @@ def test_a_links_listening_mode_defaults_to_unset_and_survives_a_restart(tmp_pat
     store.save(link(111, 222))
     assert store.all_links()[0].listening_mode == ""
 
-    store.save(Link(111, GUILD, 1, 222, listening_mode="push_to_talk"))
+    store.save(Link(111, GUILD, 1, 222, listening_mode="toggle"))
     store.close()
 
-    assert LinkStore(path).all_links()[0].listening_mode == "push_to_talk"
+    assert LinkStore(path).all_links()[0].listening_mode == "toggle"
 
 
 def test_saving_a_linked_text_channel_again_updates_it():
@@ -213,9 +213,9 @@ def test_a_store_from_before_per_link_listening_mode_is_upgraded_unset(tmp_path)
     store = LinkStore(path)
 
     assert store.all_links()[0].listening_mode == ""
-    store.save(Link(111, 900, 1, 222, listening_mode="push_to_talk"))
+    store.save(Link(111, 900, 1, 222, listening_mode="toggle"))
     store.close()
-    assert LinkStore(path).all_links()[0].listening_mode == "push_to_talk"
+    assert LinkStore(path).all_links()[0].listening_mode == "toggle"
 
 
 def test_a_bots_models_default_to_the_servers_and_survive_a_restart(tmp_path):

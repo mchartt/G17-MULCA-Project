@@ -349,15 +349,16 @@ class BotRuntime:
 
     async def arm_listening(self, link: Link, *, reply_channel) -> bool | None:
         """
-        push_to_talk mode only: a participant pressed /listen or the
-        button -- a toggle, the server decides whether this starts or
-        stops a window. A no-op server-side in ambient mode
+        "toggle" mode only: a participant pressed /listen or the button --
+        a toggle, the server decides whether this starts or stops a
+        window. A no-op server-side in ambient or "transcribe" mode
         (Conversation.arm_listening), so this is safe to call regardless
         of which mode MUCA-Server is running.
 
         Returns the resulting state MUCA-Server reports back (True: now
         listening, False: now not), or None if nothing came back (e.g.
-        ambient mode, where the server never replies to this at all).
+        ambient/"transcribe" mode, where the server never replies to this
+        at all).
         """
 
         result: list[bool | None] = [None]

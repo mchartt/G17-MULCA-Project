@@ -5,11 +5,12 @@ Discord's "/" menu).
 
 - /restart: anyone, in a channel MULCA serves -- restarts that channel's
   MULCA (fresh OpenAI connections, same memory).
-- /listen: anyone, in a channel MULCA serves -- push_to_talk mode only
-  (MUCA_LISTENING_MODE=push_to_talk): a toggle, same command starts and
-  stops a listening window (the server decides which, not the client). A
-  no-op (but still succeeds) if that channel's MULCA is running ambient
-  mode.
+- /listen: anyone, in a channel MULCA serves -- "toggle" mode only
+  (MUCA_LISTENING_MODE=toggle): a toggle, same command starts and stops a
+  listening window (the server decides which, not the client). A no-op
+  (but still succeeds) if that channel's MULCA is running ambient or
+  "transcribe" mode (the latter arms hands-free, via a spoken wake phrase,
+  instead).
 - /mulca button: members with Manage Server -- posts a persistent "Talk to
   MULCA" button (ListenView) in the channel; anyone can press it, same
   effect as /listen. Survives a bot restart (a fixed custom_id, registered
@@ -90,11 +91,12 @@ def _duration(seconds: float | None) -> str:
 def listening_toggle_message(bot_name: str, now_listening: bool | None) -> str:
     """
     The confirmation for /listen and the button, which both just toggled
-    push_to_talk's listening window. `now_listening` is whatever
+    "toggle" mode's listening window. `now_listening` is whatever
     MUCA-Server actually reported back (BotRuntime.arm_listening's
     return): True/False for the state it resolved to, or None if nothing
-    came back in time -- typically this channel isn't in push_to_talk
-    mode at all, since the server never replies to this in ambient mode.
+    came back in time -- typically this channel isn't in "toggle" mode at
+    all, since the server never replies to this in ambient or "transcribe"
+    mode.
     """
 
     if now_listening is True:
@@ -104,8 +106,8 @@ def listening_toggle_message(bot_name: str, now_listening: bool | None) -> str:
 
     return (
         f"Pressed, but {bot_name} didn't confirm a new listening state -- "
-        "this channel may not be in push_to_talk mode "
-        "(`/mulca link mode:push_to_talk`)."
+        "this channel may not be in \"toggle\" mode "
+        "(`/mulca link mode:toggle`)."
     )
 
 
@@ -274,9 +276,13 @@ async def link_channels(
             else " DMs are off (`/mulca dms` turns them on)."
         )
         + (
-            " Listening mode: push_to_talk (`/listen` toggles a window)."
-            if listening_mode == "push_to_talk"
-            else ""
+            " Listening mode: toggle (`/listen` toggles a window)."
+            if listening_mode == "toggle"
+            else (
+                " Listening mode: transcribe (say \"assistant\" to open a window)."
+                if listening_mode == "transcribe"
+                else ""
+            )
         ),
         "If MULCA was linked to this channel before, it still remembers that conversation.",
     ]
@@ -751,7 +757,7 @@ LISTEN_BUTTON_CUSTOM_ID = "mulca:listen"
 
 class ListenView(discord.ui.View):
     """
-    push_to_talk mode: the button form of /listen. Persistent (timeout=None,
+    "toggle" mode: the button form of /listen. Persistent (timeout=None,
     a fixed custom_id) so it keeps working on old messages after a restart --
     see install_commands' add_view() call.
     """
@@ -874,7 +880,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     @tree.command(
         name="listen",
-        description="push_to_talk mode: MULCA starts listening for a bit.",
+        description="\"toggle\" mode: MULCA starts listening for a bit.",
     )
     @app_commands.guild_only()
     async def listen(interaction: discord.Interaction) -> None:
@@ -924,7 +930,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     @mulca.command(
         name="button",
-        description="Post a push-to-talk button in this channel (push_to_talk mode only).",
+        description="Post a \"toggle\"-mode listen button in this channel.",
     )
     async def button(interaction: discord.Interaction) -> None:
         found = manager.link_for_channel(interaction.channel_id)
@@ -937,13 +943,13 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
         _, link = found
         await interaction.response.send_message(
-            "Press to let MULCA listen for a bit (push_to_talk mode only; "
-            "does nothing in ambient mode)."
+            "Press to let MULCA listen for a bit (\"toggle\" mode only; "
+            "does nothing in ambient or \"transcribe\" mode)."
             + (
                 ""
-                if link.listening_mode == "push_to_talk"
-                else " This channel isn't in push_to_talk mode right now "
-                "(`/mulca link mode:push_to_talk`)."
+                if link.listening_mode == "toggle"
+                else " This channel isn't in \"toggle\" mode right now "
+                "(`/mulca link mode:toggle`)."
             ),
             view=ListenView(manager),
         )
@@ -959,8 +965,10 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         transcripts="Also post what MULCA says out loud in the text channel.",
         dms="Let people who can see the text channel DM MULCA (default: unchanged, off for a new link).",
         mode=(
-            "ambient (every turn judged) or push_to_talk (/listen opens a "
-            "window) -- default: unchanged, ambient for a new link."
+            "ambient (every turn judged), toggle (/listen or the button "
+            "opens a window), or transcribe (say \"assistant\" to open a "
+            "window hands-free) -- default: unchanged, ambient for a new "
+            "link."
         ),
     )
     @app_commands.autocomplete(bot=bot_choices)
@@ -971,7 +979,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot: str | None = None,
         transcripts: bool = False,
         dms: bool | None = None,
-        mode: Literal["ambient", "push_to_talk"] | None = None,
+        mode: Literal["ambient", "toggle", "transcribe"] | None = None,
     ) -> None:
         text = text or interaction.channel
         if not isinstance(text, discord.TextChannel):

@@ -175,8 +175,8 @@ class MucaWsClient:
         self._conversation_id = conversation_id
         self._bot_name = bot_name
         # "" means unset -- use MUCA-Server's own MUCA_LISTENING_MODE
-        # default; the Link this came from otherwise always has "ambient"
-        # or "push_to_talk" (links.py's own default), never "".
+        # default; the Link this came from otherwise always has "ambient",
+        # "toggle", or "transcribe", never "".
         self._listening_mode = listening_mode
         self._is_dm = is_dm
         # For a DM only: the group conversation_id of the linked channel
@@ -262,12 +262,13 @@ class MucaWsClient:
 
     async def arm_listening(self, *, timeout: float = 5.0) -> bool | None:
         """
-        push_to_talk mode: a participant pressed the button -- a toggle,
-        so the caller can't know in advance whether this opens or closes
-        a window. Returns the resulting state MUCA-Server reports back
+        "toggle" mode: a participant pressed the button -- a toggle, so
+        the caller can't know in advance whether this opens or closes a
+        window. Returns the resulting state MUCA-Server reports back
         (True: now listening, False: now not), or None if nothing came
-        back in time (e.g. this conversation is running ambient mode,
-        where the server treats this as a silent no-op).
+        back in time (e.g. this conversation is running ambient or
+        "transcribe" mode, where the server treats this as a silent
+        no-op).
         """
 
         result: asyncio.Future[bool] = asyncio.get_running_loop().create_future()

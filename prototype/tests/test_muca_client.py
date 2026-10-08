@@ -162,7 +162,7 @@ async def test_arm_listening_reports_the_real_toggled_state(server):
         server.url,
         conversation_id="channel:1",
         is_dm=False,
-        listening_mode="push_to_talk",
+        listening_mode="toggle",
     )
     await client.connect()
 

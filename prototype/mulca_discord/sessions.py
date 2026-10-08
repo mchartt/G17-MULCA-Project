@@ -72,7 +72,7 @@ class ScopeSession:
     # channel: spoken replies go there.
     on_state_update: StateUpdateHandler | None = None
     # Set by the voice bridge too: a chime when MULCA starts or stops
-    # listening, for people who aren't watching the text channel.
+    # taking part, for people who aren't watching the text channel.
     on_listening_state: ListeningStateHandler | None = None
 
     opened_at: float = field(default_factory=time.monotonic)
@@ -96,9 +96,10 @@ class ScopeSession:
         channel = self.replies.channel
         if channel is not None:
             await channel.send(
-                f"\N{STUDIO MICROPHONE} {name} is listening"
+                f"\N{HAPPY PERSON RAISING ONE HAND} {name} is taking part"
                 if open_
-                else f"\N{SLEEPING SYMBOL} {name} went back to sleep"
+                else f"\N{STANDING PERSON} {name} stepped back -- it only "
+                "answers to its name now"
             )
         if self.on_listening_state is not None:
             await self.on_listening_state(open_)

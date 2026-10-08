@@ -193,8 +193,8 @@ async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
     await session.handle_listening_state(False)
 
     assert channel.sent == [
-        "\N{STUDIO MICROPHONE} MULCA is listening",
-        "\N{SLEEPING SYMBOL} MULCA went back to sleep",
+        "\N{HAPPY PERSON RAISING ONE HAND} MULCA is taking part",
+        "\N{STANDING PERSON} MULCA stepped back -- it only answers to its name now",
     ]
     assert chimes == [True, False]
 

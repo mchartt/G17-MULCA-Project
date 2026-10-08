@@ -237,6 +237,22 @@ class FakeGuild:
         return self.members.get(user_id)
 
 
+class FakeTyping:
+    """discord.py's typing() is an async context manager; this records
+    whether it was ever entered, nothing else -- no actual re-triggering
+    loop to fake."""
+
+    def __init__(self, channel: "FakeChannel") -> None:
+        self._channel = channel
+
+    async def __aenter__(self):
+        self._channel.typing_entered += 1
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        return None
+
+
 class FakeChannel:
     """A channel, and what each member may do in it."""
 
@@ -245,9 +261,13 @@ class FakeChannel:
         self.guild = guild
         self.members = list(members)
         self.allowed: dict[int, set[str]] = {}
+        self.typing_entered = 0
 
     def permissions_for(self, member):
         return Permissions(self.allowed.get(member.id, ALL_PERMISSIONS))
+
+    def typing(self) -> FakeTyping:
+        return FakeTyping(self)
 
 
 class FakeUser:
@@ -443,6 +463,52 @@ async def test_a_message_in_a_linked_channel_goes_to_its_memory_and_is_remembere
     [scope] = runtime.registry.scopes
     assert scope.conversation_id == "channel:111"
     assert runtime.store.last_link_for(5) == ALPHA
+
+
+class FakeMucaClientForTyping:
+    def __init__(self) -> None:
+        self.on_assistant_text = None
+        self.sent_texts: list[str] = []
+
+    async def send_participants(self, roster, *, modality) -> None:
+        pass
+
+    async def send_user_text(self, *, speaker, speaker_name, text) -> None:
+        self.sent_texts.append(text)
+
+
+async def test_sending_a_message_shows_typing_until_the_first_reply_piece():
+    # Found live: a web-search-backed reply can take several seconds with
+    # nothing else visible meanwhile.
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+    fake_client = FakeMucaClientForTyping()
+
+    received = []
+
+    async def real_handler(reply_text, is_final, modality) -> None:
+        received.append((reply_text, is_final, modality))
+
+    fake_client.on_assistant_text = real_handler
+
+    async def run(scope, action, **kwargs):
+        runtime.registry.scopes.append(scope)
+        await action(fake_client)
+
+    runtime.registry.run = run
+
+    await runtime.on_message(message(5, text))
+    await asyncio.sleep(0)  # let the background typing task start
+
+    assert text.typing_entered == 1
+    assert fake_client.sent_texts == ["hello"]
+
+    # The real reply arrives -- the wrapper forwards it, then gets out of
+    # the way for every later delta of the same reply.
+    await fake_client.on_assistant_text("Hi there!", False, "text")
+
+    assert received == [("Hi there!", False, "text")]
+    assert fake_client.on_assistant_text is real_handler
 
 
 async def test_a_message_in_an_unlinked_channel_is_ignored():

@@ -72,6 +72,12 @@ STAGE_TEXTS = (
 # How often a bot checks whether a limit reset (a new day, week or month).
 LIMIT_CHECK_SECONDS = 60.0
 
+# A safety net for the "MULCA is typing..." indicator below -- Discord
+# clears it the moment any message actually arrives, so this only matters
+# if a reply never comes at all (e.g. the session died silently); without
+# a cap, the indicator would otherwise re-trigger forever.
+TYPING_INDICATOR_MAX_SECONDS = 30.0
+
 
 async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
     members = getattr(channel, "members", [])
@@ -687,6 +693,40 @@ class BotRuntime:
         async def send(muca_client) -> None:
             if link is not None:
                 await muca_client.send_participants(roster, modality="text")
+
+            # Shows "MULCA is typing..." for as long as this reply takes to
+            # start arriving -- found live, a web-search-backed reply can
+            # take several seconds with nothing else visible meanwhile.
+            # Temporarily wraps the client's own handler rather than
+            # touching ReplyDispatcher: restores it the moment the first
+            # piece of a reply actually arrives (for either modality, same
+            # as the real handler already tees them apart), so every later
+            # delta goes through the real handler completely unaffected.
+            original_handler = muca_client.on_assistant_text
+            typing_done = asyncio.Event()
+
+            async def on_first_text(text, is_final, modality) -> None:
+                if not typing_done.is_set():
+                    typing_done.set()
+                    muca_client.on_assistant_text = original_handler
+                if original_handler is not None:
+                    await original_handler(text, is_final, modality)
+
+            muca_client.on_assistant_text = on_first_text
+
+            async def show_typing() -> None:
+                async with channel.typing():
+                    with suppress(asyncio.TimeoutError):
+                        await asyncio.wait_for(
+                            typing_done.wait(),
+                            timeout=TYPING_INDICATOR_MAX_SECONDS,
+                        )
+                if not typing_done.is_set():
+                    # No reply ever arrived in time -- restore the real
+                    # handler anyway, so a late reply isn't silently eaten.
+                    muca_client.on_assistant_text = original_handler
+
+            asyncio.create_task(show_typing())
 
             await muca_client.send_user_text(
                 speaker=message.author.id,

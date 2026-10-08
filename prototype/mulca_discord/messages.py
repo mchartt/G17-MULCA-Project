@@ -79,7 +79,7 @@ INTRO_MESSAGE = (
 SESSION_REMINDER = (
     "During this session, please react to messages that were particularly "
     f"helpful or unhelpful with a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN}.\n\n"
-    f"After this session, please fill in this form: <{DIARY_FORM_URL}>\n"
+    f"After this session, please fill in the diary: <{DIARY_FORM_URL}>\n"
     "Let's get to it"
 )
 

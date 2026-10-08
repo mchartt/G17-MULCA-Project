@@ -176,6 +176,11 @@ class FakeChannel:
 
 
 async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
+    # Text announcement is opt-in, same opt-in as voice transcripts
+    # (post_voice_transcripts) -- see test_an_engaged_session_is_not_
+    # announced_in_text_without_transcripts_enabled for the default-off
+    # case. The chime fires either way -- it's the only signal for anyone
+    # not watching the text channel.
     channel = FakeChannel()
     chimes: list[bool] = []
 
@@ -185,7 +190,7 @@ async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
     session = ScopeSession(
         scope=Scope(conversation_id="c", bot_name="MULCA", listening_mode="wake"),
         client=None,
-        replies=ReplyDispatcher(channel),
+        replies=ReplyDispatcher(channel, post_voice_transcripts=True),
         on_listening_state=on_chime,
     )
 
@@ -196,6 +201,31 @@ async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
         "\N{HAPPY PERSON RAISING ONE HAND} MULCA is taking part",
         "\N{STANDING PERSON} MULCA stepped back -- it only answers to its name now",
     ]
+    assert chimes == [True, False]
+
+
+async def test_an_engaged_session_is_not_announced_in_text_without_transcripts_enabled():
+    # Found live: flooded the text channel every engage/disengage cycle for
+    # an instance that never asked for voice activity as text. The chime
+    # (and on_listening_state, used for it) still fire regardless -- only
+    # the text announcement is gated.
+    channel = FakeChannel()
+    chimes: list[bool] = []
+
+    async def on_chime(open_: bool) -> None:
+        chimes.append(open_)
+
+    session = ScopeSession(
+        scope=Scope(conversation_id="c", bot_name="MULCA", listening_mode="wake"),
+        client=None,
+        replies=ReplyDispatcher(channel),  # post_voice_transcripts=False
+        on_listening_state=on_chime,
+    )
+
+    await session.handle_listening_state(True)
+    await session.handle_listening_state(False)
+
+    assert channel.sent == []
     assert chimes == [True, False]
 
 

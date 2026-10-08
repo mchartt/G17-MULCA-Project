@@ -94,7 +94,12 @@ class ScopeSession:
 
         name = self.scope.bot_name or "MULCA"
         channel = self.replies.channel
-        if channel is not None:
+        # Flooded the text channel every engage/disengage cycle otherwise --
+        # found live. post_voice_transcripts is the same "this instance
+        # wants voice activity visible as text" opt-in /mulca link already
+        # asks for; an instance that didn't ask for voice transcripts
+        # didn't ask for this either.
+        if channel is not None and self.replies.post_voice_transcripts:
             await channel.send(
                 f"\N{HAPPY PERSON RAISING ONE HAND} {name} is taking part"
                 if open_

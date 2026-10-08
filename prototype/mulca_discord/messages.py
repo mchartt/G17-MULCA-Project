@@ -33,7 +33,9 @@ ATTACHMENTS = "I can only read text messages -- I can't see attachments, images 
 # than something an admin sets.
 DIARY_FORM_URL = "https://forms.gle/ZSXMM9oFDFUUyU9HA"
 DIARY_MESSAGE = (
-    f"Please fill in your diary after this session: {DIARY_FORM_URL}\n\n"
+    # Angle brackets: Discord's own link-preview syntax for suppressing the
+    # embed card a bare URL would otherwise generate.
+    f"Please fill in your diary after this session: <{DIARY_FORM_URL}>\n\n"
     "Tip: react \N{THUMBS UP SIGN} to a MULCA text reply that was useful, "
     "or \N{THUMBS DOWN SIGN} to one that wasn't -- it helps us see what's "
     "working."
@@ -63,7 +65,7 @@ INTRO_MESSAGE = (
     "4. **Individual tasks** -- try MULCA first. If it isn't enough and "
     "you need another LLM, note why in your diary.\n\n"
     f"If you haven't already, please complete the registration form: "
-    f"{REGISTRATION_FORM_URL}. At the end of each session, fill in the "
+    f"<{REGISTRATION_FORM_URL}>. At the end of each session, fill in the "
     "short diary (find the link any time with `/diary`). At the end of "
     "the study, we'll send a post-study questionnaire.\n\n"
     "Type `/help` any time for a reminder of what MULCA is and how to "
@@ -79,7 +81,7 @@ DAILY_GREETING = (
     "Welcome back! A quick reminder:\n\n"
     "During this session, please react to messages that were particularly "
     f"helpful or unhelpful with a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN}.\n\n"
-    f"After this session, please fill in this form: {DIARY_FORM_URL}\n"
+    f"After this session, please fill in this form: <{DIARY_FORM_URL}>\n"
     "Let's get to it"
 )
 

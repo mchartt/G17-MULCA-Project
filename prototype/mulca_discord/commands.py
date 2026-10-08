@@ -26,8 +26,10 @@ Discord's "/" menu).
   cost-alert webhook/$ threshold (usage_report.py). Deployment-wide, like
   /mulca model, but nothing restarts for it.
 - /mulca limit set|clear, /mulca usage: members with Manage Server -- how
-  many hours of active use a bot, every bot, or all bots together get per
-  day and per week (usage.py), and how much they used. Deployment-wide too.
+  many USD a bot, every bot, or all bots together may spend per day, week
+  and month (usage.py), how much they spent, and on what. Deployment-wide
+  too. The only place costs are shown: replies are ephemeral, and what the
+  bots tell their channels never mentions money.
 - /mulca bot add|remove|list: members with Manage Server -- more bot
   accounts, run by this same process. These act on the whole deployment,
   not just the server they're used in (see deploy/README.md, Security).
@@ -52,7 +54,7 @@ from .links import BotRecord, Link
 from .muca_client import MucaConnectionLost, set_server_cost_alert, set_server_model
 from .permissions import missing_permissions
 from .runtime import LIMIT, AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
-from .usage import EACH, POOL, POOL_FACTOR, bot_scope
+from .usage import EACH, KINDS, POOL, POOL_FACTOR, UsageMeter, bot_scope
 
 logger = logging.getLogger(__name__)
 
@@ -520,10 +522,8 @@ async def set_cost_alert(
     return f"MUCA-Server's cost alert {' and '.join(changed)} updated."
 
 
-def _hours(minutes: int | None) -> str:
-    if minutes is None:
-        return "no limit"
-    return _duration(minutes * 60) if minutes else "0m"
+def _usd(usd: float | None) -> str:
+    return "no limit" if usd is None else f"${usd:.2f}"
 
 
 def _limit_target(
@@ -551,29 +551,39 @@ def _limit_target(
 async def set_limit(
     manager: BotManager,
     target: str | None,
-    daily_hours: float | None,
-    weekly_hours: float | None,
+    daily: float | None,
+    weekly: float | None,
+    monthly: float | None,
     guild_id: int,
 ) -> str:
-    """/mulca limit set: hours of active use per day and per week."""
+    """/mulca limit set: USD per day, week and month; any left out stays."""
 
-    if daily_hours is None and weekly_hours is None:
-        return "Give a daily or a weekly limit, in hours."
+    if daily is None and weekly is None and monthly is None:
+        return "Give a daily, weekly or monthly limit, in USD."
 
     found = _limit_target(manager, target, guild_id)
     if isinstance(found, str):
         return found
     scope, label = found
 
-    daily, weekly = (
-        None if hours is None else max(0, round(hours * 60))
-        for hours in (daily_hours, weekly_hours)
+    meter = UsageMeter(manager.store)
+    current = (
+        meter.limits(None)["pool"]
+        if scope == POOL
+        else meter.limits(None if scope == EACH else int(scope.split(":")[1]))["bot"]
     )
-    manager.store.set_limit(scope, daily, weekly)
+    limits = tuple(
+        old if new is None else max(0.0, new)
+        for new, old in zip((daily, weekly, monthly), current)
+    )
+    manager.store.set_limit(scope, *limits)
     for bot in manager.bots:
         await bot.recheck_limits()
 
-    reply = f"{label}: {_hours(daily)} a day, {_hours(weekly)} a week of active use."
+    reply = (
+        f"{label}: {_usd(limits[0])} a day, {_usd(limits[1])} a week, "
+        f"{_usd(limits[2])} a month."
+    )
     if scope == EACH and manager.store.limit(POOL) is None:
         reply += (
             f" All bots together get {POOL_FACTOR}x that, until "
@@ -593,11 +603,21 @@ async def clear_limit(manager: BotManager, target: str | None, guild_id: int) ->
     manager.store.clear_limit(scope)
     for bot in manager.bots:
         await bot.recheck_limits()
-    return f"{label}: no limit of its own any more."
+    return f"{label}: back to the default limits."
 
 
-def format_usage(manager: BotManager, target: str | None, guild_id: int) -> str:
-    """/mulca usage: active use today and this week, against the limits."""
+STAGE_NAMES = ("normal", "warned", "listening only", "text only", "stopped")
+PERIOD_NAMES = {"daily": "today", "weekly": "this week", "monthly": "this month"}
+
+
+def format_usage(
+    manager: BotManager,
+    target: str | None,
+    guild_id: int,
+    *,
+    details: bool = False,
+) -> str:
+    """/mulca usage: spending today, this week and this month, against the limits."""
 
     try:
         bots = manager.resolve(target, guild_id)
@@ -606,26 +626,52 @@ def format_usage(manager: BotManager, target: str | None, guild_id: int) -> str:
     if not bots:
         return f"No MULCA bot called {target!r} in this server."
 
-    def line(label: str, used: tuple[int, int], limits) -> str:
-        daily, weekly = limits or (None, None)
-        return (
-            f"{label}: today {_hours(used[0])} of {_hours(daily)}, "
-            f"this week {_hours(used[1])} of {_hours(weekly)}"
+    def line(label: str, budgets) -> str:
+        spent = {b.kind: b for b in budgets}
+        return f"{label}: " + " · ".join(
+            f"{PERIOD_NAMES[kind]} ${spent[kind].used:.2f} of "
+            f"${spent[kind].limit:.2f} ({spent[kind].share:.0%})"
+            if kind in spent
+            else f"{PERIOD_NAMES[kind]} no limit"
+            for kind in KINDS
         )
 
     lines = []
     for bot in bots:
-        limits = bot.usage.limits(bot.user_id)
+        budgets = bot.usage.budgets(bot.user_id)
+        level, _ = bot.usage.stage(bot.user_id)
         lines.append(
-            line(f"**{bot.name}**", bot.usage.used(bot.user_id), limits.get("bot"))
-            + (" -- over its limit now" if bot.notices.is_active(LIMIT) else "")
+            line(f"**{bot.name}**", [b for b in budgets if b.scope == "bot"])
+            + f" -- now: {STAGE_NAMES[level]}"
         )
+        if details:
+            lines.extend(_cost_details(bot))
 
-    meter = bots[0].usage
     lines.append(
-        line("All bots together", meter.used(None), meter.limits(bots[0].user_id).get("pool"))
+        line(
+            "All bots together",
+            [b for b in bots[0].usage.budgets(bots[0].user_id) if b.scope == "pool"],
+        )
     )
     return "\n".join(lines)
+
+
+def _cost_details(bot: BotRuntime) -> list[str]:
+    """What a bot's spending went on, by period and by what made the calls."""
+
+    lines = []
+    for kind, by_agent in bot.usage.details(bot.user_id).items():
+        lines.append(f"  {PERIOD_NAMES[kind].capitalize()}:")
+        if not by_agent:
+            lines.append("    nothing yet")
+        for agent, counts in by_agent.items():
+            fresh_text, cached_text, fresh_audio, cached_audio, out_text, out_audio, usd = counts
+            lines.append(
+                f"    {agent}: text in {fresh_text:,} (+{cached_text:,} cached) · "
+                f"audio in {fresh_audio:,} (+{cached_audio:,} cached) · "
+                f"text out {out_text:,} · audio out {out_audio:,} · ${usd:.4f}"
+            )
+    return lines
 
 
 def invite_url(application_id: int) -> str:
@@ -959,7 +1005,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         await send_long(
             interaction,
             format_status(statuses)
-            + "\n\nActive use:\n"
+            + "\n\nSpending:\n"
             + format_usage(manager, None, interaction.guild_id),
         )
 
@@ -1214,7 +1260,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
 
     limit = app_commands.Group(
         name="limit",
-        description="Hours of active use per day and week (for the whole deployment).",
+        description="USD MULCA may spend per day, week and month (whole deployment).",
         parent=mulca,
     )
 
@@ -1226,11 +1272,12 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         choices = await bot_choices(interaction, current)
         return ([pool] if current.lower() in pool.name else []) + choices[:24]
 
-    @limit.command(name="set", description="Limit how long MULCA may be used per day and per week.")
+    @limit.command(name="set", description="Limit how much MULCA may spend per day, week and month.")
     @app_commands.describe(
         target="One bot, all (each bot, by default), or pool (all bots together).",
-        daily="Hours of active use per day, e.g. 4 or 1.5.",
-        weekly="Hours of active use per week, e.g. 10.",
+        daily="USD per day, e.g. 30. Left out: unchanged.",
+        weekly="USD per week, e.g. 50. Left out: unchanged.",
+        monthly="USD per month, e.g. 100. Left out: unchanged.",
     )
     @app_commands.autocomplete(target=limit_choices)
     async def limit_set(
@@ -1238,12 +1285,15 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         target: str,
         daily: float | None = None,
         weekly: float | None = None,
+        monthly: float | None = None,
     ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
-        reply = await set_limit(manager, target, daily, weekly, interaction.guild_id)
+        reply = await set_limit(
+            manager, target, daily, weekly, monthly, interaction.guild_id
+        )
         await interaction.followup.send(reply, ephemeral=True)
 
-    @limit.command(name="clear", description="Remove a usage limit.")
+    @limit.command(name="clear", description="Back to the default usage limits.")
     @app_commands.describe(target="One bot, all (each bot), or pool (all bots together).")
     @app_commands.autocomplete(target=limit_choices)
     async def limit_clear(interaction: discord.Interaction, target: str) -> None:
@@ -1251,12 +1301,22 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         reply = await clear_limit(manager, target, interaction.guild_id)
         await interaction.followup.send(reply, ephemeral=True)
 
-    @mulca.command(name="usage", description="How long MULCA was used today and this week.")
-    @app_commands.describe(bot="One bot, or all of them in this server (default).")
+    @mulca.command(name="usage", description="What MULCA spent today, this week and this month.")
+    @app_commands.describe(
+        bot="One bot, or all of them in this server (default).",
+        details="Also each agent's tokens and cost (main, observer, transcription...).",
+    )
     @app_commands.autocomplete(bot=bot_choices)
-    async def usage_command(interaction: discord.Interaction, bot: str | None = None) -> None:
+    async def usage_command(
+        interaction: discord.Interaction,
+        bot: str | None = None,
+        details: bool = False,
+    ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
-        await send_long(interaction, format_usage(manager, bot, interaction.guild_id))
+        await send_long(
+            interaction,
+            format_usage(manager, bot, interaction.guild_id, details=details),
+        )
 
     tree.add_command(mulca)
 

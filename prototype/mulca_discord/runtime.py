@@ -28,7 +28,7 @@ from .messages import Notices
 from .muca_client import MucaWsClient
 from .permissions import missing_permissions
 from .sessions import RESTART_WAIT_SECONDS, Scope, ScopeSession, SessionRegistry
-from .usage import WARNING_MINUTES, UsageMeter
+from .usage import LISTEN, STOP, TEXT, UsageMeter
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +52,24 @@ DMS_OFF_REPLY = messages.DMS_OFF
 # "voice:<link>" per voice channel it can't join.
 LIMIT = "limit"
 WARNING = "warning"
+LISTEN_ONLY = "listen_only"
+TEXT_ONLY = "text_only"
 OFFLINE = "offline"
 PAUSED = "paused"
 TURN_FAILED = "turn_failed"
 
-# How often a bot over its limit checks whether it may answer again.
+# The stages a bot goes through as it spends its budget (usage.STAGES), in
+# order, each announced once: a heads-up, replies in text while it still
+# listens in voice, text only (out of voice), a full stop.
+STAGE_NOTICES = (WARNING, LISTEN_ONLY, TEXT_ONLY, LIMIT)
+STAGE_TEXTS = (
+    messages.limit_warning,
+    messages.listening_only,
+    messages.text_only,
+    messages.limit_reached,
+)
+
+# How often a bot checks whether a limit reset (a new day, week or month).
 LIMIT_CHECK_SECONDS = 60.0
 
 
@@ -140,6 +153,7 @@ class BotRuntime:
             self.usage = UsageMeter(self.store)
         self.registry.on_reply = self._on_reply
         self.registry.on_server_error = self._on_server_error
+        self.registry.on_usage = self._on_usage
 
     def install(self) -> None:
         """Route this client's Discord events here."""
@@ -301,7 +315,12 @@ class BotRuntime:
             if link.voice_channel_id is not None
             else None
         )
-        if _humans(channel) and not self.paused and not self.notices.is_active(LIMIT):
+        if (
+            _humans(channel)
+            and not self.paused
+            and not self.notices.is_active(TEXT_ONLY)
+            and not self.notices.is_active(LIMIT)
+        ):
             await self.join_voice(link)
         else:
             await self.leave_voice(link)
@@ -542,6 +561,7 @@ class BotRuntime:
                 "" if visible else " -- but that text channel isn't visible",
             )
 
+        await self.recheck_limits()
         await self._sync_all_voice()
         # on_ready comes again after every reconnect to Discord: one watch.
         if self._watch is None or self._watch.done():
@@ -646,10 +666,6 @@ class BotRuntime:
         if await self.over_limit(channel, tagged=tagged):
             return
 
-        warned = False
-        if self.usage.mark_active(self.user_id, scope.conversation_id):
-            warned = await self._warn_if_low(channel)
-
         roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
             roster = await _roster(message.channel)
@@ -692,7 +708,7 @@ class BotRuntime:
         if tagged:
             if getattr(message, "attachments", None) or getattr(message, "stickers", None):
                 await messages.post(channel, messages.ATTACHMENTS)
-            await self.notices.remind(channel, skip=(WARNING,) if warned else ())
+            await self.notices.remind(channel)
 
     # ------------------------------------------------------------------
     # Usage limits, and telling users what's wrong (messages.py)
@@ -705,31 +721,64 @@ class BotRuntime:
             await messages.post(channel, self.notices.text(problem) or text)
 
     async def over_limit(self, channel, *, tagged: bool = False) -> bool:
-        """
-        Whether this bot is over a usage limit. The first time, it says so
-        and stops: out of voice, its sessions closed (memory saved).
-        """
+        """Whether this bot is stopped by a usage limit (apply_stage)."""
 
-        budget = self.usage.check(self.user_id)
-        if budget is None:
+        if not self.notices.is_active(LIMIT):
             return False
 
-        if await self.notices.raise_(LIMIT, channel, messages.limit_reached(budget)):
+        if tagged:
+            await messages.post(channel, self.notices.text(LIMIT))
+        return True
+
+    async def apply_stage(self, channel=None) -> None:
+        """
+        Bring the bot to the stage its spending puts it at (usage.stage):
+        announced once going up, in `channel` (else its first linked one);
+        lifted with one message going down, after a reset or a raised limit.
+        """
+
+        level, budget = self.usage.stage(self.user_id)
+        above = [p for p in STAGE_NOTICES[level:] if self.notices.is_active(p)]
+
+        if above:
+            logger.info("%s is back to usage stage %d", self.name, level)
+            for problem in above[:-1]:
+                self.notices.forget(problem)
+            await self.notices.resolve(above[-1], messages.stage_lifted(level))
+        elif level and not self.notices.is_active(STAGE_NOTICES[level - 1]):
             logger.info(
-                "%s is over its %s %s limit (%d/%d min)",
+                "%s reached usage stage %d: %s %s limit at %.0f%% ($%.2f of $%.2f)",
                 self.name,
+                level,
                 budget.scope,
                 budget.kind,
+                budget.share * 100,
                 budget.used,
                 budget.limit,
             )
+            channel = channel or self._first_text_channel()
+            for problem in STAGE_NOTICES[: level - 1]:
+                self.notices.hold(problem, channel)
+            await self.notices.raise_(
+                STAGE_NOTICES[level - 1], channel, STAGE_TEXTS[level - 1](budget)
+            )
+        else:
+            return
+
+        await self.registry.set_text_replies(level >= LISTEN)
+        if level >= STOP:
             # Not awaited: this may run inside a voice bridge's own tick,
             # which leaving voice cancels.
             self._spawn(self._stop_for_limit())
-        elif tagged:
-            await messages.post(channel, self.notices.text(LIMIT))
+        else:
+            self._spawn(self._sync_all_voice())
 
-        return True
+    def _first_text_channel(self):
+        for link in self.links():
+            channel = self.client.get_channel(link.text_channel_id)
+            if channel is not None:
+                return channel
+        return None
 
     async def _stop_for_limit(self) -> None:
         for link in self.links():
@@ -737,31 +786,10 @@ class BotRuntime:
         for conversation_id in list(self.registry.sessions):
             await self.registry.close(conversation_id, wait=RESTART_WAIT_SECONDS)
 
-    async def _warn_if_low(self, channel) -> bool:
-        """The heads-up before a limit, once; True if it was just posted."""
-
-        budget = self.usage.tightest(self.user_id)
-        if budget is None or budget.left > WARNING_MINUTES:
-            return False
-
-        return await self.notices.raise_(WARNING, channel, messages.limit_warning(budget))
-
     async def voice_active(self, link: Link) -> bool:
-        """
-        Someone holds the floor in voice, or MULCA is heard: counts this
-        minute. False when over a limit, so the bridge sends nothing.
-        """
+        """False out of voice (text only, or stopped): the bridge sends nothing."""
 
-        if not self.usage.is_new_minute(link.conversation_id):
-            return True
-
-        channel = self.client.get_channel(link.text_channel_id)
-        if await self.over_limit(channel):
-            return False
-
-        self.usage.mark_active(self.user_id, link.conversation_id)
-        await self._warn_if_low(channel)
-        return True
+        return not (self.notices.is_active(TEXT_ONLY) or self.notices.is_active(LIMIT))
 
     async def server_reachable(self, channel, reachable: bool) -> None:
         if reachable:
@@ -770,24 +798,20 @@ class BotRuntime:
             await self.notices.raise_(OFFLINE, channel, messages.OFFLINE)
 
     def _on_reply(self, session: ScopeSession, is_final: bool) -> None:
-        self.usage.mark_active(self.user_id, session.scope.conversation_id)
         if is_final:
             self.notices.forget(TURN_FAILED)
 
     async def _on_server_error(self, session: ScopeSession, message: str) -> None:
         await self.notices.raise_(TURN_FAILED, session.replies.channel, messages.TURN_FAILED)
 
+    async def _on_usage(self, session: ScopeSession, usage: dict) -> None:
+        self.usage.record(self.user_id, usage)
+        await self.apply_stage(session.replies.channel)
+
     async def recheck_limits(self) -> None:
-        """After a new day or week, or a changed limit: lift what's over."""
+        """After a new day, week or month, or a changed limit."""
 
-        if self.notices.is_active(LIMIT) and self.usage.check(self.user_id) is None:
-            logger.info("%s is back under its usage limits", self.name)
-            await self.notices.resolve(LIMIT, messages.AVAILABLE_AGAIN)
-            await self._sync_all_voice()
-
-        budget = self.usage.tightest(self.user_id)
-        if budget is None or budget.left > WARNING_MINUTES:
-            self.notices.forget(WARNING)
+        await self.apply_stage()
 
     async def _watch_limits(self) -> None:
         while True:

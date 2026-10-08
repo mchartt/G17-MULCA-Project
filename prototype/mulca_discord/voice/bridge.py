@@ -90,8 +90,8 @@ class VoiceBridge:
         # reach whenever tier 1 (just reopening the MUCA-Server session)
         # doesn't verifiably fix things -- not a scary last resort to avoid.
         self._on_unhealthy = on_unhealthy
-        # Someone holds the floor or MULCA is heard: counts toward the bot's
-        # usage, and False means it's over its limit (send nothing). And
+        # Someone holds the floor or MULCA is heard: False means the bot is
+        # out of voice for its spending limit (send nothing). And
         # whether MUCA-Server could be reached, for the users to hear of.
         self._on_active = on_active
         self._on_reachable = on_reachable

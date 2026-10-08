@@ -288,6 +288,10 @@ class FakeRegistry:
         self.restarted: list[str] = []
         self.closed: list[tuple[str, float | None]] = []
         self.scopes: list[Scope] = []
+        self.text_replies = False
+
+    async def set_text_replies(self, text_replies: bool) -> None:
+        self.text_replies = text_replies
 
     async def restart(self, conversation_id, wait=5.0) -> bool:
         self.restarted.append(conversation_id)

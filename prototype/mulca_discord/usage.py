@@ -1,16 +1,19 @@
 """
-How much each bot is used, against the limits an admin set (/mulca limit).
+How much each bot spends, against the limits an admin set (/mulca limit).
 
-Usage is counted in active minutes per channel: a channel (or DM) earns a
-minute when, in that minute, someone wrote, someone held the floor in
-voice, or MULCA replied. Channels add up -- two busy channels for an hour
-use two hours -- and a silent voice call uses nothing.
+Spending is MUCA-Server's own estimate, which it sends after every provider
+call a session makes (its `usage` event): this records it per bot, local day
+and what made the call (the main agent, the observer, transcription, the
+summarizer, embeddings).
 
-Three limits apply to a bot, each optional, daily and weekly: its own
-("bot:<id>", else the default for every bot, "each") and the shared one of
-all bots together ("pool", by default POOL_FACTOR times "each"). Days start
-at midnight in MULCA_TIMEZONE, weeks on Monday. Nothing but /mulca limit
-changes a limit, and usage is stored per day, so restarts never reset it.
+Three limits apply to a bot, each in USD and daily, weekly and monthly: its
+own ("bot:<id>", else the one for every bot, "each", else DEFAULT_LIMITS)
+and the shared one of all bots together ("pool", by default POOL_FACTOR
+times "each"). Days start at midnight in MULCA_TIMEZONE, weeks on Monday,
+months on the 1st. As a bot gets through the tightest of them it goes
+through STAGES (runtime.py): a heads-up, then replies in text while it still
+listens in voice, then text only, then a full stop until that limit resets
+or is raised. Spending is stored per day, so restarts never reset it.
 """
 
 from __future__ import annotations
@@ -26,14 +29,31 @@ from .links import LinkStore
 TIMEZONE_ENV_VAR = "MULCA_TIMEZONE"
 DEFAULT_TIMEZONE = "Europe/Rome"
 
+# USD per day, week and month for every bot without a limit of its own.
+DEFAULT_LIMITS = (30.0, 50.0, 100.0)
+
 # The shared pool, when not set on its own: this many times "each".
 POOL_FACTOR = 10
 
-# A heads-up is posted once this few minutes are left.
-WARNING_MINUTES = 10
+# The share of a limit that starts each stage: a heads-up, replies in text
+# (still listening in voice), text only (out of voice), a full stop.
+STAGES = (0.5, 0.7, 0.9, 1.0)
+WARN, LISTEN, TEXT, STOP = 1, 2, 3, 4
+
+KINDS = ("daily", "weekly", "monthly")
 
 EACH = "each"
 POOL = "pool"
+
+# The order of a `usage` event's token counts, as stored.
+TOKEN_FIELDS = (
+    "freshText",
+    "cachedText",
+    "freshAudio",
+    "cachedAudio",
+    "outText",
+    "outAudio",
+)
 
 
 def bot_scope(bot_id: int | None) -> str:
@@ -42,93 +62,75 @@ def bot_scope(bot_id: int | None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Budget:
-    """One limit as it stands: kind "daily"/"weekly", scope "bot"/"pool"."""
+    """One limit as it stands: kind "daily"/"weekly"/"monthly", scope "bot"/"pool"."""
 
     kind: str
     scope: str
-    used: int
-    limit: int
+    used: float
+    limit: float
     resets_at: datetime
 
     @property
-    def left(self) -> int:
-        return max(0, self.limit - self.used)
+    def share(self) -> float:
+        if self.limit <= 0:
+            return float("inf")
+        return self.used / self.limit
 
 
 class UsageMeter:
     def __init__(self, store: LinkStore, *, tz: ZoneInfo | None = None) -> None:
         self._store = store
         self.tz = tz or ZoneInfo(os.environ.get(TIMEZONE_ENV_VAR, DEFAULT_TIMEZONE))
-        # The minute each channel was last counted for.
-        self._counted: dict[str, int] = {}
 
-    def mark_active(
-        self,
-        bot_id: int | None,
-        conversation_id: str,
-        now: float | None = None,
-    ) -> bool:
-        """Count this minute for the channel, once; True if it was new."""
+    def record(self, bot_id: int | None, usage: dict, now: float | None = None) -> None:
+        """One `usage` event from MUCA-Server, for this bot, today."""
 
-        now = time.time() if now is None else now
-        if bot_id is None or not self.is_new_minute(conversation_id, now):
-            return False
+        if bot_id is None:
+            return
 
-        self._counted[conversation_id] = int(now // 60)
-        self._store.add_active_minute(bot_id, self._today(now).isoformat())
-        return True
+        today = self._today(time.time() if now is None else now)
+        self._store.add_cost(
+            bot_id,
+            today.isoformat(),
+            str(usage.get("agent") or "unknown"),
+            tuple(int(usage.get(name) or 0) for name in TOKEN_FIELDS),
+            float(usage.get("costUsd") or 0.0),
+        )
 
-    def is_new_minute(self, conversation_id: str, now: float | None = None) -> bool:
-        """Whether this channel's activity now would count another minute."""
+    def limits(self, bot_id: int | None) -> dict[str, tuple[float | None, ...]]:
+        """The (daily, weekly, monthly) USD that apply to this bot, by scope."""
 
-        now = time.time() if now is None else now
-        return self._counted.get(conversation_id) != int(now // 60)
+        each = self._store.limit(EACH) or DEFAULT_LIMITS
+        own = self._store.limit(bot_scope(bot_id)) or each
+        pool = self._store.limit(POOL) or tuple(
+            None if usd is None else usd * POOL_FACTOR for usd in each
+        )
+        return {"bot": own, "pool": pool}
 
-    def limits(self, bot_id: int | None) -> dict[str, tuple[int | None, int | None]]:
-        """The (daily, weekly) minutes that apply to this bot, by scope."""
-
-        applying = {}
-        own = self._store.limit(bot_scope(bot_id)) or self._store.limit(EACH)
-        if own is not None:
-            applying["bot"] = own
-
-        pool = self._store.limit(POOL)
-        each = self._store.limit(EACH)
-        if pool is None and each is not None:
-            pool = tuple(
-                None if minutes is None else minutes * POOL_FACTOR for minutes in each
-            )
-        if pool is not None:
-            applying["pool"] = pool
-
-        return applying
-
-    def used(self, bot_id: int | None, now: float | None = None) -> tuple[int, int]:
-        """A bot's (today, this week) active minutes; None: all bots."""
+    def periods(self, now: float | None = None) -> dict[str, tuple[date, date]]:
+        """Each kind's (first day, first day of the next one), today."""
 
         today = self._today(time.time() if now is None else now)
         monday = today - timedelta(days=today.weekday())
-        return (
-            self._store.active_minutes(bot_id, today.isoformat(), today.isoformat()),
-            self._store.active_minutes(bot_id, monday.isoformat(), today.isoformat()),
-        )
-
-    def budgets(self, bot_id: int | None, now: float | None = None) -> list[Budget]:
-        now = time.time() if now is None else now
-        today = self._today(now)
-        monday = today - timedelta(days=today.weekday())
-        periods = {
+        first = today.replace(day=1)
+        next_month = (first + timedelta(days=32)).replace(day=1)
+        return {
             "daily": (today, today + timedelta(days=1)),
             "weekly": (monday, monday + timedelta(days=7)),
+            "monthly": (first, next_month),
         }
 
+    def budgets(self, bot_id: int | None, now: float | None = None) -> list[Budget]:
+        periods = self.periods(now)
+        today = periods["daily"][0]
+
         budgets = []
-        for scope, (daily, weekly) in self.limits(bot_id).items():
-            for kind, limit in (("daily", daily), ("weekly", weekly)):
+        for scope, limits in self.limits(bot_id).items():
+            for kind, limit in zip(KINDS, limits):
                 if limit is None:
                     continue
                 first, next_first = periods[kind]
-                used = self._store.active_minutes(
+                used = self._store.cost(
                     bot_id if scope == "bot" else None,
                     first.isoformat(),
                     today.isoformat(),
@@ -140,16 +142,33 @@ class UsageMeter:
 
         return budgets
 
-    def check(self, bot_id: int | None, now: float | None = None) -> Budget | None:
-        """The limit this bot is over, or None. The longest wait wins."""
+    def stage(self, bot_id: int | None, now: float | None = None) -> tuple[int, Budget | None]:
+        """
+        How far this bot is through its budget: 0 (fine) to STOP, and the
+        limit that put it there -- the most used one; at a tie, the one
+        that resets last.
+        """
 
-        exceeded = [b for b in self.budgets(bot_id, now) if b.used >= b.limit]
-        return max(exceeded, key=lambda b: b.resets_at, default=None)
+        budget = max(
+            self.budgets(bot_id, now),
+            key=lambda b: (b.share, b.resets_at),
+            default=None,
+        )
+        if budget is None:
+            return 0, None
 
-    def tightest(self, bot_id: int | None, now: float | None = None) -> Budget | None:
-        """The limit with the fewest minutes left, or None if there is none."""
+        level = sum(budget.share >= threshold for threshold in STAGES)
+        return level, budget
 
-        return min(self.budgets(bot_id, now), key=lambda b: b.left, default=None)
+    def details(self, bot_id: int, now: float | None = None) -> dict[str, dict]:
+        """By kind (daily, weekly, monthly): this bot's costs by agent."""
+
+        periods = self.periods(now)
+        today = periods["daily"][0].isoformat()
+        return {
+            kind: self._store.cost_details(bot_id, first.isoformat(), today)
+            for kind, (first, _) in periods.items()
+        }
 
     def _today(self, now: float) -> date:
         return datetime.fromtimestamp(now, self.tz).date()

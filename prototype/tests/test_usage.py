@@ -1,7 +1,8 @@
 """
-Usage limits (usage.py, /mulca limit|usage) and what MULCA tells its users
-about itself (messages.py): each problem once when raised, and again only
-for an @mention.
+Spending limits (usage.py, /mulca limit|usage), the stages a bot goes
+through on the way to one, and what MULCA tells its users about itself
+(messages.py): each problem once when raised, and again only for an
+@mention.
 """
 
 import asyncio
@@ -28,73 +29,83 @@ def meter() -> UsageMeter:
     return UsageMeter(LinkStore(":memory:"), tz=ROME)
 
 
+def usage_event(cost: float, agent: str = "main", **tokens) -> dict:
+    return {"event": "usage", "agent": agent, "costUsd": cost, **tokens}
+
+
 # ----------------------------------------------------------------------
-# Counting
+# Spending
 # ----------------------------------------------------------------------
 
 
-def test_a_channel_counts_one_minute_per_minute_and_channels_add_up():
+def test_spending_is_recorded_per_bot_day_and_agent():
     usage = meter()
-    t = at(2026, 10, 6, 10, 0, 5)
+    t = at(2026, 10, 6, 10, 0)
 
-    assert usage.mark_active(1, "channel:1", t)
-    assert not usage.mark_active(1, "channel:1", t + 30)  # same minute
-    assert usage.mark_active(1, "channel:2", t + 30)  # another channel
-    assert usage.mark_active(1, "channel:1", t + 60)
-    assert not usage.mark_active(None, "channel:3", t)  # not logged in yet
+    usage.record(1, usage_event(1.5, freshText=10, cachedAudio=5), t)
+    usage.record(1, usage_event(0.5, freshText=1, outAudio=2), t)
+    usage.record(1, usage_event(0.25, "transcription", freshAudio=100), t)
+    usage.record(2, usage_event(4.0), t)
+    usage.record(None, usage_event(9.0), t)  # not logged in yet
 
-    assert usage.used(1, t + 60) == (3, 3)
-    assert usage.used(2, t + 60) == (0, 0)
-    assert usage.used(None, t + 60) == (3, 3)
+    day = "2026-10-06"
+    assert usage._store.cost(1, day, day) == 2.25
+    assert usage._store.cost(None, day, day) == 6.25
+    assert usage.details(1, t)["daily"] == {
+        "main": (11, 0, 0, 5, 0, 2, 2.0),
+        "transcription": (0, 0, 100, 0, 0, 0, 0.25),
+    }
 
 
-def test_days_start_at_midnight_in_rome_and_weeks_on_monday():
+def test_days_start_at_midnight_in_rome_weeks_on_monday_months_on_the_1st():
     usage = meter()
-    sunday_night = at(2026, 10, 25, 23, 59, 30)  # the night clocks go back
-    monday = at(2026, 10, 26, 0, 0, 30)
+    usage.record(1, usage_event(1.0), at(2026, 10, 24, 12, 0))
+    usage.record(1, usage_event(2.0), at(2026, 10, 25, 23, 59))
+    usage.record(1, usage_event(4.0), at(2026, 11, 1, 0, 1))
 
-    usage.mark_active(1, "channel:1", at(2026, 10, 24, 12, 0))
-    usage.mark_active(1, "channel:1", sunday_night)
-    usage.mark_active(1, "channel:1", monday)
+    def spent(*when) -> dict:
+        return {
+            b.kind: b.used for b in usage.budgets(1, at(*when)) if b.scope == "bot"
+        }
 
-    assert usage.used(1, sunday_night) == (1, 2)
-    assert usage.used(1, monday) == (1, 1)
+    assert spent(2026, 10, 25, 23, 59) == {"daily": 2.0, "weekly": 3.0, "monthly": 3.0}
+    # Sunday 1 November: a new month, and Monday the 26th began a new week.
+    assert spent(2026, 11, 1, 0, 1) == {"daily": 4.0, "weekly": 4.0, "monthly": 4.0}
 
-    usage._store.set_limit("each", 60, 600)
-    daily, weekly = usage.budgets(1, sunday_night)[:2]
+    daily, weekly, monthly = usage.budgets(1, at(2026, 10, 25, 23, 59))[:3]
     assert daily.resets_at == datetime(2026, 10, 26, tzinfo=ROME)
     assert weekly.resets_at == datetime(2026, 10, 26, tzinfo=ROME)
+    assert monthly.resets_at == datetime(2026, 11, 1, tzinfo=ROME)
 
 
-def test_a_bots_own_limit_replaces_the_default_and_the_pool_is_ten_times_it():
+def test_every_bot_gets_the_defaults_unless_overridden_and_the_pool_ten_times_them():
     usage = meter()
     store = usage._store
 
-    assert usage.limits(1) == {}
+    assert usage.limits(1) == {"bot": (30.0, 50.0, 100.0), "pool": (300.0, 500.0, 1000.0)}
 
-    store.set_limit("each", 240, 600)
-    assert usage.limits(1) == {"bot": (240, 600), "pool": (2400, 6000)}
+    store.set_limit("each", 10.0, 20.0, None)
+    assert usage.limits(1) == {"bot": (10.0, 20.0, None), "pool": (100.0, 200.0, None)}
 
-    store.set_limit("bot:1", 60, None)
-    store.set_limit("pool", 100, None)
-    assert usage.limits(1) == {"bot": (60, None), "pool": (100, None)}
-    assert usage.limits(2) == {"bot": (240, 600), "pool": (100, None)}
+    store.set_limit("bot:1", 1.0, None, None)
+    store.set_limit("pool", 5.0, None, None)
+    assert usage.limits(1) == {"bot": (1.0, None, None), "pool": (5.0, None, None)}
+    assert usage.limits(2) == {"bot": (10.0, 20.0, None), "pool": (5.0, None, None)}
 
 
-def test_the_limit_reported_is_the_one_with_the_longest_wait():
+def test_the_stage_follows_the_most_used_limit():
     usage = meter()
-    usage._store.set_limit("each", 1, 2)
-    monday = at(2026, 10, 5, 10, 0)
-    tuesday = at(2026, 10, 6, 10, 0)
+    usage._store.set_limit("bot:1", 10.0, None, None)
+    t = at(2026, 10, 6, 10, 0)
 
-    usage.mark_active(1, "channel:1", monday)
-    assert usage.check(1, monday).kind == "daily"
-    assert usage.check(1, tuesday) is None
-    assert usage.tightest(1, tuesday).left == 1
+    for cost, level in [(4.9, 0), (0.1, 1), (2.0, 2), (2.0, 3), (1.0, 4)]:
+        usage.record(1, usage_event(cost), t)
+        assert usage.stage(1, t)[0] == level
 
-    usage.mark_active(1, "channel:1", tuesday)
-    over = usage.check(1, tuesday)
-    assert (over.kind, over.scope) == ("weekly", "bot")
+    _, budget = usage.stage(1, t)
+    assert (budget.kind, budget.scope, budget.share) == ("daily", "bot", 1.0)
+    # The next day it starts over.
+    assert usage.stage(1, at(2026, 10, 7, 10, 0))[0] == 0
 
 
 # ----------------------------------------------------------------------
@@ -145,38 +156,78 @@ def tagged(runtime, channel, **fields):
     return msg
 
 
-async def test_over_its_limit_it_says_so_once_then_only_when_tagged():
+class UsageSession:
+    """What _on_usage needs of a session: where its replies go."""
+
+    def __init__(self, channel) -> None:
+        class Replies:
+            pass
+
+        self.replies = Replies()
+        self.replies.channel = channel
+
+
+async def test_spending_goes_through_each_stage_once_and_back_when_raised():
     runtime, channel = runtime_with_channel()
-    runtime.store.set_limit("bot:1", 1, None)
+    runtime.store.set_limit("bot:1", 10.0, None, None)
+    session = UsageSession(channel)
 
-    # The first minute is allowed, with the heads-up that it's the last one.
+    async def spend(cost: float) -> None:
+        await runtime._on_usage(session, usage_event(cost))
+        await asyncio.sleep(0)  # voice changes run in the background
+
+    await spend(5.0)
+    await spend(0.1)  # the same stage: nothing new to say
+    budget = runtime.usage.stage(1)[1]
+    assert channel.sent == [messages.limit_warning(budget)]
+
+    await spend(2.0)
+    assert channel.sent[1:] == [messages.listening_only(budget)]
+    assert runtime.registry.text_replies
+    assert await runtime.voice_active(ALPHA)
+
+    await spend(2.0)
+    assert channel.sent[2:] == [messages.text_only(budget)]
+    assert not await runtime.voice_active(ALPHA)
+
+    # Typed messages still get through, until the limit itself.
     await runtime.on_message(message(5, channel))
     assert len(runtime.registry.scopes) == 1
-    assert channel.sent == [messages.limit_warning(runtime.usage.tightest(1))]
 
+    await spend(1.0)
+    assert channel.sent[3:] == [messages.limit_reached(budget)]
     await runtime.on_message(message(5, channel))
-    await runtime.on_message(message(5, channel))
-    await asyncio.sleep(0)  # the stop runs in the background
-
-    reached = messages.limit_reached(runtime.usage.check(1))
-    assert channel.sent[1:] == [reached]
-    assert len(runtime.registry.scopes) == 1  # nothing more reached the server
-
+    assert len(runtime.registry.scopes) == 1
     await runtime.on_message(tagged(runtime, channel))
-    assert channel.sent[2:] == [reached]
+    assert channel.sent[4:] == [messages.limit_reached(budget)]
 
-    # A restart never resets usage.
-    await runtime.restart_link(ALPHA)
-    await runtime.on_message(message(5, channel))
-    assert channel.sent[3:] == []
-    assert len(runtime.registry.scopes) == 1
+    # Never a word about money in the channel.
+    assert not any("$" in text for text in channel.sent)
 
-    runtime.store.clear_limit("bot:1")
+    runtime.store.set_limit("bot:1", 100.0, None, None)
     await runtime.recheck_limits()
-    assert channel.sent[3:] == [messages.AVAILABLE_AGAIN]
+    await asyncio.sleep(0)
+    assert channel.sent[5:] == [messages.stage_lifted(0)]
+    assert not runtime.registry.text_replies
+    assert await runtime.voice_active(ALPHA)
 
     await runtime.on_message(message(5, channel))
     assert len(runtime.registry.scopes) == 2
+
+
+async def test_a_raised_limit_can_lift_part_of_the_way():
+    runtime, channel = runtime_with_channel()
+    runtime.store.set_limit("bot:1", 10.0, None, None)
+    await runtime._on_usage(UsageSession(channel), usage_event(10.0))
+    await asyncio.sleep(0)
+
+    runtime.store.set_limit("bot:1", 12.0, None, None)  # now at 83%
+    await runtime.recheck_limits()
+    await asyncio.sleep(0)
+
+    assert channel.sent[-1] == messages.stage_lifted(2)
+    assert runtime.registry.text_replies
+    assert await runtime.voice_active(ALPHA)
 
 
 async def test_offline_it_says_so_once_and_once_more_when_back():
@@ -253,20 +304,31 @@ async def test_limits_are_set_shown_and_cleared():
     runtime, _ = runtime_with_channel()
     manager = BotManager([runtime], store=runtime.store)
 
-    reply = await set_limit(manager, "all", 4, 10, GUILD)
-    assert "4h 0m a day, 10h 0m a week" in reply and "10x" in reply
-    assert runtime.store.limit("each") == (240, 600)
+    reply = await set_limit(manager, "all", 4, 10, None, GUILD)
+    assert "$4.00 a day, $10.00 a week, $100.00 a month" in reply and "10x" in reply
+    assert runtime.store.limit("each") == (4.0, 10.0, 100.0)
 
-    reply = await set_limit(manager, "MULCA", 1.5, None, GUILD)
-    assert reply.startswith("**MULCA**: 1h 30m a day, no limit a week")
-    assert runtime.store.limit("bot:1") == (90, None)
+    # What isn't given stays as it was.
+    reply = await set_limit(manager, "MULCA", 1.5, None, None, GUILD)
+    assert reply.startswith("**MULCA**: $1.50 a day, $10.00 a week, $100.00 a month")
+    assert runtime.store.limit("bot:1") == (1.5, 10.0, 100.0)
 
-    assert "Give a daily or a weekly limit" in await set_limit(manager, "pool", None, None, GUILD)
-    assert "No MULCA bot called" in await set_limit(manager, "nobody", 1, None, GUILD)
+    assert "Give a daily, weekly or monthly limit" in await set_limit(
+        manager, "pool", None, None, None, GUILD
+    )
+    assert "No MULCA bot called" in await set_limit(manager, "nobody", 1, None, None, GUILD)
 
+    runtime.usage.record(1, usage_event(0.6, freshText=1000, cachedText=200))
     usage = format_usage(manager, None, GUILD)
-    assert "**MULCA**: today 0m of 1h 30m, this week 0m of no limit" in usage
-    assert "All bots together: today 0m of 40h 0m, this week 0m of 100h 0m" in usage
+    assert (
+        "**MULCA**: today $0.60 of $1.50 (40%) · this week $0.60 of $10.00 (6%) · "
+        "this month $0.60 of $100.00 (1%) -- now: normal"
+    ) in usage
+    assert "All bots together: today $0.60 of $40.00" in usage
+    assert "main:" not in usage
+
+    details = format_usage(manager, "MULCA", GUILD, details=True)
+    assert "main: text in 1,000 (+200 cached) · audio in 0 (+0 cached)" in details
 
     await clear_limit(manager, "MULCA", GUILD)
     assert runtime.store.limit("bot:1") is None

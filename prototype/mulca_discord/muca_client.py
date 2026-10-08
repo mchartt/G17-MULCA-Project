@@ -205,8 +205,8 @@ class MucaWsClient:
         self.on_state_update: StateUpdateHandler | None = None
         self.on_closed: ClosedHandler | None = None
         self.on_error: ErrorHandler | None = None
-        # Set temporarily by arm_listening() itself while it awaits a
-        # reply, not by the caller up front like the others above.
+        # Set by the caller for "wake" mode's engaged sessions; replaced
+        # temporarily by arm_listening() itself while it awaits a reply.
         self.on_listening_state: ListeningStateHandler | None = None
         self.on_usage: UsageHandler | None = None
 

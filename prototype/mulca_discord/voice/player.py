@@ -53,10 +53,32 @@ def discord_audio_to_server(frame: bytes) -> bytes:
     return downsampled.astype("<f4").tobytes()
 
 
+CHIME_NOTES_HZ = (660.0, 880.0)
+CHIME_NOTE_SECONDS = 0.12
+CHIME_VOLUME = 0.2
+
+
+def chime(rising: bool) -> bytes:
+    """Two short notes, as server audio: up to start listening, down to stop."""
+
+    t = np.arange(int(SERVER_RATE * CHIME_NOTE_SECONDS)) / SERVER_RATE
+    # Fade each note in and out, or it clicks.
+    envelope = np.minimum(1.0, np.minimum(t, t[-1] - t) / 0.01)
+    notes = CHIME_NOTES_HZ if rising else CHIME_NOTES_HZ[::-1]
+    samples = np.concatenate(
+        [CHIME_VOLUME * envelope * np.sin(2 * np.pi * hz * t) for hz in notes]
+    )
+
+    return samples.astype("<f4").tobytes()
+
+
 class AssistantPlayer(discord.AudioSource):
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._queue = bytearray()
+        # A chime, not MULCA speaking: played first, but never reported
+        # back -- the server's turn taking runs on what is reported.
+        self._cue = bytearray()
 
         # 48 kHz samples played since the current stretch of playback began;
         # reset whenever the queue runs dry (AssistantAudioPusher.cs does the
@@ -73,9 +95,15 @@ class AssistantPlayer(discord.AudioSource):
         with self._lock:
             self._queue.extend(pcm)
 
+    def enqueue_cue(self, server_audio: bytes) -> None:
+        pcm = server_audio_to_discord(server_audio)
+        with self._lock:
+            self._cue.extend(pcm)
+
     def clear(self) -> None:
         with self._lock:
             self._queue.clear()
+            self._cue.clear()
             self._consumed_samples = 0
 
     def is_notifying(self) -> bool:
@@ -101,6 +129,11 @@ class AssistantPlayer(discord.AudioSource):
 
     def read(self) -> bytes:
         with self._lock:
+            if self._cue:
+                frame = bytes(self._cue[:FRAME_BYTES])
+                del self._cue[:FRAME_BYTES]
+                return frame + bytes(FRAME_BYTES - len(frame))
+
             if not self._queue:
                 # Ran dry: playback of this stretch is over. Returning
                 # nothing ends the player; the next reply restarts it.

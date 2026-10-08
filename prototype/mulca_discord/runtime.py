@@ -285,13 +285,19 @@ class BotRuntime:
         self._last_greeted[conversation_id] = today
         return True
 
-    async def _replace_greeting(self, channel, conversation_id: str, text: str) -> None:
+    async def _replace_greeting(
+        self, channel, conversation_id: str, text: str
+    ) -> str | None:
         """
         Deletes whichever greeting (FIRST_SESSION_MESSAGE or DAILY_GREETING)
         was last posted in this conversation, then posts a new one --
         found live, otherwise every day's own copy just piles up as
         channel noise. A failed delete (already removed, permissions
-        changed) is not worth failing the new post over.
+        changed) is not worth failing the new post over. Returns None on
+        success, or a short description of why the new post itself failed
+        -- found live, a command reporting "Posted" regardless of whether
+        it actually was is worse than useless, it actively hides a real
+        problem with that specific channel/link.
         """
 
         previous = self._last_greeting_message.pop(conversation_id, None)
@@ -301,10 +307,14 @@ class BotRuntime:
 
         try:
             self._last_greeting_message[conversation_id] = await channel.send(text)
-        except Exception:
+            return None
+        except Exception as exc:
             logger.warning("Could not post a greeting in %s", channel, exc_info=True)
+            return str(exc) or type(exc).__name__
 
-    async def post_first_session_greeting(self, channel, conversation_id: str) -> None:
+    async def post_first_session_greeting(
+        self, channel, conversation_id: str
+    ) -> str | None:
         """
         /mulca greet: a channel's first-ever session, right after it's
         linked and announced, has no earlier visit to welcome them back
@@ -315,13 +325,21 @@ class BotRuntime:
         pre-announcing the channel, not a real session -- if the group's
         actual first message doesn't arrive until days later, it should
         still get FIRST_SESSION_MESSAGE too, not "Welcome back!".
+
+        Only marks today as greeted if the post actually succeeded -- a
+        failed attempt shouldn't also suppress on_message's own, later
+        retry via the automatic daily greeting.
+
+        Returns None on success, or a short description of the failure.
         """
 
-        await self._replace_greeting(
+        error = await self._replace_greeting(
             channel, conversation_id, messages.FIRST_SESSION_MESSAGE
         )
-        assert self.usage is not None  # set in __post_init__
-        self._last_greeted[conversation_id] = datetime.now(self.usage.tz).date()
+        if error is None:
+            assert self.usage is not None  # set in __post_init__
+            self._last_greeted[conversation_id] = datetime.now(self.usage.tz).date()
+        return error
 
     # ------------------------------------------------------------------
     # Voice

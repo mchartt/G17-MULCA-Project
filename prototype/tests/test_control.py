@@ -286,6 +286,11 @@ class FakeChannel:
         self.typing_entered = 0
         self.sent: list[str] = []
         self.sent_messages: list[FakeMessage] = []
+        # Simulates a channel whose .send() fails for its own reason (found
+        # live: a channel that otherwise worked for normal replies, but
+        # whose link.text_channel_id apparently didn't -- the admin
+        # commands used to just say "Posted" regardless, hiding it).
+        self.send_fails_with: Exception | None = None
 
     def permissions_for(self, member):
         return Permissions(self.allowed.get(member.id, ALL_PERMISSIONS))
@@ -294,6 +299,8 @@ class FakeChannel:
         return FakeTyping(self)
 
     async def send(self, content) -> FakeMessage:
+        if self.send_fails_with is not None:
+            raise self.send_fails_with
         self.sent.append(content)
         message = FakeMessage(content)
         self.sent_messages.append(message)
@@ -863,6 +870,58 @@ async def test_announce_all_with_no_linked_channel_says_so():
     manager = BotManager([runtime])
 
     assert "No linked channel" in await announce_intro_everywhere(manager, GUILD)
+
+
+async def test_announce_reports_a_failed_post_instead_of_lying_about_it():
+    # Found live: a specific channel's own link failed to receive it
+    # (MULCA still replied there normally otherwise), but the command said
+    # "Posted" regardless -- channel.send()'s own exception was silently
+    # swallowed and never reached the admin's reply.
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111)
+    text.send_fails_with = RuntimeError("403 Forbidden")
+
+    reply = await announce_intro(manager, text)
+
+    assert "Posted" not in reply
+    assert "Could not post" in reply and "403 Forbidden" in reply
+    assert text.sent == []
+
+
+async def test_announce_all_reports_per_channel_which_ones_failed():
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    working = runtime.client.add_channel(111)
+    broken = runtime.client.add_channel(333)
+    runtime.store.save(Link(text_channel_id=333, guild_id=GUILD, bot_id=1))
+    broken.send_fails_with = RuntimeError("403 Forbidden")
+
+    reply = await announce_intro_everywhere(manager, GUILD)
+
+    assert "Posted in: <#111>." in reply
+    assert "Could not post in: <#333> (403 Forbidden)." in reply
+    assert working.sent == [messages.INTRO_MESSAGE]
+    assert broken.sent == []
+
+
+async def test_greet_reports_a_failed_post_and_doesnt_mark_today_as_greeted():
+    # A failed post shouldn't also block on_message's own later retry via
+    # the automatic daily greeting.
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+    text.send_fails_with = RuntimeError("403 Forbidden")
+
+    reply = await greet_first_session(manager, text)
+
+    assert "Could not post" in reply
+    assert "channel:111" not in runtime._last_greeted
+
+    text.send_fails_with = None
+    await runtime.on_message(message(5, text))
+
+    assert text.sent == [messages.FIRST_SESSION_MESSAGE]
 
 
 async def test_announce_refuses_an_unlinked_channel():

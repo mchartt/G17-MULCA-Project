@@ -392,6 +392,17 @@ async def link_channels(
     return "\n".join(lines)
 
 
+async def _post(channel, text: str) -> str | None:
+    """Posts text; None on success, or a short description of why it failed."""
+
+    try:
+        await channel.send(text)
+        return None
+    except Exception as exc:
+        logger.warning("Could not post in %s", channel, exc_info=True)
+        return str(exc) or type(exc).__name__
+
+
 async def announce_intro(manager: BotManager, channel) -> str:
     """
     /mulca announce: re-post messages.INTRO_MESSAGE in a linked channel --
@@ -407,7 +418,14 @@ async def announce_intro(manager: BotManager, channel) -> str:
     if found is None:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
-    await messages.post(channel, messages.INTRO_MESSAGE)
+    error = await _post(channel, messages.INTRO_MESSAGE)
+    if error is not None:
+        # Found live: this used to unconditionally say "Posted", even when
+        # channel.send() itself failed (that specific channel's own
+        # problem, not a general permissions issue -- MULCA still replied
+        # normally there) -- the admin had no way to tell the command
+        # silently did nothing.
+        return f"Could not post in <#{channel.id}>: {error}"
     return f"Posted in <#{channel.id}>."
 
 
@@ -415,19 +433,29 @@ async def _post_everywhere(manager: BotManager, guild_id: int, text: str) -> str
     """Posts `text` in every text channel linked (by any bot) in this server."""
 
     posted = []
+    failed = []
     for bot in manager.resolve(None, guild_id):
         for link in bot.links():
             if link.guild_id != guild_id:
                 continue
             channel = bot.client.get_channel(link.text_channel_id)
             if channel is None:
+                failed.append(f"<#{link.text_channel_id}> (channel not found)")
                 continue
-            await messages.post(channel, text)
-            posted.append(f"<#{link.text_channel_id}>")
+            error = await _post(channel, text)
+            if error is not None:
+                failed.append(f"<#{link.text_channel_id}> ({error})")
+            else:
+                posted.append(f"<#{link.text_channel_id}>")
 
-    if not posted:
+    if not posted and not failed:
         return "No linked channel in this server."
-    return "Posted in: " + ", ".join(posted) + "."
+    lines = []
+    if posted:
+        lines.append("Posted in: " + ", ".join(posted) + ".")
+    if failed:
+        lines.append("Could not post in: " + ", ".join(failed) + ".")
+    return "\n".join(lines)
 
 
 async def announce_intro_everywhere(manager: BotManager, guild_id: int) -> str:
@@ -451,7 +479,9 @@ async def post_help(manager: BotManager, channel) -> str:
     if found is None:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
-    await messages.post(channel, HELP_MESSAGE)
+    error = await _post(channel, HELP_MESSAGE)
+    if error is not None:
+        return f"Could not post in <#{channel.id}>: {error}"
     return f"Posted in <#{channel.id}>."
 
 
@@ -470,19 +500,29 @@ async def greet_first_session_everywhere(manager: BotManager, guild_id: int) -> 
     """
 
     posted = []
+    failed = []
     for bot in manager.resolve(None, guild_id):
         for link in bot.links():
             if link.guild_id != guild_id:
                 continue
             channel = bot.client.get_channel(link.text_channel_id)
             if channel is None:
+                failed.append(f"<#{link.text_channel_id}> (channel not found)")
                 continue
-            await bot.post_first_session_greeting(channel, link.conversation_id)
-            posted.append(f"<#{link.text_channel_id}>")
+            error = await bot.post_first_session_greeting(channel, link.conversation_id)
+            if error is not None:
+                failed.append(f"<#{link.text_channel_id}> ({error})")
+            else:
+                posted.append(f"<#{link.text_channel_id}>")
 
-    if not posted:
+    if not posted and not failed:
         return "No linked channel in this server."
-    return "Posted in: " + ", ".join(posted) + "."
+    lines = []
+    if posted:
+        lines.append("Posted in: " + ", ".join(posted) + ".")
+    if failed:
+        lines.append("Could not post in: " + ", ".join(failed) + ".")
+    return "\n".join(lines)
 
 
 async def greet_first_session(manager: BotManager, channel) -> str:
@@ -502,7 +542,9 @@ async def greet_first_session(manager: BotManager, channel) -> str:
         return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
 
     bot, link = found
-    await bot.post_first_session_greeting(channel, link.conversation_id)
+    error = await bot.post_first_session_greeting(channel, link.conversation_id)
+    if error is not None:
+        return f"Could not post in <#{channel.id}>: {error}"
     return f"Posted in <#{channel.id}>."
 
 

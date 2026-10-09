@@ -19,7 +19,6 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime
 
 import discord
 
@@ -78,6 +77,19 @@ LIMIT_CHECK_SECONDS = 60.0
 # if a reply never comes at all (e.g. the session died silently); without
 # a cap, the indicator would otherwise re-trigger forever.
 TYPING_INDICATOR_MAX_SECONDS = 30.0
+
+# How often the session reminder (daily greeting/first-session message) is
+# allowed to repeat on its own, in a given conversation -- a rolling
+# cooldown since the last time it actually showed, not a calendar-day
+# reset. See BotRuntime._greet_if_due.
+GREETING_COOLDOWN_SECONDS = 2 * 24 * 3600
+
+# Display names that don't count as a conversation's "first real message"
+# for the reminder's own cooldown clock -- test/admin accounts used while
+# setting a channel up, not actual participants. Matched case-insensitively
+# against the author's display name. Bot messages (MULCA's own) are
+# already excluded earlier in on_message, before this is ever checked.
+GREETING_EXCLUDED_AUTHOR_NAMES = {"mats", "admin"}
 
 
 async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
@@ -254,39 +266,47 @@ class BotRuntime:
         last = self.store.last_link_for(user_id)
         return last if last in allowed else allowed[0]
 
-    def _greet_if_first_today(self, conversation_id: str) -> bool:
+    def _greet_if_due(self, conversation_id: str) -> bool:
         """
-        True (and marks it) only the first time this is called for this
-        conversation on a given local day -- same "day" boundary
-        self.usage already resets limits on, so both line up with one
-        shared notion of a session's day. Persisted (self.store), not
-        in-memory: found live, a bot restart between /mulca greet and a
-        conversation's real first message reset an in-memory version of
-        this, letting the reminder post a second time the same day. No
-        await in here on purpose: discord.py dispatches on_message
-        concurrently, and this check-then-mark has to be atomic against
-        two messages arriving at once (sqlite3's own calls are
-        synchronous, so nothing yields control in between).
+        True (and marks it) only when the reminder is actually due for
+        this conversation: a rolling GREETING_COOLDOWN_SECONDS since the
+        last time it showed, not a calendar-day reset -- so it can't
+        repeat more than once every two days no matter how many messages
+        arrive in between.
+
+        last_greeted_at == 0 means the cooldown clock hasn't started at
+        all yet (a conversation's first-ever qualifying message, or a
+        freshly migrated row) -- starts it here, without firing, rather
+        than greeting the very first message anyone sends. Two full days
+        then have to pass before the first real reminder shows.
+
+        Persisted (self.store), not in-memory: found live, a bot restart
+        between /mulca greet and a conversation's real first message
+        reset an in-memory version of this, letting the reminder post
+        again right away. No await in here on purpose: discord.py
+        dispatches on_message concurrently, and this check-then-mark has
+        to be atomic against two messages arriving at once (sqlite3's own
+        calls are synchronous, so nothing yields control in between).
         """
 
-        assert self.usage is not None  # set in __post_init__
-        today = datetime.now(self.usage.tz).date().isoformat()
-        last_greeted_date, had_a_session = self.store.greeting_state(conversation_id)
-        if last_greeted_date == today:
+        now = time.time()
+        last_greeted_at, had_a_session = self.store.greeting_state(conversation_id)
+        if last_greeted_at != 0 and now - last_greeted_at < GREETING_COOLDOWN_SECONDS:
             return False
 
+        due = last_greeted_at != 0
         self.store.set_greeting_state(
-            conversation_id, last_greeted_date=today, had_a_session=had_a_session
+            conversation_id, last_greeted_at=now, had_a_session=had_a_session
         )
-        return True
+        return due
 
     def _had_a_session(self, conversation_id: str) -> bool:
         return self.store.greeting_state(conversation_id)[1]
 
     def _mark_had_a_session(self, conversation_id: str) -> None:
-        last_greeted_date, _ = self.store.greeting_state(conversation_id)
+        last_greeted_at, _ = self.store.greeting_state(conversation_id)
         self.store.set_greeting_state(
-            conversation_id, last_greeted_date=last_greeted_date, had_a_session=True
+            conversation_id, last_greeted_at=last_greeted_at, had_a_session=True
         )
 
     async def _replace_greeting(
@@ -323,16 +343,16 @@ class BotRuntime:
         /mulca greet: a channel's first-ever session, right after it's
         linked and announced, has no earlier visit to welcome them back
         from -- posts messages.FIRST_SESSION_MESSAGE instead of the usual
-        DAILY_GREETING, and marks today as already greeted so on_message's
-        automatic daily greeting doesn't also fire later the same day.
-        Deliberately does not mark had_a_session: this is an admin
-        pre-announcing the channel, not a real session -- if the group's
-        actual first message doesn't arrive until days later, it should
-        still get FIRST_SESSION_MESSAGE too, not "Welcome back!".
+        DAILY_GREETING, and resets the cooldown clock (GREETING_COOLDOWN_
+        SECONDS) so on_message's automatic reminder doesn't also fire
+        again right away. Deliberately does not mark had_a_session: this
+        is an admin pre-announcing the channel, not a real session -- if
+        the group's actual first message doesn't arrive until days later,
+        it should still get FIRST_SESSION_MESSAGE too, not "Welcome back!".
 
-        Only marks today as greeted if the post actually succeeded -- a
+        Only resets the cooldown if the post actually succeeded -- a
         failed attempt shouldn't also suppress on_message's own, later
-        retry via the automatic daily greeting.
+        retry via the automatic reminder.
 
         Returns None on success, or a short description of the failure.
         """
@@ -341,12 +361,10 @@ class BotRuntime:
             channel, conversation_id, messages.FIRST_SESSION_MESSAGE
         )
         if error is None:
-            assert self.usage is not None  # set in __post_init__
-            today = datetime.now(self.usage.tz).date().isoformat()
             _, had_a_session = self.store.greeting_state(conversation_id)
             self.store.set_greeting_state(
                 conversation_id,
-                last_greeted_date=today,
+                last_greeted_at=time.time(),
                 had_a_session=had_a_session,
             )
         return error
@@ -794,8 +812,20 @@ class BotRuntime:
 
         # Group channels only -- a DM is a private, individual conversation,
         # not the kind of per-session group work the diary/usefulness-signal
-        # reminders are about.
-        if link is not None and self._greet_if_first_today(scope.conversation_id):
+        # reminders are about. Test/admin accounts (GREETING_EXCLUDED_AUTHOR_
+        # NAMES) don't count as the conversation's own activity for this at
+        # all -- their messages neither start the cooldown clock nor get a
+        # reminder of their own.
+        is_real_participant = (
+            message.author.display_name.strip().lower()
+            not in GREETING_EXCLUDED_AUTHOR_NAMES
+        )
+        due_for_greeting = (
+            link is not None
+            and is_real_participant
+            and self._greet_if_due(scope.conversation_id)
+        )
+        if due_for_greeting:
             # Still no real session yet (e.g. /mulca greet ran days ago,
             # but this is genuinely the group's first message) -- this one
             # gets FIRST_SESSION_MESSAGE too, not a "Welcome back!" that

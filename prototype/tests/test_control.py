@@ -7,7 +7,6 @@ commands' replies.
 
 import asyncio
 import time
-from datetime import date, timedelta
 
 import pytest
 
@@ -390,24 +389,23 @@ def make_runtime(store=None, *, link=ALPHA, **client_kwargs) -> BotRuntime:
     return runtime
 
 
-def _age_greeting(runtime: BotRuntime, conversation_id: str, days: int) -> None:
-    """Back-dates a conversation's persisted greeting state, for tests."""
+def _age_greeting(runtime: BotRuntime, conversation_id: str, days: float) -> None:
+    """Pushes a conversation's persisted cooldown clock back, for tests."""
 
-    last_greeted_date, had_a_session = runtime.store.greeting_state(conversation_id)
-    aged = date.fromisoformat(last_greeted_date) - timedelta(days=days)
+    last_greeted_at, had_a_session = runtime.store.greeting_state(conversation_id)
     runtime.store.set_greeting_state(
         conversation_id,
-        last_greeted_date=aged.isoformat(),
+        last_greeted_at=last_greeted_at - days * 86400,
         had_a_session=had_a_session,
     )
 
 
-def message(author_id: int, channel, content: str = "hello"):
+def message(author_id: int, channel, content: str = "hello", *, name: str = "Ada"):
     class Message:
         pass
 
     msg = Message()
-    msg.author = FakeMember(author_id, "Ada")
+    msg.author = FakeMember(author_id, name)
     msg.channel = channel
     msg.content = content
     return msg
@@ -514,29 +512,87 @@ async def test_a_message_in_a_linked_channel_goes_to_its_memory_and_is_remembere
     assert runtime.store.last_link_for(5) == ALPHA
 
 
-async def test_the_first_message_of_the_day_gets_a_greeting_later_ones_dont():
+async def test_the_first_real_message_starts_the_cooldown_without_a_greeting():
+    # Found live: an admin's own test messages used to count as the
+    # group's "first message," making the reminder fire the moment real
+    # participants started talking. The first qualifying message now only
+    # starts the cooldown clock -- the reminder itself doesn't show until
+    # GREETING_COOLDOWN_SECONDS has actually passed since.
     runtime = make_runtime()
     text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
 
     await runtime.on_message(message(5, text))
-    await runtime.on_message(message(5, text))  # same day -- no repeat
+
+    assert text.sent == []
+
+    # A day later -- still inside the two-day cooldown.
+    _age_greeting(runtime, "channel:111", days=1)
+    await runtime.on_message(message(5, text))
+
+    assert text.sent == []
+
+    # A full two days after the first message -- due now. No real session
+    # has happened yet, so this is FIRST_SESSION_MESSAGE, not "Welcome
+    # back!".
+    _age_greeting(runtime, "channel:111", days=1.01)
+    await runtime.on_message(message(5, text))
+
+    assert text.sent == [messages.FIRST_SESSION_MESSAGE]
+
+
+async def test_the_reminder_does_not_repeat_within_two_days():
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+
+    await runtime.on_message(message(5, text))  # starts the clock, no post
+    _age_greeting(runtime, "channel:111", days=2)
+    await runtime.on_message(message(5, text))  # first reminder
 
     assert len(text.sent) == 1
-    # The group's actual first message ever -- no real session has
-    # happened yet (no /mulca greet, nothing), so this is the
-    # FIRST_SESSION_MESSAGE wording, not "Welcome back!".
-    assert text.sent[0] == messages.FIRST_SESSION_MESSAGE
-
-    # A new day -- a real session has now happened once, so this one is
-    # the usual "Welcome back!" wording. The previous day's greeting is
-    # deleted rather than left to pile up.
     first_greeting = text.sent_messages[0]
+
+    # A day later -- still within two days of the reminder itself (not
+    # the original first message), so no repeat yet.
     _age_greeting(runtime, "channel:111", days=1)
+    await runtime.on_message(message(5, text))
+
+    assert len(text.sent) == 1
+
+    # A further two days -- due again, and now a real "Welcome back!",
+    # since a reminder (and so a real session) already happened. The
+    # previous one is deleted rather than left to pile up.
+    _age_greeting(runtime, "channel:111", days=2)
     await runtime.on_message(message(5, text))
 
     assert len(text.sent) == 2
     assert text.sent[1] == messages.DAILY_GREETING
     assert first_greeting.deleted
+
+
+async def test_excluded_test_accounts_never_start_the_cooldown_or_get_greeted():
+    # GREETING_EXCLUDED_AUTHOR_NAMES: test/admin accounts used while
+    # setting a channel up, not real participants -- their messages don't
+    # count at all for this, no matter how many or how old.
+    runtime = make_runtime()
+    text = runtime.client.add_channel(
+        111,
+        members=[FakeMember(5, "Ada"), FakeMember(6, "Admin"), FakeMember(7, "Mats")],
+    )
+
+    await runtime.on_message(message(6, text, "testing one", name="Admin"))
+    await runtime.on_message(message(7, text, "testing two", name="mats"))  # case-insensitive
+    await runtime.on_message(message(6, text, "still testing", name="Admin"))
+
+    assert text.sent == []
+    assert runtime.store.greeting_state("channel:111") == (0.0, False)
+
+    # A real participant's own first message is what actually starts the
+    # clock.
+    await runtime.on_message(message(5, text))
+    _age_greeting(runtime, "channel:111", days=2)
+    await runtime.on_message(message(5, text))
+
+    assert text.sent == [messages.FIRST_SESSION_MESSAGE]
 
 
 async def test_a_restart_does_not_undo_todays_greeting():
@@ -592,9 +648,9 @@ async def test_greet_posts_the_first_session_variant_and_skips_todays_daily_one(
 
 async def test_a_greeting_run_days_before_the_first_message_still_isnt_a_welcome_back():
     # /mulca greet 3 days before anyone actually says anything -- the
-    # group's first real message, arriving on a later day, is still their
-    # first session: it must not say "Welcome back!" just because the
-    # persisted greeted-date is stale by the time it arrives.
+    # group's first real message, well past the cooldown by the time it
+    # arrives, is still their first session: it must not say "Welcome
+    # back!" just because the cooldown has long since elapsed.
     runtime = make_runtime()
     manager = BotManager([runtime])
     text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
@@ -606,9 +662,9 @@ async def test_a_greeting_run_days_before_the_first_message_still_isnt_a_welcome
 
     assert text.sent == [messages.FIRST_SESSION_MESSAGE, messages.FIRST_SESSION_MESSAGE]
 
-    # Only now has a real session actually happened -- the next day gets
+    # Only now has a real session actually happened -- two more days gets
     # the usual "Welcome back!".
-    _age_greeting(runtime, "channel:111", days=1)
+    _age_greeting(runtime, "channel:111", days=2)
     await runtime.on_message(message(5, text))
 
     assert text.sent[2] == messages.DAILY_GREETING
@@ -996,9 +1052,9 @@ async def test_announce_all_reports_per_channel_which_ones_failed():
     assert broken.sent == []
 
 
-async def test_greet_reports_a_failed_post_and_doesnt_mark_today_as_greeted():
+async def test_greet_reports_a_failed_post_and_doesnt_start_the_cooldown():
     # A failed post shouldn't also block on_message's own later retry via
-    # the automatic daily greeting.
+    # the automatic reminder.
     runtime = make_runtime()
     manager = BotManager([runtime])
     text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
@@ -1007,9 +1063,11 @@ async def test_greet_reports_a_failed_post_and_doesnt_mark_today_as_greeted():
     reply = await greet_first_session(manager, text)
 
     assert "Could not post" in reply
-    assert runtime.store.greeting_state("channel:111") == ("", False)
+    assert runtime.store.greeting_state("channel:111") == (0.0, False)
 
     text.send_fails_with = None
+    await runtime.on_message(message(5, text))  # starts the clock, no post
+    _age_greeting(runtime, "channel:111", days=2)
     await runtime.on_message(message(5, text))
 
     assert text.sent == [messages.FIRST_SESSION_MESSAGE]

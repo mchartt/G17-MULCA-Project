@@ -28,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -88,15 +88,15 @@ CREATE TABLE IF NOT EXISTS limits (
     weekly_usd REAL,
     monthly_usd REAL
 );
--- The daily greeting/first-session reminder's own state (runtime.py's
--- BotRuntime._greet_if_first_today and _had_a_session), per conversation.
--- Persisted, not in-memory only -- found live, a bot restart between
--- /mulca greet and a conversation's real first message reset this and
--- let the reminder post a second time the same day; last_greeted_date
--- empty means never greeted at all.
+-- The session reminder's own state (runtime.py's BotRuntime._greet_if_due
+-- and _had_a_session), per conversation. Persisted, not in-memory only --
+-- found live, a bot restart between /mulca greet and a conversation's
+-- real first message reset this and let the reminder post again right
+-- away. last_greeted_at is a Unix timestamp, 0 meaning "never" (including
+-- "the cooldown clock hasn't started yet" -- see _greet_if_due).
 CREATE TABLE IF NOT EXISTS greetings (
     conversation_id TEXT PRIMARY KEY,
-    last_greeted_date TEXT NOT NULL DEFAULT '',
+    last_greeted_at REAL NOT NULL DEFAULT 0,
     had_a_session INTEGER NOT NULL DEFAULT 0
 );
 """
@@ -203,10 +203,10 @@ class LinkStore:
             self._db.execute("SELECT user_id, text_channel_id FROM last_link_by_user")
         )
 
-        self._greetings: dict[str, tuple[str, bool]] = {
+        self._greetings: dict[str, tuple[float, bool]] = {
             row[0]: (row[1], bool(row[2]))
             for row in self._db.execute(
-                "SELECT conversation_id, last_greeted_date, had_a_session "
+                "SELECT conversation_id, last_greeted_at, had_a_session "
                 "FROM greetings"
             )
         }
@@ -248,6 +248,18 @@ class LinkStore:
             # to money. They go, and the default dollar limits apply.
             self._db.executescript(
                 "DROP TABLE limits; DROP TABLE IF EXISTS usage;" + _SCHEMA
+            )
+
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(greetings)")}
+        if "last_greeted_at" not in columns:
+            # Version 8: the reminder's cadence changed from "once per
+            # calendar day" to "once per GREETING_COOLDOWN_SECONDS" --
+            # last_greeted_date (a day string) doesn't carry over
+            # meaningfully, so this starts every conversation's cooldown
+            # fresh (0 = "never"), same as a brand-new row would.
+            self._db.execute(
+                "ALTER TABLE greetings ADD COLUMN last_greeted_at REAL "
+                "NOT NULL DEFAULT 0"
             )
 
     # -- links -------------------------------------------------------------
@@ -501,23 +513,23 @@ class LinkStore:
 
     # -- the daily greeting/first-session reminder (runtime.py) -------------
 
-    def greeting_state(self, conversation_id: str) -> tuple[str, bool]:
-        """(last greeted date as an ISO string, or "" if never; had_a_session)."""
+    def greeting_state(self, conversation_id: str) -> tuple[float, bool]:
+        """(last_greeted_at as a Unix timestamp, 0 if never; had_a_session)."""
 
-        return self._greetings.get(conversation_id, ("", False))
+        return self._greetings.get(conversation_id, (0.0, False))
 
     def set_greeting_state(
-        self, conversation_id: str, *, last_greeted_date: str, had_a_session: bool
+        self, conversation_id: str, *, last_greeted_at: float, had_a_session: bool
     ) -> None:
-        self._greetings[conversation_id] = (last_greeted_date, had_a_session)
+        self._greetings[conversation_id] = (last_greeted_at, had_a_session)
         with self._db:
             self._db.execute(
                 "INSERT INTO greetings "
-                "(conversation_id, last_greeted_date, had_a_session) "
+                "(conversation_id, last_greeted_at, had_a_session) "
                 "VALUES (?, ?, ?) ON CONFLICT (conversation_id) DO UPDATE SET "
-                "last_greeted_date = excluded.last_greeted_date, "
+                "last_greeted_at = excluded.last_greeted_at, "
                 "had_a_session = excluded.had_a_session",
-                (conversation_id, last_greeted_date, int(had_a_session)),
+                (conversation_id, last_greeted_at, int(had_a_session)),
             )
 
     # -- usage and limits (usage.py) ---------------------------------------

@@ -36,11 +36,11 @@ Discord's "/" menu).
   a channel's setup sequence (announce, then help, then greet) rather than
   something a member has to ask for themselves.
 - /mulca greet: members with Manage Server -- posts the first-session
-  variant of the daily reminder (messages.FIRST_SESSION_MESSAGE, no
-  "welcome back" framing) once, for a channel (or with all:true, every
-  linked channel) about to start its first real session, and marks today
-  as already greeted so the automatic daily one (BotRuntime.on_message)
-  doesn't also post later the same day.
+  variant of the reminder (messages.FIRST_SESSION_MESSAGE, no "welcome
+  back" framing) once, for a channel (or with all:true, every linked
+  channel) about to start its first real session, and resets the
+  reminder's own cooldown so the automatic one (BotRuntime.on_message)
+  doesn't also post again right away.
 - /mulca model: members with Manage Server -- the realtime model of every
   MUCA, or of one bot. Like /mulca bot, it acts on the whole deployment.
 - /mulca costalert: members with Manage Server -- MUCA-Server's own
@@ -522,8 +522,8 @@ async def greet_first_session_everywhere(manager: BotManager, guild_id: int) -> 
     """
     /mulca greet all:true -- messages.FIRST_SESSION_MESSAGE in every linked
     channel here, same per-channel bookkeeping as the single-channel
-    version (BotRuntime.post_first_session_greeting): marks today as
-    already greeted, without counting as a real session.
+    version (BotRuntime.post_first_session_greeting): resets the
+    reminder's cooldown without counting as a real session.
     """
 
     posted = []
@@ -556,9 +556,9 @@ async def greet_first_session(manager: BotManager, channel) -> str:
     """
     /mulca greet: post messages.FIRST_SESSION_MESSAGE once, right after a
     channel is linked and announced, for its first-ever session -- and
-    marks today as already greeted so the automatic daily greeting
+    resets the reminder's own cooldown so the automatic one
     (BotRuntime.on_message) doesn't also post its own, differently-worded
-    one later the same day.
+    one right away.
     """
 
     if channel is None:

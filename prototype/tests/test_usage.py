@@ -6,6 +6,7 @@ through on the way to one, and what MULCA tells its users about itself
 """
 
 import asyncio
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -145,12 +146,12 @@ def runtime_with_channel():
     runtime = make_runtime()
     channel = SentChannel(111, runtime.client.guilds[GUILD], [FakeMember(5, "Ada")])
     runtime.client.channels[111] = channel
-    # These tests are about usage/offline/attachment notices, not the daily
-    # greeting -- pre-mark it as already sent today so it doesn't show up
-    # in channel.sent alongside what each test actually checks.
-    today = datetime.now(runtime.usage.tz).date().isoformat()
+    # These tests are about usage/offline/attachment notices, not the
+    # session reminder -- pre-mark it as already sent just now so it
+    # doesn't show up in channel.sent alongside what each test actually
+    # checks.
     runtime.store.set_greeting_state(
-        ALPHA.conversation_id, last_greeted_date=today, had_a_session=True
+        ALPHA.conversation_id, last_greeted_at=time.time(), had_a_session=True
     )
     return runtime, channel
 

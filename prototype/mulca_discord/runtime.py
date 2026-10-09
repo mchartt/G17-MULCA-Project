@@ -19,7 +19,7 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 
 import discord
 
@@ -154,30 +154,17 @@ class BotRuntime:
     notices: Notices = field(default_factory=Notices)
     _tasks: set[asyncio.Task[None]] = field(default_factory=set, repr=False)
     _watch: asyncio.Task[None] | None = field(default=None, repr=False)
-    # The local day (self.usage.tz -- same "day" boundary the usage limits
-    # already use) each conversation was last greeted on, so the daily
-    # greeting fires once per conversation per day, not once per message.
-    # In-memory only: a restart mid-day re-greeting once is a harmless
-    # repeat, not worth persisting to the store for.
-    _last_greeted: dict[str, date] = field(default_factory=dict, repr=False)
     # The last greeting message (FIRST_SESSION_MESSAGE or DAILY_GREETING)
     # actually posted per conversation -- _replace_greeting deletes this
     # before posting the next one, found live: otherwise every day's own
-    # copy just piles up as channel noise. In-memory only, same reasoning
-    # as _last_greeted: losing track of it across a restart just means one
-    # old copy is left behind once, not a correctness issue.
+    # copy just piles up as channel noise. In-memory only: losing track of
+    # it across a restart just means one old copy is left behind once, not
+    # a correctness issue -- unlike the greeted-date/had-a-session state
+    # itself (self.store.greeting_state), which is persisted. Found live:
+    # that state used to be in-memory too, and a restart between /mulca
+    # greet and a conversation's real first message reset it, letting the
+    # reminder post a second time the same day.
     _last_greeting_message: dict[str, object] = field(default_factory=dict, repr=False)
-    # Conversations that have had a real, posted greeting at least once --
-    # distinct from _last_greeted (a date), since /mulca greet marks a date
-    # without this ever being a real "session" to welcome someone back
-    # from. Found live: /mulca greet run days before the group's first
-    # actual message meant that first message, arriving on a later day,
-    # still triggered DAILY_GREETING's "Welcome back!" for a channel that
-    # had never actually had a session yet. Checked in on_message to pick
-    # FIRST_SESSION_MESSAGE over DAILY_GREETING for as long as this stays
-    # empty for a conversation -- only a real posted greeting adds to it,
-    # /mulca greet itself does not.
-    _had_a_session: set[str] = field(default_factory=set, repr=False)
 
     def __post_init__(self) -> None:
         if self.usage is None:
@@ -272,18 +259,35 @@ class BotRuntime:
         True (and marks it) only the first time this is called for this
         conversation on a given local day -- same "day" boundary
         self.usage already resets limits on, so both line up with one
-        shared notion of a session's day. No await in here on purpose:
-        discord.py dispatches on_message concurrently, and this check-
-        then-mark has to be atomic against two messages arriving at once.
+        shared notion of a session's day. Persisted (self.store), not
+        in-memory: found live, a bot restart between /mulca greet and a
+        conversation's real first message reset an in-memory version of
+        this, letting the reminder post a second time the same day. No
+        await in here on purpose: discord.py dispatches on_message
+        concurrently, and this check-then-mark has to be atomic against
+        two messages arriving at once (sqlite3's own calls are
+        synchronous, so nothing yields control in between).
         """
 
         assert self.usage is not None  # set in __post_init__
-        today = datetime.now(self.usage.tz).date()
-        if self._last_greeted.get(conversation_id) == today:
+        today = datetime.now(self.usage.tz).date().isoformat()
+        last_greeted_date, had_a_session = self.store.greeting_state(conversation_id)
+        if last_greeted_date == today:
             return False
 
-        self._last_greeted[conversation_id] = today
+        self.store.set_greeting_state(
+            conversation_id, last_greeted_date=today, had_a_session=had_a_session
+        )
         return True
+
+    def _had_a_session(self, conversation_id: str) -> bool:
+        return self.store.greeting_state(conversation_id)[1]
+
+    def _mark_had_a_session(self, conversation_id: str) -> None:
+        last_greeted_date, _ = self.store.greeting_state(conversation_id)
+        self.store.set_greeting_state(
+            conversation_id, last_greeted_date=last_greeted_date, had_a_session=True
+        )
 
     async def _replace_greeting(
         self, channel, conversation_id: str, text: str
@@ -321,7 +325,7 @@ class BotRuntime:
         from -- posts messages.FIRST_SESSION_MESSAGE instead of the usual
         DAILY_GREETING, and marks today as already greeted so on_message's
         automatic daily greeting doesn't also fire later the same day.
-        Deliberately does not add to _had_a_session: this is an admin
+        Deliberately does not mark had_a_session: this is an admin
         pre-announcing the channel, not a real session -- if the group's
         actual first message doesn't arrive until days later, it should
         still get FIRST_SESSION_MESSAGE too, not "Welcome back!".
@@ -338,7 +342,13 @@ class BotRuntime:
         )
         if error is None:
             assert self.usage is not None  # set in __post_init__
-            self._last_greeted[conversation_id] = datetime.now(self.usage.tz).date()
+            today = datetime.now(self.usage.tz).date().isoformat()
+            _, had_a_session = self.store.greeting_state(conversation_id)
+            self.store.set_greeting_state(
+                conversation_id,
+                last_greeted_date=today,
+                had_a_session=had_a_session,
+            )
         return error
 
     # ------------------------------------------------------------------
@@ -790,8 +800,9 @@ class BotRuntime:
             # but this is genuinely the group's first message) -- this one
             # gets FIRST_SESSION_MESSAGE too, not a "Welcome back!" that
             # wouldn't be true yet.
-            had_session = scope.conversation_id in self._had_a_session
-            self._had_a_session.add(scope.conversation_id)
+            had_session = self._had_a_session(scope.conversation_id)
+            if not had_session:
+                self._mark_had_a_session(scope.conversation_id)
             await self._replace_greeting(
                 channel,
                 scope.conversation_id,

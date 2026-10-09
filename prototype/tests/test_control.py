@@ -7,7 +7,7 @@ commands' replies.
 
 import asyncio
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -390,6 +390,18 @@ def make_runtime(store=None, *, link=ALPHA, **client_kwargs) -> BotRuntime:
     return runtime
 
 
+def _age_greeting(runtime: BotRuntime, conversation_id: str, days: int) -> None:
+    """Back-dates a conversation's persisted greeting state, for tests."""
+
+    last_greeted_date, had_a_session = runtime.store.greeting_state(conversation_id)
+    aged = date.fromisoformat(last_greeted_date) - timedelta(days=days)
+    runtime.store.set_greeting_state(
+        conversation_id,
+        last_greeted_date=aged.isoformat(),
+        had_a_session=had_a_session,
+    )
+
+
 def message(author_id: int, channel, content: str = "hello"):
     class Message:
         pass
@@ -519,12 +531,38 @@ async def test_the_first_message_of_the_day_gets_a_greeting_later_ones_dont():
     # the usual "Welcome back!" wording. The previous day's greeting is
     # deleted rather than left to pile up.
     first_greeting = text.sent_messages[0]
-    runtime._last_greeted["channel:111"] -= timedelta(days=1)
+    _age_greeting(runtime, "channel:111", days=1)
     await runtime.on_message(message(5, text))
 
     assert len(text.sent) == 2
     assert text.sent[1] == messages.DAILY_GREETING
     assert first_greeting.deleted
+
+
+async def test_a_restart_does_not_undo_todays_greeting():
+    # Found live: /mulca greet ran, then the bot process restarted before
+    # the channel's real first message arrived later the same day -- with
+    # the greeted state kept in memory only, that restart reset it, and
+    # the reminder posted a second time. greeting_state lives in the
+    # store (SQLite), so a new BotRuntime sharing the same store (what a
+    # restart actually looks like -- the store is the one thing that
+    # survives it) must still remember it was already greeted today.
+    store = LinkStore(":memory:")
+    first_process = make_runtime(store=store)
+    manager = BotManager([first_process])
+    text = first_process.client.add_channel(111, members=[FakeMember(5, "Ada")])
+
+    await greet_first_session(manager, text)
+
+    # Simulates a restart: a fresh BotRuntime (so none of its in-memory
+    # state carries over), the same persisted store.
+    second_process = make_runtime(store=store, link=None)
+    second_process.client.channels[111] = text
+    text.sent.clear()
+
+    await second_process.on_message(message(5, text))
+
+    assert text.sent == []
 
 
 def test_the_daily_greeting_is_conditional_not_an_instruction():
@@ -555,14 +593,14 @@ async def test_greet_posts_the_first_session_variant_and_skips_todays_daily_one(
 async def test_a_greeting_run_days_before_the_first_message_still_isnt_a_welcome_back():
     # /mulca greet 3 days before anyone actually says anything -- the
     # group's first real message, arriving on a later day, is still their
-    # first session: it must not say "Welcome back!" just because
-    # _last_greeted is stale by the time it arrives.
+    # first session: it must not say "Welcome back!" just because the
+    # persisted greeted-date is stale by the time it arrives.
     runtime = make_runtime()
     manager = BotManager([runtime])
     text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
 
     await greet_first_session(manager, text)
-    runtime._last_greeted["channel:111"] -= timedelta(days=3)
+    _age_greeting(runtime, "channel:111", days=3)
 
     await runtime.on_message(message(5, text))
 
@@ -570,7 +608,7 @@ async def test_a_greeting_run_days_before_the_first_message_still_isnt_a_welcome
 
     # Only now has a real session actually happened -- the next day gets
     # the usual "Welcome back!".
-    runtime._last_greeted["channel:111"] -= timedelta(days=1)
+    _age_greeting(runtime, "channel:111", days=1)
     await runtime.on_message(message(5, text))
 
     assert text.sent[2] == messages.DAILY_GREETING
@@ -969,7 +1007,7 @@ async def test_greet_reports_a_failed_post_and_doesnt_mark_today_as_greeted():
     reply = await greet_first_session(manager, text)
 
     assert "Could not post" in reply
-    assert "channel:111" not in runtime._last_greeted
+    assert runtime.store.greeting_state("channel:111") == ("", False)
 
     text.send_fails_with = None
     await runtime.on_message(message(5, text))

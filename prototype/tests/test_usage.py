@@ -148,7 +148,10 @@ def runtime_with_channel():
     # These tests are about usage/offline/attachment notices, not the daily
     # greeting -- pre-mark it as already sent today so it doesn't show up
     # in channel.sent alongside what each test actually checks.
-    runtime._last_greeted[ALPHA.conversation_id] = datetime.now(runtime.usage.tz).date()
+    today = datetime.now(runtime.usage.tz).date().isoformat()
+    runtime.store.set_greeting_state(
+        ALPHA.conversation_id, last_greeted_date=today, had_a_session=True
+    )
     return runtime, channel
 
 

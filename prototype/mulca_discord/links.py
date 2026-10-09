@@ -28,7 +28,7 @@ from pathlib import Path
 DB_PATH_ENV_VAR = "MULCA_DB_PATH"
 DEFAULT_DB_PATH = "data/mulca.db"
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -87,6 +87,17 @@ CREATE TABLE IF NOT EXISTS limits (
     daily_usd REAL,
     weekly_usd REAL,
     monthly_usd REAL
+);
+-- The daily greeting/first-session reminder's own state (runtime.py's
+-- BotRuntime._greet_if_first_today and _had_a_session), per conversation.
+-- Persisted, not in-memory only -- found live, a bot restart between
+-- /mulca greet and a conversation's real first message reset this and
+-- let the reminder post a second time the same day; last_greeted_date
+-- empty means never greeted at all.
+CREATE TABLE IF NOT EXISTS greetings (
+    conversation_id TEXT PRIMARY KEY,
+    last_greeted_date TEXT NOT NULL DEFAULT '',
+    had_a_session INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -191,6 +202,14 @@ class LinkStore:
         self._last_by_user: dict[int, int] = dict(
             self._db.execute("SELECT user_id, text_channel_id FROM last_link_by_user")
         )
+
+        self._greetings: dict[str, tuple[str, bool]] = {
+            row[0]: (row[1], bool(row[2]))
+            for row in self._db.execute(
+                "SELECT conversation_id, last_greeted_date, had_a_session "
+                "FROM greetings"
+            )
+        }
 
     def close(self) -> None:
         self._db.close()
@@ -479,6 +498,27 @@ class LinkStore:
     def last_link_for(self, user_id: int) -> Link | None:
         text_channel_id = self._last_by_user.get(user_id)
         return self._links.get(text_channel_id) if text_channel_id else None
+
+    # -- the daily greeting/first-session reminder (runtime.py) -------------
+
+    def greeting_state(self, conversation_id: str) -> tuple[str, bool]:
+        """(last greeted date as an ISO string, or "" if never; had_a_session)."""
+
+        return self._greetings.get(conversation_id, ("", False))
+
+    def set_greeting_state(
+        self, conversation_id: str, *, last_greeted_date: str, had_a_session: bool
+    ) -> None:
+        self._greetings[conversation_id] = (last_greeted_date, had_a_session)
+        with self._db:
+            self._db.execute(
+                "INSERT INTO greetings "
+                "(conversation_id, last_greeted_date, had_a_session) "
+                "VALUES (?, ?, ?) ON CONFLICT (conversation_id) DO UPDATE SET "
+                "last_greeted_date = excluded.last_greeted_date, "
+                "had_a_session = excluded.had_a_session",
+                (conversation_id, last_greeted_date, int(had_a_session)),
+            )
 
     # -- usage and limits (usage.py) ---------------------------------------
 

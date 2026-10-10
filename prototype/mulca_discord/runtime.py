@@ -871,16 +871,31 @@ class BotRuntime:
             # as the real handler already tees them apart), so every later
             # delta goes through the real handler completely unaffected.
             original_handler = muca_client.on_assistant_text
+            original_no_reply = muca_client.on_no_reply
             typing_done = asyncio.Event()
+
+            def _restore_handlers() -> None:
+                muca_client.on_assistant_text = original_handler
+                muca_client.on_no_reply = original_no_reply
 
             async def on_first_text(text, is_final, modality) -> None:
                 if not typing_done.is_set():
                     typing_done.set()
-                    muca_client.on_assistant_text = original_handler
+                    _restore_handlers()
                 if original_handler is not None:
                     await original_handler(text, is_final, modality)
 
+            async def on_no_reply() -> None:
+                # The server's judgment fired nothing for this turn -- no
+                # reply is coming, so there's nothing to keep "typing" for.
+                if not typing_done.is_set():
+                    typing_done.set()
+                    _restore_handlers()
+                if original_no_reply is not None:
+                    await original_no_reply()
+
             muca_client.on_assistant_text = on_first_text
+            muca_client.on_no_reply = on_no_reply
 
             async def show_typing() -> None:
                 async with channel.typing():
@@ -890,9 +905,10 @@ class BotRuntime:
                             timeout=TYPING_INDICATOR_MAX_SECONDS,
                         )
                 if not typing_done.is_set():
-                    # No reply ever arrived in time -- restore the real
-                    # handler anyway, so a late reply isn't silently eaten.
-                    muca_client.on_assistant_text = original_handler
+                    # Neither a reply nor a no_reply signal arrived in time
+                    # -- restore the real handlers anyway, so a late reply
+                    # isn't silently eaten.
+                    _restore_handlers()
 
             asyncio.create_task(show_typing())
 

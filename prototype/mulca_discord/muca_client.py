@@ -52,6 +52,7 @@ ClosedHandler = Callable[[], Awaitable[None]]
 ErrorHandler = Callable[[str], Awaitable[None]]
 ListeningStateHandler = Callable[[bool], Awaitable[None]]
 UsageHandler = Callable[[dict], Awaitable[None]]
+NoReplyHandler = Callable[[], Awaitable[None]]
 
 
 # MUCA-Server closes a session with this ("service restart") when its
@@ -213,6 +214,11 @@ class MucaWsClient:
         # temporarily by arm_listening() itself while it awaits a reply.
         self.on_listening_state: ListeningStateHandler | None = None
         self.on_usage: UsageHandler | None = None
+        # The server's judgment concluded nothing fires for this turn --
+        # no reply is coming. Lets a caller clear "a reply is coming" UI
+        # (e.g. a typing indicator) immediately instead of waiting out its
+        # own timeout.
+        self.on_no_reply: NoReplyHandler | None = None
 
         # Every reply in text, spoken turns included (a bot keeping its
         # spending down, runtime.py); sent with the session.update.
@@ -515,6 +521,9 @@ class MucaWsClient:
             elif event == "usage":
                 if self.on_usage is not None:
                     await self.on_usage(data)
+            elif event == "turn_skipped":
+                if self.on_no_reply is not None:
+                    await self.on_no_reply()
             elif event == "agent_guid":
                 self.agent_guids.append(data.get("guid", ""))
             elif event == "error":

@@ -710,6 +710,7 @@ async def test_greet_refuses_an_unlinked_channel():
 class FakeMucaClientForTyping:
     def __init__(self) -> None:
         self.on_assistant_text = None
+        self.on_no_reply = None
         self.sent_texts: list[str] = []
 
     async def send_participants(self, roster, *, modality) -> None:
@@ -751,6 +752,33 @@ async def test_sending_a_message_shows_typing_until_the_first_reply_piece():
 
     assert received == [("Hi there!", False, "text")]
     assert fake_client.on_assistant_text is real_handler
+
+
+async def test_typing_stops_immediately_when_the_server_says_nothing_fired():
+    # Found live: "what groups are in A?"/"you good mulc" -- a message the
+    # observer judged needed no reply still showed "MULCA is typing..." for
+    # the full timeout, since nothing told the client a reply was never
+    # coming.
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+    fake_client = FakeMucaClientForTyping()
+
+    async def run(scope, action, **kwargs):
+        runtime.registry.scopes.append(scope)
+        await action(fake_client)
+
+    runtime.registry.run = run
+
+    await runtime.on_message(message(5, text))
+    await asyncio.sleep(0)  # let the background typing task start
+
+    assert fake_client.on_no_reply is not None
+    await fake_client.on_no_reply()
+
+    # The wrapper gets out of the way immediately, the same as it would
+    # once a real reply's first piece arrived.
+    assert fake_client.on_assistant_text is None
+    assert fake_client.on_no_reply is None
 
 
 async def test_a_message_in_an_unlinked_channel_is_ignored():

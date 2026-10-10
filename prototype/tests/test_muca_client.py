@@ -459,3 +459,18 @@ async def test_spending_reaches_the_client_and_it_can_switch_replies_to_text(ser
     first, second = EchoMainAgent.sessions
     assert first["output_modalities"] == ["text"]
     assert second == {"output_modalities": ["audio"]}
+
+
+async def test_a_turn_skipped_frame_calls_on_no_reply():
+    # No server needed -- this is purely the client's own frame dispatch.
+    client = MucaWsClient("ws://unused/", conversation_id="instance:d", is_dm=False)
+    calls = 0
+
+    async def on_no_reply() -> None:
+        nonlocal calls
+        calls += 1
+
+    client.on_no_reply = on_no_reply
+    await client._handle_raw('{"event": "turn_skipped"}')
+
+    assert calls == 1

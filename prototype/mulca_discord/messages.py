@@ -75,9 +75,12 @@ INTRO_MESSAGE = (
 
 
 # Shared by FIRST_SESSION_MESSAGE and DAILY_GREETING below -- the actual
-# usefulness-signal/diary reminders, without any "welcome"/"welcome back"
-# framing, since which framing applies differs between the two.
+# capability reminder and usefulness-signal/diary instructions, without
+# any "welcome"/"welcome back" framing, since which framing applies
+# differs between the two.
 SESSION_REMINDER = (
+    "I'm ready to help with planning, performing, and reporting your "
+    "tasks -- just tell me what you need.\n\n"
     "During this session, please react to messages that were particularly "
     f"helpful or unhelpful with a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN}.\n\n"
     f"After this session, please fill in the diary: <{DIARY_FORM_URL}>\n"

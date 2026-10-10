@@ -645,6 +645,15 @@ def test_the_daily_greeting_is_conditional_not_an_instruction():
     assert messages.SESSION_REMINDER in messages.DAILY_GREETING
 
 
+def test_the_session_reminder_offers_help_with_the_tasks_lifecycle():
+    # Both FIRST_SESSION_MESSAGE and DAILY_GREETING share this -- a quick
+    # capability reminder so people know to ask MULCA for help planning,
+    # not just moderating.
+    assert "planning, performing, and reporting" in messages.SESSION_REMINDER
+    assert "planning, performing, and reporting" in messages.FIRST_SESSION_MESSAGE
+    assert "planning, performing, and reporting" in messages.DAILY_GREETING
+
+
 async def test_greet_posts_the_first_session_variant_and_skips_todays_daily_one():
     runtime = make_runtime()
     manager = BotManager([runtime])

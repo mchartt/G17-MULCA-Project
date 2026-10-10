@@ -23,7 +23,7 @@ events:
 # Each is due at the tutoring of each group, on these dates.
 deliverables:
   - what: initial user requirements analysis; review of the state of the art related to your project (academic literature & market products)
-    due: {A: 2026-10-12, B: 2026-10-14}
+    due: {A: 2026-10-19, B: 2026-10-14}
   - what: initial UX design (with scenarios)
     due: {A: 2026-10-26, B: 2026-10-28}
   - what: refined UX design; technology requirements and feasibility analysis

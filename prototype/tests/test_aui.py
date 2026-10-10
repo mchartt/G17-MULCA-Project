@@ -31,8 +31,8 @@ PROTOTYPING = "initial prototyping, at the following tutoring"
     ("today", "group_a", "group_b"),
     [
         (date(2026, 10, 7), f"{REQUIREMENTS}", f"{REQUIREMENTS}"),
-        (date(2026, 10, 12), "Mon 12 Oct 2026", "Wed 14 Oct 2026"),  # due today
-        (date(2026, 10, 13), f"{UX}, at the tutoring on Mon 26 Oct", REQUIREMENTS),
+        (date(2026, 10, 19), "Mon 19 Oct 2026", "Wed 28 Oct 2026"),  # due today (A)
+        (date(2026, 10, 15), REQUIREMENTS, f"{UX}, at the tutoring on Wed 28 Oct"),
         (date(2026, 10, 27), REFINED, f"{UX}, at the tutoring on Wed 28 Oct"),
         (date(2026, 11, 3), PROTOTYPING, f"{REFINED}"),
         (date(2026, 11, 10), PROTOTYPING, PROTOTYPING),
@@ -62,7 +62,7 @@ def test_next_deliverables_scoped_to_one_cohort_is_unambiguous():
     scoped_a = next_deliverables(SCHEDULE, today, cohort="A")
     scoped_b = next_deliverables(SCHEDULE, today, cohort="B")
 
-    assert scoped_a == f"Next deliverable: {UX}, at the tutoring on Mon 26 Oct 2026."
+    assert REQUIREMENTS in scoped_a and "Mon 19 Oct 2026" in scoped_a
     assert REQUIREMENTS in scoped_b and "Wed 14 Oct 2026" in scoped_b
     # Neither mentions the other cohort's own, unrelated deadline.
     assert "Group" not in scoped_a and "Group" not in scoped_b

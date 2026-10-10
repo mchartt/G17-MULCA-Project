@@ -146,7 +146,11 @@ def main_instructions(today: date | None = None, *, channel_name: str = "") -> s
     task = (AUI_DIR / "task.md").read_text(encoding="utf-8").strip()
     cohort_line = (
         f"This channel's team is in tutoring cohort {cohort} "
-        f"({schedule['groups'][cohort]}).\n\n"
+        f"({schedule['groups'][cohort]}) -- a known, certain fact about "
+        "everyone in this channel, not a guess. When asked about a "
+        "deadline or tutoring date, answer directly for this cohort; do "
+        "not hedge with phrases like \"if you're unsure which group "
+        "you're in\" or tell them to go check -- you already know.\n\n"
         if cohort is not None
         else ""
     )

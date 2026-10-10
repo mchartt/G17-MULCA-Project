@@ -277,9 +277,10 @@ class FakeMessage:
 class FakeChannel:
     """A channel, and what each member may do in it."""
 
-    def __init__(self, id: int, guild: FakeGuild, members=()) -> None:
+    def __init__(self, id: int, guild: FakeGuild, members=(), name: str = "") -> None:
         self.id = id
         self.guild = guild
+        self.name = name
         self.members = list(members)
         self.allowed: dict[int, set[str]] = {}
         self.typing_entered = 0
@@ -321,8 +322,10 @@ class FakeDiscordClient:
             guild.members[id] = guild.me = FakeMember(id, name, bot=True)
         self.channels: dict[int, FakeChannel] = {}
 
-    def add_channel(self, id: int, guild_id: int = GUILD, members=()) -> FakeChannel:
-        channel = FakeChannel(id, self.guilds[guild_id], members)
+    def add_channel(
+        self, id: int, guild_id: int = GUILD, members=(), name: str = ""
+    ) -> FakeChannel:
+        channel = FakeChannel(id, self.guilds[guild_id], members, name=name)
         for member in members:
             channel.guild.members[member.id] = member
         self.channels[id] = channel
@@ -510,6 +513,20 @@ async def test_a_message_in_a_linked_channel_goes_to_its_memory_and_is_remembere
     [scope] = runtime.registry.scopes
     assert scope.conversation_id == "channel:111"
     assert runtime.store.last_link_for(5) == ALPHA
+
+
+async def test_the_scope_carries_the_channels_own_name():
+    # aui.main_instructions() uses this to tell a team's own MULCA which
+    # tutoring cohort it belongs to -- found live, without it every
+    # channel got every cohort's deadline listed together, with nothing
+    # saying which one was actually this channel's own.
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")], name="group-10")
+
+    await runtime.on_message(message(5, text))
+
+    [scope] = runtime.registry.scopes
+    assert scope.channel_name == "group-10"
 
 
 async def test_the_first_real_message_starts_the_cooldown_without_a_greeting():

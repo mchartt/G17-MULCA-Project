@@ -210,6 +210,12 @@ class BotRuntime:
     def link_for_channel(self, channel_id: int) -> Link | None:
         return link_for_channel(self.links(), channel_id)
 
+    def _channel_name_for(self, link: Link) -> str:
+        """The linked text channel's own Discord name, or "" if unresolvable."""
+
+        channel = self.client.get_channel(link.text_channel_id)
+        return getattr(channel, "name", "") or ""
+
     def roster_text(self, link: Link) -> dict[int, str]:
         """Everyone in the link's text channel."""
 
@@ -410,6 +416,7 @@ class BotRuntime:
                 conversation_id=link.conversation_id,
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
+                channel_name=self._channel_name_for(link),
             ),
             registry=self.registry,
             voice_client=voice_client,
@@ -526,6 +533,7 @@ class BotRuntime:
                 conversation_id=link.conversation_id,
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
+                channel_name=self._channel_name_for(link),
             ),
             action,
             reply_channel=reply_channel,
@@ -804,6 +812,7 @@ class BotRuntime:
                 conversation_id=link.conversation_id,
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
+                channel_name=getattr(message.channel, "name", "") or "",
             )
 
         if self.paused:

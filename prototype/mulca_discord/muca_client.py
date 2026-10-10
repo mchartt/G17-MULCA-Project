@@ -169,6 +169,7 @@ class MucaWsClient:
         linked_conversation_id: str | None = None,
         bot_name: str = "",
         listening_mode: str = "",
+        channel_name: str = "",
         main_model: str = "",
         intervention_model: str = "",
     ) -> None:
@@ -178,6 +179,9 @@ class MucaWsClient:
         self._intervention_model = intervention_model
         self._conversation_id = conversation_id
         self._bot_name = bot_name
+        # The linked text channel's own Discord name -- only used to tell
+        # aui.main_instructions() which tutoring cohort this channel is in.
+        self._channel_name = channel_name
         # "" means unset -- use MUCA-Server's own MUCA_LISTENING_MODE
         # default; the Link this came from otherwise always has "ambient",
         # "toggle", or "transcribe", never "".
@@ -250,7 +254,9 @@ class MucaWsClient:
                 {
                     "type": "session.update",
                     "session": {
-                        "instructions": aui.main_instructions(),
+                        "instructions": aui.main_instructions(
+                            channel_name=self._channel_name,
+                        ),
                         **({"output_modalities": ["text"]} if self.text_replies else {}),
                     },
                 }

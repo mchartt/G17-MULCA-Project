@@ -60,6 +60,11 @@ class Scope:
     # This link's own listening mode (Link.listening_mode), overriding
     # MUCA-Server's own default -- "" means unset/use the server's.
     listening_mode: str = ""
+    # The linked text channel's own Discord name (e.g. "group-10"), opaque
+    # to everything here -- only aui.main_instructions() parses it, to
+    # tell a team's own MULCA which tutoring cohort it belongs to. "" for
+    # a DM, or if the channel couldn't be resolved.
+    channel_name: str = ""
 
 
 @dataclass(slots=True)
@@ -388,6 +393,7 @@ class SessionRegistry:
                 linked_conversation_id=scope.linked_conversation_id,
                 bot_name=scope.bot_name,
                 listening_mode=scope.listening_mode,
+                channel_name=scope.channel_name,
                 main_model=main_model,
                 intervention_model=intervention_model,
             )

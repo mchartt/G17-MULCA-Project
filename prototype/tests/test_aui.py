@@ -9,7 +9,9 @@ from datetime import date
 import pytest
 
 from mulca_discord.aui import (
+    COHORT_A_TEAMS,
     KNOWLEDGE_DIR,
+    cohort_for_channel,
     load_knowledge,
     load_schedule,
     main_instructions,
@@ -41,6 +43,47 @@ def test_each_group_is_told_its_own_next_deliverable(today, group_a, group_b):
 
     assert group_a in a
     assert group_b in b
+
+
+def test_cohort_for_channel_matches_the_team_number():
+    for team in COHORT_A_TEAMS:
+        assert cohort_for_channel(f"group-{team}") == "A"
+    assert cohort_for_channel("group-2") == "B"  # not in COHORT_A_TEAMS
+    assert cohort_for_channel("group-99") == "B"  # unknown team -> still B
+    assert cohort_for_channel("GROUP-4") == "A"  # case-insensitive
+    assert cohort_for_channel("group_4") == "A"  # underscore variant
+    assert cohort_for_channel("general") is None
+    assert cohort_for_channel("") is None
+
+
+def test_next_deliverables_scoped_to_one_cohort_is_unambiguous():
+    today = date(2026, 10, 13)
+
+    scoped_a = next_deliverables(SCHEDULE, today, cohort="A")
+    scoped_b = next_deliverables(SCHEDULE, today, cohort="B")
+
+    assert scoped_a == f"Next deliverable: {UX}, at the tutoring on Mon 26 Oct 2026."
+    assert REQUIREMENTS in scoped_b and "Wed 14 Oct 2026" in scoped_b
+    # Neither mentions the other cohort's own, unrelated deadline.
+    assert "Group" not in scoped_a and "Group" not in scoped_b
+
+
+def test_the_instructions_name_the_channels_own_cohort_and_deliverable():
+    today = date(2026, 10, 13)
+
+    for_a = main_instructions(today=today, channel_name="group-4")  # cohort A
+
+    assert "This channel's team is in tutoring cohort A" in for_a
+    assert next_deliverables(SCHEDULE, today, cohort="A") in for_a
+    # Not the other cohort's own next deliverable.
+    assert next_deliverables(SCHEDULE, today, cohort="B") not in for_a
+
+
+def test_the_instructions_fall_back_to_every_cohort_for_an_unresolved_channel():
+    text = main_instructions(today=date(2026, 10, 13), channel_name="")
+
+    assert "tutoring cohort" not in text
+    assert "Group A" in text and "Group B" in text
 
 
 def test_the_schedule_stops_at_the_listed_deliverables():

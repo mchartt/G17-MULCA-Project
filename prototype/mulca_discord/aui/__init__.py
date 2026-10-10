@@ -10,6 +10,7 @@ the assistant's to announce.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -18,6 +19,31 @@ import yaml
 
 AUI_DIR = Path(__file__).resolve().parent
 KNOWLEDGE_DIR = AUI_DIR / "knowledge"
+
+# Which project team (its Discord channel is named "group-<N>") sits in
+# which tutoring cohort (schedule.yaml's own "groups" keys, A/B) -- not
+# derivable from the schedule itself, which only tracks cohort-level
+# tutoring slots/deadlines, never which of the ~20 individual teams
+# belongs to which cohort. Every team not listed here is assumed to be B.
+COHORT_A_TEAMS = frozenset(
+    {"1", "4", "5", "6", "7", "8", "9", "11", "12", "14", "15"}
+)
+
+_TEAM_NUMBER = re.compile(r"group[-_]?(\d+)", re.IGNORECASE)
+
+
+def cohort_for_channel(channel_name: str) -> str | None:
+    """
+    "A" or "B" for a channel named like "group-10", or None if the name
+    doesn't match that pattern at all (a DM, or a channel not actually one
+    of the numbered teams) -- callers fall back to the unscoped schedule
+    for None, rather than guessing which cohort applies.
+    """
+
+    match = _TEAM_NUMBER.search(channel_name)
+    if match is None:
+        return None
+    return "A" if match.group(1) in COHORT_A_TEAMS else "B"
 
 
 def load_schedule(path: Path = KNOWLEDGE_DIR / "schedule.yaml") -> dict:
@@ -52,21 +78,40 @@ def today_in(schedule: dict) -> date:
     return datetime.now(ZoneInfo(schedule["timezone"])).date()
 
 
-def next_deliverables(schedule: dict, today: date) -> str:
-    """What each group has to deliver next, as of `today` (inclusive)."""
+def _next_for(schedule: dict, today: date, group: str) -> str:
+    upcoming = next(
+        (item for item in schedule["deliverables"] if item["due"][group] >= today),
+        None,
+    )
+    return (
+        f"{upcoming['what']}, at the tutoring on {_day(upcoming['due'][group])}"
+        if upcoming is not None
+        else f"{schedule['then']} (not tracked further)"
+    )
 
-    parts = []
-    for group in schedule["groups"]:
-        upcoming = next(
-            (item for item in schedule["deliverables"] if item["due"][group] >= today),
-            None,
-        )
-        parts.append(
-            f"Group {group}: {upcoming['what']}, at the tutoring on "
-            f"{_day(upcoming['due'][group])}"
-            if upcoming is not None
-            else f"Group {group}: {schedule['then']} (not tracked further)"
-        )
+
+def next_deliverables(
+    schedule: dict,
+    today: date,
+    *,
+    cohort: str | None = None,
+) -> str:
+    """
+    What's due next, as of `today` (inclusive). Scoped to one cohort's own
+    deliverable when known (the normal case: a team's own channel maps to
+    exactly one, via cohort_for_channel) -- stated unambiguously, not next
+    to the other cohort's own, unrelated deadline. Falls back to every
+    cohort's, concatenated, only for a channel this mapping couldn't
+    resolve (e.g. a DM).
+    """
+
+    if cohort in schedule["groups"]:
+        return f"Next deliverable: {_next_for(schedule, today, cohort)}."
+
+    parts = [
+        f"Group {group}: {_next_for(schedule, today, group)}"
+        for group in schedule["groups"]
+    ]
     return "Next deliverables -- " + "; ".join(parts) + "."
 
 
@@ -81,19 +126,33 @@ def load_knowledge(knowledge_dir: Path = KNOWLEDGE_DIR) -> str:
     return "\n\n".join(parts)
 
 
-def main_instructions(today: date | None = None) -> str:
+def main_instructions(today: date | None = None, *, channel_name: str = "") -> str:
     """
     The main agent's whole instructions, replacing MUCA-Server's own. Built
     at every connect, and a session lasts at most an hour (OpenAI's limit),
     so today's date is at most that stale.
+
+    channel_name: the linked text channel's own Discord name (e.g.
+    "group-10") -- found live, without this the "next deliverable" line
+    listed every cohort's own deadline together with no indication of
+    which one actually applies to this team, so the model had to guess
+    (and sometimes guessed wrong) which cohort its own channel was in.
     """
 
     schedule = load_schedule()
     today = today or today_in(schedule)
+    cohort = cohort_for_channel(channel_name)
     persona = (AUI_DIR / "persona.md").read_text(encoding="utf-8").strip()
     task = (AUI_DIR / "task.md").read_text(encoding="utf-8").strip()
+    cohort_line = (
+        f"This channel's team is in tutoring cohort {cohort} "
+        f"({schedule['groups'][cohort]}).\n\n"
+        if cohort is not None
+        else ""
+    )
     return (
-        f"{persona}\n\nTask context:\n{task}\n\nCourse material:\n{load_knowledge()}"
+        f"{persona}\n\nTask context:\n{task}\n\n{cohort_line}"
+        f"Course material:\n{load_knowledge()}"
         f"\n\nToday is {today:%A} {today.day} {today:%B %Y}. "
-        f"{next_deliverables(schedule, today)}"
+        f"{next_deliverables(schedule, today, cohort=cohort)}"
     )

@@ -150,7 +150,12 @@ def main_instructions(today: date | None = None, *, channel_name: str = "") -> s
         "everyone in this channel, not a guess. When asked about a "
         "deadline or tutoring date, answer directly for this cohort; do "
         "not hedge with phrases like \"if you're unsure which group "
-        "you're in\" or tell them to go check -- you already know.\n\n"
+        "you're in\" or tell them to go check -- you already know. Say "
+        f'"your cohort is {cohort}" or similar, never "Group {cohort}" -- '
+        "cohort A/B is only which tutoring time slot a team was assigned "
+        "to, not a team's actual name or identity (their own project team "
+        "is identified by their channel/number, e.g. \"group-10\", which "
+        "is unrelated to the tutoring cohort letter).\n\n"
         if cohort is not None
         else ""
     )

@@ -235,6 +235,13 @@ class MucaWsClient:
         )
         self._open = True
 
+        logger.info(
+            "Connecting %s with channel_name=%r (cohort=%r)",
+            self._conversation_id,
+            self._channel_name,
+            aui.cohort_for_channel(self._channel_name),
+        )
+
         await self._send(
             ConnectAgentMessage(
                 event="connect",

@@ -39,7 +39,7 @@ PROTOTYPING = "initial prototyping, at the following tutoring"
     ],
 )
 def test_each_group_is_told_its_own_next_deliverable(today, group_a, group_b):
-    a, b = next_deliverables(SCHEDULE, today).split("; Group B: ")
+    a, b = next_deliverables(SCHEDULE, today).split("; cohort B: ")
 
     assert group_a in a
     assert group_b in b
@@ -83,7 +83,7 @@ def test_the_instructions_fall_back_to_every_cohort_for_an_unresolved_channel():
     text = main_instructions(today=date(2026, 10, 13), channel_name="")
 
     assert "tutoring cohort" not in text
-    assert "Group A" in text and "Group B" in text
+    assert "cohort A" in text and "cohort B" in text
 
 
 def test_the_schedule_stops_at_the_listed_deliverables():

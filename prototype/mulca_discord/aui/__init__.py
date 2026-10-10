@@ -59,15 +59,15 @@ def render_schedule(schedule: dict) -> str:
 
     lines = [f"# {schedule['title']}", schedule["header"], ""]
     lines += [
-        f"Tutoring of Group {group}: {slot}."
+        f"Tutoring of cohort {group}: {slot}."
         for group, slot in schedule["groups"].items()
     ]
     lines += ["", "Events:"]
     lines += [f"- {_day(event['date'])}: {event['what']}" for event in schedule["events"]]
-    lines += ["", "Deliverables, each due at a group's tutoring:"]
+    lines += ["", "Deliverables, each due at a team's cohort's tutoring:"]
     for item in schedule["deliverables"]:
         dates = ", ".join(
-            f"Group {group} on {_day(due)}" for group, due in item["due"].items()
+            f"cohort {group} on {_day(due)}" for group, due in item["due"].items()
         )
         lines.append(f"- {item['what']}: {dates}")
     lines += [f"- Then: {schedule['then']}", "", schedule["untracked"]]
@@ -109,7 +109,7 @@ def next_deliverables(
         return f"Next deliverable: {_next_for(schedule, today, cohort)}."
 
     parts = [
-        f"Group {group}: {_next_for(schedule, today, group)}"
+        f"cohort {group}: {_next_for(schedule, today, group)}"
         for group in schedule["groups"]
     ]
     return "Next deliverables -- " + "; ".join(parts) + "."
@@ -148,14 +148,8 @@ def main_instructions(today: date | None = None, *, channel_name: str = "") -> s
         f"This channel's team is in tutoring cohort {cohort} "
         f"({schedule['groups'][cohort]}) -- a known, certain fact about "
         "everyone in this channel, not a guess. When asked about a "
-        "deadline or tutoring date, answer directly for this cohort; do "
-        "not hedge with phrases like \"if you're unsure which group "
-        "you're in\" or tell them to go check -- you already know. Say "
-        f'"your cohort is {cohort}" or similar, never "Group {cohort}" -- '
-        "cohort A/B is only which tutoring time slot a team was assigned "
-        "to, not a team's actual name or identity (their own project team "
-        "is identified by their channel/number, e.g. \"group-10\", which "
-        "is unrelated to the tutoring cohort letter).\n\n"
+        "deadline or tutoring date, just answer directly for this "
+        "cohort.\n\n"
         if cohort is not None
         else ""
     )

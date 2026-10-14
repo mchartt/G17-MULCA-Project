@@ -218,7 +218,7 @@ async def test_an_engaged_session_is_announced_in_text_and_with_a_chime():
 
         assert channel.sent == [
             "\N{HAPPY PERSON RAISING ONE HAND} MULCA is taking part",
-            "\N{STANDING PERSON} MULCA stepped back -- it only answers to its name now",
+            "\N{STANDING PERSON} MULCA stepped back -- say \"MULCA start\" to bring it back",
         ]
         assert chimes == [True, False]
 

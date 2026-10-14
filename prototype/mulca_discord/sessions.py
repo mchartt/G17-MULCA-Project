@@ -130,8 +130,8 @@ class ScopeSession:
                 sent = await channel.send(
                     f"\N{HAPPY PERSON RAISING ONE HAND} {name} is taking part"
                     if open_
-                    else f"\N{STANDING PERSON} {name} stepped back -- it only "
-                    "answers to its name now"
+                    else f"\N{STANDING PERSON} {name} stepped back -- say "
+                    "\"MULCA start\" to bring it back"
                 )
 
             if open_:

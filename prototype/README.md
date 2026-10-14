@@ -320,14 +320,20 @@ mulca_discord/
   links.py             Which text + voice channels each bot serves, and the
                        SQLite store keeping them (with paused state)
   voice/               The voice channel: capture, floor, playback, bridge
-  aui/                 The AUI course setup: persona, task, course material
-                       and project schedule, sent as the main agent's
-                       instructions at every connect
+  courses/             The course setups: a shared persona and task, and per
+                       course (aui/, imi/) its material and project schedule,
+                       sent as the main agent's instructions at every connect
   __main__.py          Entrypoint: `python -m mulca_discord`
 ```
 
 Cognition (working memory, strategies, both LLMs, episodic log) lives in
 `MUCA-Server/muca_server/cognition/` and `muca_server/agents/` now, not here.
-MUCA-Server's main agent is generic: the AUI teaching assistant, and its
-course material, live in `mulca_discord/aui/`. To update them, edit those
+MUCA-Server's main agent is generic: the teaching assistant, and each
+course's material, live in `mulca_discord/courses/`. To update them, edit those
 files and push MULCA; sessions pick them up as they reconnect.
+
+Which course a Discord server gets: `/mulca course` (for every bot there, or
+with `bot:` for one), else the course whose id the server's name contains as
+a word ("IMI 2026/27" -> IMI), else AUI. `/mulca course` with no course shows
+each bot's and why; `auto` goes back to the server's name. To add a course,
+add a `courses/<id>/knowledge/` folder like `imi/`'s.

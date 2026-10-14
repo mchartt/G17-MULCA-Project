@@ -71,7 +71,7 @@ from typing import Literal
 import discord
 from discord import app_commands
 
-from . import messages
+from . import courses, messages
 from .links import BotRecord, Link
 from .messages import DIARY_FORM_URL, DIARY_MESSAGE
 from .muca_client import MucaConnectionLost, set_server_cost_alert, set_server_model
@@ -750,6 +750,58 @@ async def set_model(
 
     names = ", ".join(f"**{bot.name}**" for bot in bots)
     return f"{names} now use `{model}`; their sessions were restarted."
+
+
+# /mulca course's own choice besides the courses: forget the setting, so the
+# server's name (or the default) decides again.
+AUTO = "auto"
+
+
+async def set_course(
+    manager: BotManager,
+    course: str | None,
+    target: str | None,
+    guild_id: int,
+) -> str:
+    """
+    /mulca course: which course's material the MULCAs in this server teach.
+    For every bot in it (the server's setting), or for one bot there (its
+    own, outranking the server's). `auto` forgets the setting. Without a
+    course, shows each bot's and why. A change restarts this server's
+    sessions, so they reopen on it; other servers are untouched.
+    """
+
+    every_bot = target is None or target.strip().lower() == ALL
+    try:
+        bots = manager.in_guild(guild_id) if every_bot else manager.resolve(target, guild_id)
+    except AmbiguousBotName as exc:
+        return _ambiguous_bot_message(exc)
+
+    if not bots:
+        return (
+            "No MULCA bot in this server."
+            if every_bot
+            else f"No MULCA bot called {target!r} in this server."
+        )
+
+    if course is not None:
+        setting = None if course == AUTO else course
+        if every_bot:
+            manager.store.set_course(guild_id, setting)
+        for bot in bots:
+            if not every_bot:
+                manager.store.set_course(guild_id, setting, bot.user_id)
+            for link in bot.links():
+                if link.guild_id == guild_id:
+                    await bot.restart_link(link)
+
+    lines = []
+    for bot in bots:
+        chosen, source = bot.course_choice(guild_id)
+        lines.append(f"**{bot.name}**: {chosen.upper()} ({source})")
+    if course is not None:
+        lines.append("Their sessions in this server were restarted.")
+    return "\n".join(lines)
 
 
 async def set_cost_alert(
@@ -1554,6 +1606,30 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             include_intervention=include_intervention,
             admin_token=os.environ.get("MUCA_ADMIN_TOKEN"),
         )
+        await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="course",
+        description="Which course MULCA teaches in this server (by default, the one the server's name names).",
+    )
+    @app_commands.describe(
+        course="The course, or auto to go by the server's name again (leave empty to just see it).",
+        bot="One bot (default: every bot in this server).",
+    )
+    @app_commands.choices(
+        course=[
+            app_commands.Choice(name=name.upper() if name != AUTO else name, value=name)
+            for name in (*courses.COURSES, AUTO)
+        ]
+    )
+    @app_commands.autocomplete(bot=bot_choices)
+    async def course_command(
+        interaction: discord.Interaction,
+        course: str | None = None,
+        bot: str | None = None,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = await set_course(manager, course, bot, interaction.guild_id)
         await interaction.followup.send(reply, ephemeral=True)
 
     @mulca.command(

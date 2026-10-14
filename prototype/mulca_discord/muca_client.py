@@ -4,7 +4,7 @@ One WebSocket session against MUCA-Server, for one conversation scope.
 Speaks the exact protocol muca_server.protocol defines -- imported from the
 muca-server package rather than duplicated, so the two sides cannot drift.
 Mirrors what MUCA-Server's own tests and the Unity client do over the wire:
-connect, give the main agent the AUI instructions (aui/), stand up the
+connect, give the main agent its course's instructions (courses/), stand up the
 intervention observer, push the roster, then stream
 user_text turns (and, for voice, audio_stream frames) and read
 assistant_text / state_update back. See MUCA-Server's docs/PROTOCOL.md.
@@ -38,7 +38,7 @@ from muca_server.protocol import (
     UserTextMessage,
 )
 
-from . import aui
+from . import courses
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +171,7 @@ class MucaWsClient:
         bot_name: str = "",
         listening_mode: str = "",
         channel_name: str = "",
+        course: str = courses.DEFAULT_COURSE,
         main_model: str = "",
         intervention_model: str = "",
     ) -> None:
@@ -181,8 +182,10 @@ class MucaWsClient:
         self._conversation_id = conversation_id
         self._bot_name = bot_name
         # The linked text channel's own Discord name -- only used to tell
-        # aui.main_instructions() which tutoring cohort this channel is in.
+        # courses.main_instructions() which tutoring cohort this channel is in.
         self._channel_name = channel_name
+        # Which course's instructions (courses/<id>/) this session gets.
+        self._course = course
         # "" means unset -- use MUCA-Server's own MUCA_LISTENING_MODE
         # default; the Link this came from otherwise always has "ambient",
         # "toggle", or "transcribe", never "".
@@ -242,10 +245,13 @@ class MucaWsClient:
         self._open = True
 
         logger.info(
-            "Connecting %s with channel_name=%r (cohort=%r)",
+            "Connecting %s with course=%r channel_name=%r (cohort=%r)",
             self._conversation_id,
+            self._course,
             self._channel_name,
-            aui.cohort_for_channel(self._channel_name),
+            courses.cohort_for_channel(
+                self._channel_name, courses.load_schedule(self._course)
+            ),
         )
 
         await self._send(
@@ -260,15 +266,16 @@ class MucaWsClient:
                 intervention_model=self._intervention_model,
             )
         )
-        # The AUI teaching assistant: MUCA-Server's main agent is generic
+        # The course's teaching assistant: MUCA-Server's main agent is generic
         # until this replaces its instructions (a raw provider session.update).
         await self._connection.send(
             json.dumps(
                 {
                     "type": "session.update",
                     "session": {
-                        "instructions": aui.main_instructions(
+                        "instructions": courses.main_instructions(
                             channel_name=self._channel_name,
+                            course=self._course,
                         ),
                         **({"output_modalities": ["text"]} if self.text_replies else {}),
                     },

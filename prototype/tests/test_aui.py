@@ -1,6 +1,6 @@
 """
-The AUI course setup MULCA sends MUCA-Server's main agent: aui/ (persona,
-task, knowledge, schedule) and main_instructions.
+The AUI course setup MULCA sends MUCA-Server's main agent: courses/aui/
+(knowledge, schedule), the shared persona and task, and main_instructions.
 """
 
 import re
@@ -8,9 +8,8 @@ from datetime import date
 
 import pytest
 
-from mulca_discord.aui import (
-    COHORT_A_TEAMS,
-    KNOWLEDGE_DIR,
+from mulca_discord.courses import (
+    COURSES_DIR,
     cohort_for_channel,
     load_knowledge,
     load_schedule,
@@ -20,6 +19,8 @@ from mulca_discord.aui import (
 )
 
 SCHEDULE = load_schedule()
+KNOWLEDGE_DIR = COURSES_DIR / "aui" / "knowledge"
+COHORT_A_TEAMS = SCHEDULE["teams"]["A"]
 
 REQUIREMENTS = "initial user requirements analysis"
 UX = "initial UX design (with scenarios)"
@@ -47,13 +48,13 @@ def test_each_group_is_told_its_own_next_deliverable(today, group_a, group_b):
 
 def test_cohort_for_channel_matches_the_team_number():
     for team in COHORT_A_TEAMS:
-        assert cohort_for_channel(f"group-{team}") == "A"
-    assert cohort_for_channel("group-2") == "B"  # not in COHORT_A_TEAMS
-    assert cohort_for_channel("group-99") == "B"  # unknown team -> still B
-    assert cohort_for_channel("GROUP-4") == "A"  # case-insensitive
-    assert cohort_for_channel("group_4") == "A"  # underscore variant
-    assert cohort_for_channel("general") is None
-    assert cohort_for_channel("") is None
+        assert cohort_for_channel(f"group-{team}", SCHEDULE) == "A"
+    assert cohort_for_channel("group-2", SCHEDULE) == "B"  # not in COHORT_A_TEAMS
+    assert cohort_for_channel("group-99", SCHEDULE) == "B"  # unknown team -> still B
+    assert cohort_for_channel("GROUP-4", SCHEDULE) == "A"  # case-insensitive
+    assert cohort_for_channel("group_4", SCHEDULE) == "A"  # underscore variant
+    assert cohort_for_channel("general", SCHEDULE) is None
+    assert cohort_for_channel("", SCHEDULE) is None
 
 
 def test_next_deliverables_scoped_to_one_cohort_is_unambiguous():
@@ -115,7 +116,12 @@ def test_the_instructions_hold_persona_task_material_and_today():
     text = main_instructions(today=date(2026, 10, 13))
 
     assert text.startswith("Your name is MULCA.")
-    assert "course teaching assistant for Advanced User Interfaces" in text
+    assert (
+        "course teaching assistant for Advanced User Interfaces "
+        "(AUI, Politecnico di Milano, 2026/27)." in text
+    )
+    assert "the course page on WeBeep" in text
+    assert "{course_" not in text
     assert "Task context:\nThere is no specific structured task" in text
     assert "Course material:\n" in text and load_knowledge() in text
     assert text.endswith(

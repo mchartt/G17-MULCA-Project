@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 import discord
 
-from . import messages
+from . import courses, messages
 from .links import BotRecord, Link, LinkStore, link_for_channel
 from .messages import Notices
 from .muca_client import MucaWsClient
@@ -215,6 +215,30 @@ class BotRuntime:
 
         channel = self.client.get_channel(link.text_channel_id)
         return getattr(channel, "name", "") or ""
+
+    def course_choice(self, guild_id: int) -> tuple[str, str]:
+        """
+        (course, where that comes from) for this bot's sessions in a
+        Discord server: its own /mulca course setting there, else the
+        server's, else the one course the server's name names (courses.
+        detect, read live so a rename needs no restart), else the default.
+        """
+
+        for setting, source in (
+            (self.store.course_setting(guild_id, self.user_id), "bot setting"),
+            (self.store.course_setting(guild_id), "server setting"),
+        ):
+            if setting in courses.COURSES:
+                return setting, source
+
+        guild = self.client.get_guild(guild_id)
+        detected = courses.detect(getattr(guild, "name", "") or "")
+        if detected is not None:
+            return detected, "server name"
+        return courses.DEFAULT_COURSE, "default"
+
+    def course_for(self, guild_id: int) -> str:
+        return self.course_choice(guild_id)[0]
 
     def roster_text(self, link: Link) -> dict[int, str]:
         """Everyone in the link's text channel."""
@@ -417,6 +441,7 @@ class BotRuntime:
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
                 channel_name=self._channel_name_for(link),
+                course=self.course_for(link.guild_id),
             ),
             registry=self.registry,
             voice_client=voice_client,
@@ -534,6 +559,7 @@ class BotRuntime:
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
                 channel_name=self._channel_name_for(link),
+                course=self.course_for(link.guild_id),
             ),
             action,
             reply_channel=reply_channel,
@@ -719,6 +745,17 @@ class BotRuntime:
                 "" if visible else " -- but that text channel isn't visible",
             )
 
+        for guild_id in sorted({link.guild_id for link in links}):
+            course, source = self.course_choice(guild_id)
+            guild = self.client.get_guild(guild_id)
+            logger.info(
+                "%s in server %r: course %s (%s)",
+                self.name,
+                getattr(guild, "name", guild_id),
+                course,
+                source,
+            )
+
         await self.recheck_limits()
         await self._sync_all_voice()
         # on_ready comes again after every reconnect to Discord: one watch.
@@ -802,6 +839,7 @@ class BotRuntime:
                 is_dm=True,
                 linked_conversation_id=linked.conversation_id,
                 bot_name=self.name,
+                course=self.course_for(linked.guild_id),
             )
         else:
             link = self.link_for_channel(message.channel.id)
@@ -813,6 +851,7 @@ class BotRuntime:
                 bot_name=self.name,
                 listening_mode=link.listening_mode,
                 channel_name=getattr(message.channel, "name", "") or "",
+                course=self.course_for(link.guild_id),
             )
 
         if self.paused:

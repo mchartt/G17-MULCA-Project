@@ -477,6 +477,36 @@ class LinkStore:
                         (key, value),
                     )
 
+    @staticmethod
+    def _course_key(guild_id: int, bot_id: int | None) -> str:
+        return f"course:{guild_id}" + (f":{bot_id}" if bot_id is not None else "")
+
+    def course_setting(self, guild_id: int, bot_id: int | None = None) -> str | None:
+        """
+        The course /mulca course set for a server (every bot in it), or with
+        bot_id for that one bot there; None where none was.
+        """
+
+        row = self._db.execute(
+            "SELECT value FROM meta WHERE key = ?",
+            (self._course_key(guild_id, bot_id),),
+        ).fetchone()
+        return row[0] if row else None
+
+    def set_course(self, guild_id: int, course: str | None, bot_id: int | None = None) -> None:
+        """Set a server's (or one bot's there) course; None forgets it."""
+
+        key = self._course_key(guild_id, bot_id)
+        with self._db:
+            if course is None:
+                self._db.execute("DELETE FROM meta WHERE key = ?", (key,))
+            else:
+                self._db.execute(
+                    "INSERT INTO meta (key, value) VALUES (?, ?) "
+                    "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                    (key, course),
+                )
+
     def is_paused(self, bot_id: int) -> bool:
         row = self._db.execute(
             "SELECT paused FROM bots WHERE bot_id = ?",

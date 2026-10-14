@@ -35,6 +35,10 @@ Discord's "/" menu).
   linked channel -- unlike /help, not ephemeral, so it's a visible part of
   a channel's setup sequence (announce, then help, then greet) rather than
   something a member has to ask for themselves.
+- /mulca voiceupdate: members with Manage Server -- posts VOICE_UPDATE_
+  MESSAGE (how to start/stop MULCA in voice) in a linked channel, or
+  (all:true) every one. For announcing that change; /mulca announce's
+  intro stays as it is.
 - /mulca greet: members with Manage Server -- posts the first-session
   variant of the reminder (messages.FIRST_SESSION_MESSAGE, no "welcome
   back" framing) once, for a channel (or with all:true, every linked
@@ -199,11 +203,13 @@ HELP_MESSAGE = (
     "*In text*: mention it by name (e.g. \"assistant\", \"MULCA\", \"bot\" "
     "or \"chatbot\"), or reply to one of its messages. It may also speak "
     "up on its own sometimes, if it thinks it can contribute.\n\n"
-    "*In voice*: say its name (e.g. \"MULCA\" or \"assistant\") to get its "
-    "attention when you want to ask it questions. It will start actively "
-    "responding to the conversation, until it goes back into bystander "
-    "mode. Say something like \"stop\", \"thanks MULCA\", \"that's all\", "
-    "or \"go to sleep\" to end it."
+    "*In voice*: say **\"MULCA start\"** (or \"assistant start\") when you "
+    "want to ask it questions -- you can ask right away, e.g. \"MULCA "
+    "start, what's our next deadline?\". It will start actively responding "
+    "to the conversation, until it goes back into bystander mode. Say "
+    "\"MULCA stop\" (or something like \"thanks MULCA\", \"that's all\" or "
+    "\"go to sleep\") to end it. It also goes back on its own after a "
+    "while if you're no longer talking to it."
 )
 
 
@@ -530,6 +536,29 @@ async def post_help_everywhere(manager: BotManager, guild_id: int) -> str:
     """/mulca help all:true -- messages.HELP_MESSAGE in every linked channel here."""
 
     return await _post_everywhere(manager, guild_id, HELP_MESSAGE)
+
+
+async def post_voice_update(manager: BotManager, channel) -> str:
+    """/mulca voiceupdate: messages.VOICE_UPDATE_MESSAGE in a linked channel."""
+
+    if channel is None:
+        return "Pick a text channel, or run this in one."
+
+    found = manager.link_for_channel(channel.id)
+    if found is None:
+        return f"MULCA doesn't serve <#{channel.id}> (`/mulca link` it first)."
+
+    bot, _link = found
+    error = await _post(_channel_for_bot(bot, channel), messages.VOICE_UPDATE_MESSAGE)
+    if error is not None:
+        return f"Could not post in <#{channel.id}>: {error}"
+    return f"Posted in <#{channel.id}>."
+
+
+async def post_voice_update_everywhere(manager: BotManager, guild_id: int) -> str:
+    """/mulca voiceupdate all:true -- in every linked channel here."""
+
+    return await _post_everywhere(manager, guild_id, messages.VOICE_UPDATE_MESSAGE)
 
 
 async def greet_first_session_everywhere(manager: BotManager, guild_id: int) -> str:
@@ -1532,6 +1561,27 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             else await post_help(manager, channel or interaction.channel)
         )
         await interaction.response.send_message(reply, ephemeral=True)
+
+    @mulca.command(
+        name="voiceupdate",
+        description="Post how to start/stop MULCA in voice, in a linked channel or every one.",
+    )
+    @app_commands.describe(
+        channel="The linked text channel (default: this one). Ignored if all is true.",
+        all="Post in every text channel linked in this server instead of just one.",
+    )
+    async def voice_update(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | None = None,
+        all: bool = False,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        reply = (
+            await post_voice_update_everywhere(manager, interaction.guild_id)
+            if all
+            else await post_voice_update(manager, channel or interaction.channel)
+        )
+        await interaction.followup.send(reply, ephemeral=True)
 
     @mulca.command(
         name="greet",

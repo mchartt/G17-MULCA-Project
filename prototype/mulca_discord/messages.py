@@ -86,6 +86,16 @@ SESSION_REMINDER = (
     "Let's get to it"
 )
 
+# Posted once by an admin (/mulca voiceupdate) when how voice works
+# changed -- separate from INTRO_MESSAGE (/mulca announce), which stays the
+# same.
+VOICE_UPDATE_MESSAGE = (
+    "**Minor update:** MULCA was a bit too eager to help before, so we "
+    "changed its wake-up command to **\"MULCA start\"**. You can switch it "
+    "off with **\"MULCA stop\"**, or by interrupting it.\n\n"
+    "It will also listen to \"Assistant start\" and \"Chatbot start\"."
+)
+
 # Posted in the text channel when a voice call ends because everyone left
 # (BotRuntime.sync_voice): the diary belongs at the end of a session, which
 # a call ending marks far better than a day's first message does. Replaces

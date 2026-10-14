@@ -30,6 +30,8 @@ from mulca_discord.commands import (
     greet_first_session_everywhere,
     link_channels,
     post_help_everywhere,
+    post_voice_update,
+    post_voice_update_everywhere,
     restart_message,
     send_long,
     set_dms,
@@ -1302,9 +1304,9 @@ def test_the_help_message_covers_text_voice_and_wake_sessions():
     # Starting and ending a "wake" voice conversation -- the least
     # self-explanatory of the listening modes, so the one worth spelling
     # out explicitly here.
-    assert "get its attention" in HELP_MESSAGE
+    assert '"MULCA start"' in HELP_MESSAGE
     assert "bystander mode" in HELP_MESSAGE
-    assert "stop" in HELP_MESSAGE and "go to sleep" in HELP_MESSAGE
+    assert '"MULCA stop"' in HELP_MESSAGE and "go to sleep" in HELP_MESSAGE
     # No admin-only commands (/link and friends) belong in member-facing help.
     assert "/mulca link" not in HELP_MESSAGE
     assert "/mulca" not in HELP_MESSAGE
@@ -1369,6 +1371,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "unlink",
         "announce",
         "help",
+        "voiceupdate",
         "greet",
         "dms",
         "mode",
@@ -1728,3 +1731,18 @@ async def test_a_watchdog_rejoin_is_the_same_call():
     await runtime._rejoin_voice(ALPHA)
 
     assert runtime._call_started_at[ALPHA.name] == started
+
+
+async def test_voiceupdate_posts_the_voice_explanation_and_leaves_the_intro_alone():
+    runtime = make_runtime()
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111)
+
+    assert "Posted" in await post_voice_update(manager, text)
+    assert "Posted" in await post_voice_update_everywhere(manager, GUILD)
+
+    assert text.sent == [messages.VOICE_UPDATE_MESSAGE] * 2
+    assert "MULCA start" in messages.VOICE_UPDATE_MESSAGE
+    assert "MULCA stop" in messages.VOICE_UPDATE_MESSAGE
+    assert "MULCA start" not in messages.INTRO_MESSAGE
+    assert "MULCA start" in HELP_MESSAGE

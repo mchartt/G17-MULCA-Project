@@ -46,6 +46,10 @@ Discord's "/" menu).
 - /mulca costalert: members with Manage Server -- MUCA-Server's own
   cost-alert webhook/$ threshold (usage_report.py). Deployment-wide, like
   /mulca model, but nothing restarts for it.
+- /mulca export: members with Manage Server -- a linked channel's episodic
+  log (every message and spoken turn, what MULCA decided and said, voice
+  call and wake session starts/ends) as CSV, or with all:true every linked
+  channel's, zipped. Read from MUCA-Server, gated on MUCA_ADMIN_TOKEN.
 - /mulca limit set|clear, /mulca usage: members with Manage Server -- how
   many USD a bot, every bot, or all bots together may spend per day, week
   and month (usage.py), how much they spent, and on what. Deployment-wide
@@ -62,10 +66,15 @@ callbacks only translate interactions to and from them.
 
 from __future__ import annotations
 
+import io
 import logging
 import os
+import re
+import time
+import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Literal
 
 import discord
@@ -74,7 +83,12 @@ from discord import app_commands
 from . import messages
 from .links import BotRecord, Link
 from .messages import DIARY_FORM_URL, DIARY_MESSAGE
-from .muca_client import MucaConnectionLost, set_server_cost_alert, set_server_model
+from .muca_client import (
+    MucaConnectionLost,
+    fetch_episodic_export,
+    set_server_cost_alert,
+    set_server_model,
+)
 from .permissions import missing_permissions
 from .runtime import LIMIT, AmbiguousBotName, BotManager, BotRuntime, BotStatus, RestartOutcome
 from .usage import EACH, KINDS, POOL, POOL_FACTOR, UsageMeter, bot_scope
@@ -787,6 +801,97 @@ async def set_cost_alert(
     if threshold_usd is not None:
         changed.append(f"${threshold_usd:g} threshold")
     return f"MUCA-Server's cost alert {' and '.join(changed)} updated."
+
+
+# Discord's attachment limit for a server without boosts is 10 MB.
+EXPORT_MAX_PLAIN_BYTES = 9_000_000
+
+
+@dataclass
+class ExportResult:
+    reply: str
+    filename: str | None = None
+    data: bytes | None = None
+
+
+def _export_name(bot: BotRuntime, link: Link) -> str:
+    name = bot._channel_name_for(link) or link.name
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name)
+
+
+async def export_logs(
+    manager: BotManager,
+    guild_id: int,
+    channel,
+    *,
+    all: bool = False,
+    days: int = 1,
+    admin_token: str | None = None,
+    fetch: Callable[..., Awaitable[tuple[str | None, str | None]]] = fetch_episodic_export,
+    now: float | None = None,
+) -> ExportResult:
+    """
+    /mulca export: a linked channel's episodic log as CSV (or every linked
+    channel's in this server, zipped), the last `days` days -- 0 for all of
+    it. Zipped anyway when one CSV is too big to attach.
+    """
+
+    if not admin_token:
+        return ExportResult("MUCA_ADMIN_TOKEN isn't set, so MULCA can't read the logs.")
+
+    if all:
+        targets = [
+            (bot, link)
+            for bot in manager.resolve(None, guild_id)
+            for link in bot.links()
+            if link.guild_id == guild_id
+        ]
+        if not targets:
+            return ExportResult("No linked channel in this server.")
+    else:
+        if channel is None:
+            return ExportResult("Pick a text channel, or run this in one.")
+        found = manager.link_for_channel(channel.id)
+        if found is None:
+            return ExportResult(f"MULCA doesn't serve <#{channel.id}>.")
+        targets = [found]
+
+    since = None if days <= 0 else (now or time.time()) - days * 86_400
+    stamp = datetime.fromtimestamp(now or time.time()).strftime("%Y%m%d-%H%M")
+
+    files: dict[str, str] = {}
+    failed = []
+    for bot, link in targets:
+        csv_text, problem = await fetch(
+            manager.primary.registry.url,
+            admin_token,
+            link.conversation_id,
+            since=since,
+        )
+        if csv_text is None:
+            failed.append(f"<#{link.text_channel_id}> ({problem})")
+        else:
+            files[f"{_export_name(bot, link)}-{stamp}.csv"] = csv_text
+
+    span = "everything" if since is None else f"the last {days} day(s)"
+    lines = [f"Episodic log, {span}." if files else "Nothing to export."]
+    if failed:
+        lines.append("Could not export: " + ", ".join(failed) + ".")
+    reply = "\n".join(lines)
+    if not files:
+        return ExportResult(reply)
+
+    if not all:
+        filename, text = next(iter(files.items()))
+        data = text.encode("utf-8")
+        if len(data) <= EXPORT_MAX_PLAIN_BYTES:
+            return ExportResult(reply, filename, data)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for filename, text in files.items():
+            archive.writestr(filename, text)
+    return ExportResult(reply, f"mulca-export-{stamp}.zip", buffer.getvalue())
 
 
 def _usd(usd: float | None) -> str:
@@ -1577,6 +1682,39 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             admin_token=os.environ.get("MUCA_ADMIN_TOKEN"),
         )
         await interaction.followup.send(reply, ephemeral=True)
+
+    @mulca.command(
+        name="export",
+        description="Download a linked channel's log (messages, spoken turns, wake/call events) as CSV.",
+    )
+    @app_commands.describe(
+        channel="The linked text channel (default: this one). Ignored if all is true.",
+        all="Every text channel linked in this server, zipped.",
+        days="How many days back (default 1; 0 for everything).",
+    )
+    async def export_command(
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | None = None,
+        all: bool = False,
+        days: int = 1,
+    ) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        result = await export_logs(
+            manager,
+            interaction.guild_id,
+            channel or interaction.channel,
+            all=all,
+            days=days,
+            admin_token=os.environ.get("MUCA_ADMIN_TOKEN"),
+        )
+        if result.data is None:
+            await interaction.followup.send(result.reply, ephemeral=True)
+            return
+        await interaction.followup.send(
+            result.reply,
+            file=discord.File(io.BytesIO(result.data), filename=result.filename),
+            ephemeral=True,
+        )
 
     # -- /mulca bot ... --------------------------------------------------
 

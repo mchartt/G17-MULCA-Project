@@ -23,6 +23,7 @@ from mulca_discord.commands import (
     announce_intro,
     announce_intro_everywhere,
     control,
+    export_logs,
     format_status,
     format_usage,
     greet_first_session,
@@ -1373,6 +1374,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "mode",
         "model",
         "costalert",
+        "export",
         "button",
         "bot",
         "limit",
@@ -1556,3 +1558,173 @@ async def test_an_unknown_bot_changes_nothing():
 
     assert "No MULCA bot" in await set_model(manager, "m", "Nobody", GUILD)
     assert store.models_for(1) == ("", "")
+
+
+# ----------------------------------------------------------------------
+# /mulca export
+# ----------------------------------------------------------------------
+
+
+CSV_TEXT = "time_utc,content\n2026-10-14 10:00:00,hi\n"
+
+
+def export_manager():
+    runtime = make_runtime()
+    runtime.registry.url = "ws://muca-server:8000/"
+    manager = BotManager([runtime])
+    text = runtime.client.add_channel(111, name="group-10")
+    return manager, text
+
+
+async def test_export_fetches_the_channels_log_for_the_last_days():
+    manager, text = export_manager()
+    calls = []
+
+    async def fetch(url, token, conversation_id, *, since=None):
+        calls.append((url, token, conversation_id, since))
+        return CSV_TEXT, None
+
+    result = await export_logs(
+        manager, GUILD, text, days=2, admin_token="secret", fetch=fetch, now=1_000_000.0
+    )
+
+    assert calls == [
+        ("ws://muca-server:8000/", "secret", "channel:111", 1_000_000.0 - 2 * 86_400)
+    ]
+    assert result.filename.startswith("group-10-") and result.filename.endswith(".csv")
+    assert result.data.decode() == CSV_TEXT
+
+
+async def test_export_days_zero_is_everything_and_all_is_zipped():
+    import io
+    import zipfile
+
+    manager, text = export_manager()
+    seen_since = []
+
+    async def fetch(url, token, conversation_id, *, since=None):
+        seen_since.append(since)
+        return CSV_TEXT, None
+
+    result = await export_logs(
+        manager, GUILD, None, all=True, days=0, admin_token="secret", fetch=fetch
+    )
+
+    assert seen_since == [None]
+    assert result.filename.endswith(".zip")
+    names = zipfile.ZipFile(io.BytesIO(result.data)).namelist()
+    assert len(names) == 1 and names[0].startswith("group-10-")
+
+
+async def test_export_needs_the_admin_token_and_a_linked_channel():
+    manager, text = export_manager()
+
+    async def fetch(*args, **kwargs):
+        raise AssertionError("must not be called")
+
+    no_token = await export_logs(manager, GUILD, text, admin_token=None, fetch=fetch)
+    assert "MUCA_ADMIN_TOKEN" in no_token.reply and no_token.data is None
+
+    other = manager.primary.client.add_channel(333, name="random")
+    unlinked = await export_logs(manager, GUILD, other, admin_token="x", fetch=fetch)
+    assert "doesn't serve" in unlinked.reply and unlinked.data is None
+
+
+async def test_export_reports_why_the_server_said_no():
+    manager, text = export_manager()
+
+    async def fetch(*args, **kwargs):
+        return None, "nothing logged for it yet"
+
+    result = await export_logs(manager, GUILD, text, admin_token="x", fetch=fetch)
+
+    assert result.data is None
+    assert "nothing logged for it yet" in result.reply
+
+
+async def test_leaving_voice_tells_the_open_session_the_call_is_empty():
+    registry = ReopeningRegistry()
+    registry.find = lambda conversation_id: registry.session
+
+    class LeavingVoiceClient(SilentVoiceClient):
+        def stop_listening(self) -> None:
+            pass
+
+        async def disconnect(self, force=False) -> None:
+            pass
+
+    bridge = VoiceBridge(
+        scope=Scope(conversation_id="instance:team-alpha"),
+        registry=registry,
+        voice_client=LeavingVoiceClient(),
+        reply_channel=None,
+        roster=lambda: {1: "Ada"},
+    )
+
+    await bridge.disconnect()
+
+    assert registry.session.client.rosters == [{}]
+
+
+# ----------------------------------------------------------------------
+# The diary reminder when a call ends
+# ----------------------------------------------------------------------
+
+
+def runtime_in_a_call(started_seconds_ago: float):
+    runtime = make_runtime()
+    text = runtime.client.add_channel(111)
+    voice = runtime.client.add_channel(ALPHA.voice_channel_id, members=[])
+    runtime.voice[ALPHA.name] = FakeBridge()
+    runtime._call_started_at[ALPHA.name] = time.time() - started_seconds_ago
+    return runtime, text, voice
+
+
+async def test_everyone_leaving_a_call_posts_the_diary_reminder_once():
+    runtime, text, _ = runtime_in_a_call(600)
+
+    await runtime.sync_voice(ALPHA)
+
+    assert text.sent == [messages.CALL_ENDED_REMINDER]
+    assert "diary" in messages.CALL_ENDED_REMINDER
+    assert DIARY_FORM_URL in messages.CALL_ENDED_REMINDER
+    assert DIARY_FORM_URL not in messages.DAILY_GREETING
+
+    # The next call's reminder replaces this one.
+    runtime.voice[ALPHA.name] = FakeBridge()
+    runtime._call_started_at[ALPHA.name] = time.time() - 600
+    await runtime.sync_voice(ALPHA)
+
+    assert text.sent_messages[0].deleted
+    assert len(text.sent) == 2
+
+
+async def test_a_short_call_gets_no_reminder():
+    runtime, text, _ = runtime_in_a_call(30)
+
+    await runtime.sync_voice(ALPHA)
+
+    assert text.sent == []
+
+
+async def test_leaving_with_people_still_in_the_call_gets_no_reminder():
+    runtime, text, voice = runtime_in_a_call(600)
+    voice.members = [FakeMember(5, "Ada")]
+    runtime.paused = True  # e.g. stopped: leaves although people remain
+
+    await runtime.sync_voice(ALPHA)
+
+    assert text.sent == []
+
+
+async def test_a_watchdog_rejoin_is_the_same_call():
+    runtime, _, _ = runtime_in_a_call(600)
+    started = runtime._call_started_at[ALPHA.name]
+
+    async def join_voice(link):
+        runtime._call_started_at.setdefault(link.name, time.time())
+
+    runtime.join_voice = join_voice
+    await runtime._rejoin_voice(ALPHA)
+
+    assert runtime._call_started_at[ALPHA.name] == started

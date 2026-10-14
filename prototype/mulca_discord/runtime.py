@@ -84,6 +84,10 @@ TYPING_INDICATOR_MAX_SECONDS = 30.0
 # reset. See BotRuntime._greet_if_due.
 GREETING_COOLDOWN_SECONDS = 2 * 24 * 3600
 
+# A call shorter than this (someone popping in and out) gets no diary
+# reminder when it ends: it wasn't a work session.
+CALL_REMINDER_MIN_SECONDS = 120
+
 # Display names that don't count as a conversation's "first real message"
 # for the reminder's own cooldown clock -- test/admin accounts used while
 # setting a channel up, not actual participants. Matched case-insensitively
@@ -177,6 +181,11 @@ class BotRuntime:
     # greet and a conversation's real first message reset it, letting the
     # reminder post a second time the same day.
     _last_greeting_message: dict[str, object] = field(default_factory=dict, repr=False)
+    # Same, for CALL_ENDED_REMINDER, keyed on link name.
+    _last_call_reminder: dict[str, object] = field(default_factory=dict, repr=False)
+    # When MULCA joined each link's current call; kept across a watchdog
+    # rejoin, which is the same call.
+    _call_started_at: dict[str, float] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         if self.usage is None:
@@ -428,9 +437,12 @@ class BotRuntime:
             on_reachable=lambda reachable: self.server_reachable(text_channel, reachable),
         )
         self.voice[link.name] = bridge
+        self._call_started_at.setdefault(link.name, time.time())
         await bridge.start()
 
-    async def leave_voice(self, link: Link) -> None:
+    async def leave_voice(self, link: Link, *, rejoining: bool = False) -> None:
+        if not rejoining:
+            self._call_started_at.pop(link.name, None)
         bridge = self.voice.pop(link.name, None)
         if bridge is None:
             return
@@ -446,7 +458,7 @@ class BotRuntime:
         logs only (see bridge.py); never announced to the group.
         """
 
-        await self.leave_voice(link)
+        await self.leave_voice(link, rejoining=True)
         await self.join_voice(link)
 
     async def sync_voice(self, link: Link) -> None:
@@ -463,7 +475,38 @@ class BotRuntime:
         ):
             await self.join_voice(link)
         else:
+            started = self._call_started_at.get(link.name)
+            was_in_voice = link.name in self.voice
             await self.leave_voice(link)
+            if (
+                was_in_voice
+                and not _humans(channel)
+                and started is not None
+                and time.time() - started >= CALL_REMINDER_MIN_SECONDS
+            ):
+                await self._post_call_ended_reminder(link)
+
+    async def _post_call_ended_reminder(self, link: Link) -> None:
+        """
+        Everyone left the call: the diary/thumbs reminder in the text
+        channel, replacing the previous one (found live: copies pile up).
+        """
+
+        channel = self.client.get_channel(link.text_channel_id)
+        if channel is None:
+            return
+
+        previous = self._last_call_reminder.pop(link.name, None)
+        if previous is not None:
+            with suppress(Exception):
+                await previous.delete()
+
+        try:
+            self._last_call_reminder[link.name] = await channel.send(
+                messages.CALL_ENDED_REMINDER
+            )
+        except Exception:
+            logger.warning("Could not post the call-ended reminder in %s", channel, exc_info=True)
 
     async def _sync_all_voice(self) -> None:
         for link in self.links():

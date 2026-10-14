@@ -75,16 +75,26 @@ INTRO_MESSAGE = (
 
 
 # Shared by FIRST_SESSION_MESSAGE and DAILY_GREETING below -- the actual
-# capability reminder and usefulness-signal/diary instructions, without
-# any "welcome"/"welcome back" framing, since which framing applies
-# differs between the two.
+# capability reminder and usefulness-signal instructions, without any
+# "welcome"/"welcome back" framing, since which framing applies differs
+# between the two. The diary moved to CALL_ENDED_REMINDER.
 SESSION_REMINDER = (
     "I'm ready to help with planning, performing, and reporting your "
     "tasks -- just tell me what you need.\n\n"
     "During this session, please react to messages that were particularly "
     f"helpful or unhelpful with a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN}.\n\n"
-    f"After this session, please fill in the diary: <{DIARY_FORM_URL}>\n"
     "Let's get to it"
+)
+
+# Posted in the text channel when a voice call ends because everyone left
+# (BotRuntime.sync_voice): the diary belongs at the end of a session, which
+# a call ending marks far better than a day's first message does. Replaces
+# its own previous copy, like the greetings do.
+CALL_ENDED_REMINDER = (
+    "Thanks for the session! Don't forget to fill in the diary: "
+    f"<{DIARY_FORM_URL}>\n\n"
+    f"And if you haven't yet, give a \N{THUMBS UP SIGN} or \N{THUMBS DOWN SIGN} "
+    "to MULCA messages that were particularly helpful or unhelpful."
 )
 
 # Posted once, manually (/mulca greet) -- a channel's first-ever session,

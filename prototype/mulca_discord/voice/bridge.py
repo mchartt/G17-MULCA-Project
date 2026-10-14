@@ -161,6 +161,7 @@ class VoiceBridge:
     async def disconnect(self) -> None:
         """Stop, and leave the voice channel."""
 
+        await self._announce_leaving()
         await self.stop()
         with suppress(Exception):
             await self._voice_client.disconnect(force=True)
@@ -173,6 +174,21 @@ class VoiceBridge:
             )
         except MucaConnectionLost:
             logger.warning("MUCA-Server unreachable; roster not sent")
+
+    async def _announce_leaving(self) -> None:
+        """
+        An empty voice roster, so the server logs the call as ended: the
+        bot leaves once the last person has gone, before any roster
+        without them was sent. Only to a session that is already open --
+        never reopens one just for this.
+        """
+
+        session = self._registry.find(self._scope.conversation_id)
+        client = getattr(session, "client", None)
+        if client is None:
+            return
+        with suppress(Exception):
+            await client.send_participants({}, modality="audio")
 
     def forget(self, user_id: int) -> None:
         self.capture.forget(user_id)

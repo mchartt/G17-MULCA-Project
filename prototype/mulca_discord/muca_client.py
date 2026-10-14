@@ -18,6 +18,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
+import aiohttp
 import websockets
 from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed
@@ -111,6 +112,57 @@ async def set_server_model(
         return f"couldn't reach the server ({exc})"
 
     return "the server closed the connection"
+
+
+def _http_url(ws_url: str, path: str) -> str:
+    """The server's HTTP address for `path`, from its websocket one."""
+
+    if ws_url.startswith("wss://"):
+        base = "https://" + ws_url[len("wss://"):]
+    elif ws_url.startswith("ws://"):
+        base = "http://" + ws_url[len("ws://"):]
+    else:
+        base = ws_url
+    return base.rstrip("/") + path
+
+
+async def fetch_episodic_export(
+    url: str,
+    admin_token: str,
+    conversation_id: str,
+    *,
+    since: float | None = None,
+    timeout: float = 60.0,
+) -> tuple[str | None, str | None]:
+    """
+    One conversation's episodic log, as CSV, from MUCA-Server's /export:
+    (csv, None) when it worked, otherwise (None, why not).
+    """
+
+    params = {"conversation_id": conversation_id}
+    if since is not None:
+        params["since"] = str(since)
+
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=timeout),
+        ) as session:
+            async with session.get(
+                _http_url(url, "/export"),
+                params=params,
+                headers={"X-Admin-Token": admin_token},
+            ) as response:
+                if response.status == 200:
+                    return await response.text(encoding="utf-8"), None
+                if response.status == 404:
+                    return None, "nothing logged for it yet"
+                if response.status == 403:
+                    return None, "the server refused the admin token"
+                return None, f"the server answered {response.status}"
+    except TimeoutError:
+        return None, "the server didn't answer"
+    except aiohttp.ClientError as exc:
+        return None, f"couldn't reach the server ({exc})"
 
 
 async def set_server_cost_alert(

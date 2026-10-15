@@ -95,7 +95,7 @@ def render_schedule(schedule: dict) -> str:
     ]
     lines += ["", "Events:"]
     lines += [f"- {_day(event['date'])}: {event['what']}" for event in schedule["events"]]
-    lines += ["", "Deliverables, each due at a team's cohort's tutoring:"]
+    lines += ["", "Deliverables and their due dates:"]
     for item in schedule["deliverables"]:
         dates = ", ".join(
             f"cohort {group} on {_day(due)}" for group, due in item["due"].items()
@@ -115,7 +115,7 @@ def _next_for(schedule: dict, today: date, group: str) -> str:
         None,
     )
     return (
-        f"{upcoming['what']}, at the tutoring on {_day(upcoming['due'][group])}"
+        f"{upcoming['what']}, due on {_day(upcoming['due'][group])}"
         if upcoming is not None
         else f"{schedule['then']} (not tracked further)"
     )

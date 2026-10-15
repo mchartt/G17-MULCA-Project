@@ -9,7 +9,7 @@ name: Advanced User Interfaces (AUI, Politecnico di Milano, 2026/27)
 course_page: the course page on WeBeep
 
 title: Project schedule (AUI 2026/27)
-header: "Type: normative · Version: v1 (2026-10-07) · Source: AUI 2026/27 project-phase agenda, from the teaching team"
+header: "Type: normative · Version: v2 (2026-10-15) · Source: AUI 2026/27 project-phase agenda, from the teaching team"
 timezone: Europe/Rome
 
 # Weekly tutoring slots.
@@ -32,7 +32,7 @@ events:
   - date: 2026-10-21
     what: suspended (Master graduation day)
 
-# Each is due at the tutoring of each group, on these dates.
+# Each is due on these dates, per cohort.
 deliverables:
   - what: initial user requirements analysis; review of the state of the art related to your project (academic literature & market products)
     due: {A: 2026-10-19, B: 2026-10-14}

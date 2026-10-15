@@ -28,7 +28,7 @@ events:
   - date: 2026-11-09
     what: autonomous project work (no tutoring)
 
-# Each is due at the tutoring, on these dates.
+# Each is due on these dates.
 deliverables:
   - what: survey report of reviewed papers/products (review of the state of the art related to your project -- academic literature & market products); UNG model (user requirements analysis)
     due: {IMI: 2026-10-29}

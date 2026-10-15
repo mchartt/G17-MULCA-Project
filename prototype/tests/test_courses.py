@@ -51,7 +51,7 @@ def test_imi_has_a_single_group_whatever_the_channel():
     [
         (date(2026, 10, 14), "survey report of reviewed papers/products"),
         (date(2026, 10, 29), "Thu 29 Oct 2026"),  # due today
-        (date(2026, 10, 30), "initial user scenarios (UX design), at the tutoring on Thu 5 Nov 2026"),
+        (date(2026, 10, 30), "initial user scenarios (UX design), due on Thu 5 Nov 2026"),
         (date(2026, 11, 6), "revised scenarios"),
         (date(2026, 11, 13), "further project work"),
     ],

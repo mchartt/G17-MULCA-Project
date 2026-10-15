@@ -33,8 +33,8 @@ PROTOTYPING = "initial prototyping, at the following tutoring"
     [
         (date(2026, 10, 7), f"{REQUIREMENTS}", f"{REQUIREMENTS}"),
         (date(2026, 10, 19), "Mon 19 Oct 2026", "Wed 28 Oct 2026"),  # due today (A)
-        (date(2026, 10, 15), REQUIREMENTS, f"{UX}, at the tutoring on Wed 28 Oct"),
-        (date(2026, 10, 27), REFINED, f"{UX}, at the tutoring on Wed 28 Oct"),
+        (date(2026, 10, 15), REQUIREMENTS, f"{UX}, due on Wed 28 Oct"),
+        (date(2026, 10, 27), REFINED, f"{UX}, due on Wed 28 Oct"),
         (date(2026, 11, 3), PROTOTYPING, f"{REFINED}"),
         (date(2026, 11, 10), PROTOTYPING, PROTOTYPING),
     ],

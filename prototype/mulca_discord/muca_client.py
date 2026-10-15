@@ -403,6 +403,7 @@ class MucaWsClient:
         speaker: int,
         speaker_name: str,
         text: str,
+        mentions_assistant: bool = False,
     ) -> None:
         await self._send(
             UserTextMessage(
@@ -410,6 +411,7 @@ class MucaWsClient:
                 speaker=speaker,
                 speaker_name=speaker_name,
                 text=text,
+                mentions_assistant=mentions_assistant,
             )
         )
 

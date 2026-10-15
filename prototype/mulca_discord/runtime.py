@@ -959,6 +959,7 @@ class BotRuntime:
                 speaker=message.author.id,
                 speaker_name=message.author.display_name,
                 text=message.content,
+                mentions_assistant=tagged,
             )
 
         try:

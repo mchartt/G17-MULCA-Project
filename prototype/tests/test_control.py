@@ -719,7 +719,7 @@ class FakeMucaClientForTyping:
     async def send_participants(self, roster, *, modality) -> None:
         pass
 
-    async def send_user_text(self, *, speaker, speaker_name, text) -> None:
+    async def send_user_text(self, *, speaker, speaker_name, text, mentions_assistant=False) -> None:
         self.sent_texts.append(text)
 
 

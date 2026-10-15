@@ -559,11 +559,17 @@ class LinkStore:
             )
 
     def cost(self, bot_id: int | None, first_day: str, last_day: str) -> float:
-        """A bot's spending over these days (inclusive); None: all bots."""
+        """
+        A bot's spending over these days (inclusive) that counts against its
+        limits; None: all bots. Memory summaries (agent "summary") don't
+        count: a group shouldn't lose its voice, or its memory, to the
+        upkeep of that memory. They still show in cost_details.
+        """
 
         row = self._db.execute(
             "SELECT COALESCE(SUM(cost_usd), 0) FROM costs "
-            "WHERE day BETWEEN ? AND ? AND (? IS NULL OR bot_id = ?)",
+            "WHERE day BETWEEN ? AND ? AND (? IS NULL OR bot_id = ?) "
+            "AND agent != 'summary'",
             (first_day, last_day, bot_id, bot_id),
         ).fetchone()
         return row[0]

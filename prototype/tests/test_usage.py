@@ -58,6 +58,20 @@ def test_spending_is_recorded_per_bot_day_and_agent():
     }
 
 
+def test_memory_summaries_are_shown_but_dont_count_against_limits():
+    # A group shouldn't lose its voice, or its memory, to the upkeep of
+    # that memory.
+    usage = meter()
+    t = at(2026, 10, 6, 10, 0)
+
+    usage.record(1, usage_event(1.0), t)
+    usage.record(1, usage_event(0.4, "summary", freshText=1000), t)
+
+    day = "2026-10-06"
+    assert usage._store.cost(1, day, day) == 1.0
+    assert usage.details(1, t)["daily"]["summary"][-1] == 0.4
+
+
 def test_days_start_at_midnight_in_rome_weeks_on_monday_months_on_the_1st():
     usage = meter()
     usage.record(1, usage_event(1.0), at(2026, 10, 24, 12, 0))

@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 ReadyHook = Callable[["BotRuntime"], Awaitable[None]]
 
 
+def readable_mentions(text: str, me) -> str:
+    """
+    The bot's own @mention as "@MULCA" -- MUCA-Server only sees the raw
+    "<@1557...>" otherwise. Found live (15 Oct): "could you look up whether
+    smoking is healthy @MULCA" went unanswered, judged an unknown role tag.
+    """
+
+    if me is None:
+        return text
+    return text.replace(f"<@{me.id}>", "@MULCA").replace(f"<@!{me.id}>", "@MULCA")
+
+
 class AmbiguousBotName(Exception):
     """More than one bot in this server shares the name a command targeted."""
 
@@ -997,7 +1009,7 @@ class BotRuntime:
             await muca_client.send_user_text(
                 speaker=message.author.id,
                 speaker_name=message.author.display_name,
-                text=message.content,
+                text=readable_mentions(message.content, self.client.user),
                 mentions_assistant=tagged,
             )
 

@@ -1824,3 +1824,15 @@ async def test_without_a_course_it_only_shows_each_bots():
 
     assert reply == "**Alpha**: AUI (default)"
     assert runtimes[0].registry.restarted == []
+
+
+def test_the_bots_own_mention_reaches_the_server_as_its_name():
+    from types import SimpleNamespace
+
+    from mulca_discord.runtime import readable_mentions
+
+    me = SimpleNamespace(id=42)
+    assert readable_mentions("look it up <@42> ?", me) == "look it up @MULCA ?"
+    assert readable_mentions("<@!42> stop", me) == "@MULCA stop"
+    assert readable_mentions("ask <@7>", me) == "ask <@7>"
+    assert readable_mentions("<@42> hi", None) == "<@42> hi"

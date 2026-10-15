@@ -1,0 +1,42 @@
+# The project-phase schedule. Rendered into the main agent's instructions
+# (courses.render_schedule), and used to tell it at each connect which
+# deliverable is next (courses.next_deliverables).
+# Only these deliverables are tracked; later deadlines are not the
+# assistant's to announce.
+
+# Fill persona.md's {course_name} and {course_page}.
+name: Interactive Multimodal Interfaces (IMI, 2026/27)
+course_page: the course's official page
+
+title: Project schedule (IMI 2026/27)
+header: "Type: normative · Version: v1 (2026-10-14) · Source: IMI 2026/27 project-phase agenda, from the teaching team"
+timezone: Europe/Rome
+
+# Weekly tutoring slots: a single group, so every team is in it.
+groups:
+  IMI: Thursdays
+
+events:
+  - date: 2026-10-19
+    what: "AI for coding (part 1); presentation and discussion of project assignments; Q&A; PROJECT WORK STARTS"
+  - date: 2026-10-22
+    what: AI for coding (part 2)
+  - date: 2026-10-26
+    what: how to write your project report (and a good thesis or scientific paper); accessibility principles
+  - date: 2026-11-02
+    what: autonomous project work (no tutoring)
+  - date: 2026-11-09
+    what: autonomous project work (no tutoring)
+
+# Each is due at the tutoring, on these dates.
+deliverables:
+  - what: survey report of reviewed papers/products (review of the state of the art related to your project -- academic literature & market products); UNG model (user requirements analysis)
+    due: {IMI: 2026-10-29}
+  - what: initial user scenarios (UX design)
+    due: {IMI: 2026-11-05}
+  - what: revised scenarios; technology feasibility report and architecture draft (UX design + technology feasibility analysis)
+    due: {IMI: 2026-11-12}
+
+# After the last dated deliverable.
+then: further project work, as the teaching team announces it
+untracked: Later deliverables and deadlines exist but are not tracked here; for those, refer students to the teaching team.

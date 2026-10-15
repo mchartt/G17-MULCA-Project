@@ -36,6 +36,7 @@ from mulca_discord.commands import (
     send_long,
     set_dms,
     set_mode,
+    set_course,
     set_model,
     split_message,
     unlink_channel,
@@ -519,7 +520,7 @@ async def test_a_message_in_a_linked_channel_goes_to_its_memory_and_is_remembere
 
 
 async def test_the_scope_carries_the_channels_own_name():
-    # aui.main_instructions() uses this to tell a team's own MULCA which
+    # courses.main_instructions() uses this to tell a team's own MULCA which
     # tutoring cohort it belongs to -- found live, without it every
     # channel got every cohort's deadline listed together, with nothing
     # saying which one was actually this channel's own.
@@ -1378,6 +1379,7 @@ def test_the_primary_bot_registers_restart_and_the_admin_commands():
         "model",
         "costalert",
         "export",
+        "course",
         "button",
         "bot",
         "limit",
@@ -1746,3 +1748,79 @@ async def test_voiceupdate_posts_the_voice_explanation_and_leaves_the_intro_alon
     assert "MULCA stop" in messages.VOICE_UPDATE_MESSAGE
     assert "MULCA start" not in messages.INTRO_MESSAGE
     assert "MULCA start" in HELP_MESSAGE
+
+
+# ----------------------------------------------------------------------
+# /mulca course
+# ----------------------------------------------------------------------
+
+
+def test_the_course_goes_by_bot_then_server_setting_then_name_then_default():
+    manager, store, runtimes = model_manager("Alpha")
+    alpha = runtimes[0]
+
+    assert alpha.course_choice(GUILD) == ("aui", "default")
+
+    alpha.client.guilds[GUILD].name = "IMI 2026/27"
+    assert alpha.course_choice(GUILD) == ("imi", "server name")
+
+    store.set_course(GUILD, "aui")
+    assert alpha.course_choice(GUILD) == ("aui", "server setting")
+
+    store.set_course(GUILD, "imi", bot_id=1)
+    assert alpha.course_choice(GUILD) == ("imi", "bot setting")
+    # Another server is untouched by both.
+    assert alpha.course_choice(901) == ("aui", "default")
+
+
+async def test_a_message_opens_its_session_on_the_servers_course():
+    runtime = make_runtime()
+    runtime.client.guilds[GUILD].name = "IMI"
+    text = runtime.client.add_channel(111, members=[FakeMember(5, "Ada")])
+
+    await runtime.on_message(message(5, text))
+
+    [scope] = runtime.registry.scopes
+    assert scope.course == "imi"
+
+
+@pytest.mark.parametrize("target", [None, "all"])
+async def test_a_course_for_every_bot_is_the_servers_and_restarts_its_sessions(target):
+    manager, store, runtimes = model_manager("Alpha", "Beta")
+
+    reply = await set_course(manager, "imi", target, GUILD)
+
+    assert store.course_setting(GUILD) == "imi"
+    assert store.course_setting(GUILD, 1) is None
+    assert [runtime.registry.restarted for runtime in runtimes] == [
+        ["channel:101"],
+        ["channel:102"],
+    ]
+    assert "**Alpha**: IMI (server setting)" in reply
+    assert "**Beta**: IMI (server setting)" in reply
+
+
+async def test_a_course_for_one_bot_is_its_own_and_auto_forgets_it():
+    manager, store, runtimes = model_manager("Alpha", "Beta")
+    store.set_course(GUILD, "aui")
+
+    reply = await set_course(manager, "imi", "Beta", GUILD)
+
+    assert store.course_setting(GUILD, 2) == "imi"
+    assert store.course_setting(GUILD) == "aui"
+    assert runtimes[0].registry.restarted == []
+    assert runtimes[1].registry.restarted == ["channel:102"]
+    assert reply.startswith("**Beta**: IMI (bot setting)")
+
+    await set_course(manager, "auto", "Beta", GUILD)
+    assert store.course_setting(GUILD, 2) is None
+    assert runtimes[1].course_choice(GUILD) == ("aui", "server setting")
+
+
+async def test_without_a_course_it_only_shows_each_bots():
+    manager, store, runtimes = model_manager("Alpha")
+
+    reply = await set_course(manager, None, None, GUILD)
+
+    assert reply == "**Alpha**: AUI (default)"
+    assert runtimes[0].registry.restarted == []

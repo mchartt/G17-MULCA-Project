@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from websockets.exceptions import WebSocketException
 
+from .courses import DEFAULT_COURSE
 from .dispatch import ReplyDispatcher
 from .muca_client import MucaConnectionLost, MucaWsClient
 
@@ -61,10 +62,13 @@ class Scope:
     # MUCA-Server's own default -- "" means unset/use the server's.
     listening_mode: str = ""
     # The linked text channel's own Discord name (e.g. "group-10"), opaque
-    # to everything here -- only aui.main_instructions() parses it, to
+    # to everything here -- only courses.main_instructions() parses it, to
     # tell a team's own MULCA which tutoring cohort it belongs to. "" for
     # a DM, or if the channel couldn't be resolved.
     channel_name: str = ""
+    # Which course's instructions (courses/<id>/) the session gets --
+    # BotRuntime.course_for's choice for the link's Discord server.
+    course: str = DEFAULT_COURSE
 
 
 @dataclass(slots=True)
@@ -394,6 +398,7 @@ class SessionRegistry:
                 bot_name=scope.bot_name,
                 listening_mode=scope.listening_mode,
                 channel_name=scope.channel_name,
+                course=scope.course,
                 main_model=main_model,
                 intervention_model=intervention_model,
             )

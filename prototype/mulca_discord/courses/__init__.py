@@ -1,8 +1,14 @@
 """
-The AUI course setup MULCA gives MUCA-Server's main agent: persona, task,
-course material (knowledge/*.md) and the project schedule
-(knowledge/schedule.yaml). muca_client.py sends it as a session.update right
-after each connect; MUCA-Server's own main agent knows nothing of the course.
+The course setups MULCA gives MUCA-Server's main agent: a shared persona and
+task (persona.md, task.md), and per course (courses/<id>/) its material
+(knowledge/*.md) and project schedule (knowledge/schedule.yaml), which also
+names the course and where to check its official information.
+muca_client.py sends it as a session.update right after each connect;
+MUCA-Server's own main agent knows nothing of any course.
+
+Which course a session gets is BotRuntime.course_for's to decide (a /mulca
+course setting, else the Discord server's name via detect(), else
+DEFAULT_COURSE).
 
 Only the listed deliverables are tracked; later deadlines exist, but are not
 the assistant's to announce.
@@ -17,36 +23,61 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-AUI_DIR = Path(__file__).resolve().parent
-KNOWLEDGE_DIR = AUI_DIR / "knowledge"
+COURSES_DIR = Path(__file__).resolve().parent
 
-# Which project team (its Discord channel is named "group-<N>") sits in
-# which tutoring cohort (schedule.yaml's own "groups" keys, A/B) -- not
-# derivable from the schedule itself, which only tracks cohort-level
-# tutoring slots/deadlines, never which of the ~20 individual teams
-# belongs to which cohort. Every team not listed here is assumed to be B.
-COHORT_A_TEAMS = frozenset(
-    {"1", "4", "5", "6", "7", "8", "9", "11", "12", "14", "15"}
+# Every course with its own folder here, e.g. ("aui", "imi").
+COURSES = tuple(
+    sorted(path.name for path in COURSES_DIR.iterdir() if (path / "knowledge").is_dir())
 )
+
+# For a server with no setting whose name names no course: the course MULCA
+# was first built for.
+DEFAULT_COURSE = "aui"
 
 _TEAM_NUMBER = re.compile(r"group[-_]?(\d+)", re.IGNORECASE)
 
 
-def cohort_for_channel(channel_name: str) -> str | None:
+def detect(server_name: str) -> str | None:
     """
-    "A" or "B" for a channel named like "group-10", or None if the name
-    doesn't match that pattern at all (a DM, or a channel not actually one
-    of the numbered teams) -- callers fall back to the unscoped schedule
-    for None, rather than guessing which cohort applies.
+    The one course whose id appears in a Discord server's name as a whole
+    word, any case ("IMI 2026/27" -> "imi"); None if none or several do.
     """
+
+    found = [
+        course
+        for course in COURSES
+        if re.search(rf"\b{re.escape(course)}\b", server_name, re.IGNORECASE)
+    ]
+    return found[0] if len(found) == 1 else None
+
+
+def cohort_for_channel(channel_name: str, schedule: dict) -> str | None:
+    """
+    The tutoring cohort (one of schedule.yaml's "groups" keys) of the team in
+    a channel. A course with a single group: always that one. Otherwise, for
+    a channel named like "group-10", the cohort whose "teams" list has 10, or
+    "default_group"; None if the name doesn't match that pattern at all (a
+    DM, or a channel not actually one of the numbered teams) -- callers fall
+    back to the unscoped schedule for None, rather than guessing which
+    cohort applies.
+    """
+
+    groups = list(schedule["groups"])
+    if len(groups) == 1:
+        return groups[0]
 
     match = _TEAM_NUMBER.search(channel_name)
     if match is None:
         return None
-    return "A" if match.group(1) in COHORT_A_TEAMS else "B"
+    team = int(match.group(1))
+    return next(
+        (group for group, teams in schedule.get("teams", {}).items() if team in teams),
+        schedule.get("default_group"),
+    )
 
 
-def load_schedule(path: Path = KNOWLEDGE_DIR / "schedule.yaml") -> dict:
+def load_schedule(course: str = DEFAULT_COURSE) -> dict:
+    path = COURSES_DIR / course / "knowledge" / "schedule.yaml"
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
@@ -115,18 +146,24 @@ def next_deliverables(
     return "Next deliverables -- " + "; ".join(parts) + "."
 
 
-def load_knowledge(knowledge_dir: Path = KNOWLEDGE_DIR) -> str:
+def load_knowledge(course: str = DEFAULT_COURSE) -> str:
     """The course material: every knowledge/*.md file, then the schedule."""
 
+    knowledge_dir = COURSES_DIR / course / "knowledge"
     parts = [
         path.read_text(encoding="utf-8").strip()
         for path in sorted(knowledge_dir.glob("*.md"))
     ]
-    parts.append(render_schedule(load_schedule(knowledge_dir / "schedule.yaml")))
+    parts.append(render_schedule(load_schedule(course)))
     return "\n\n".join(parts)
 
 
-def main_instructions(today: date | None = None, *, channel_name: str = "") -> str:
+def main_instructions(
+    today: date | None = None,
+    *,
+    channel_name: str = "",
+    course: str = DEFAULT_COURSE,
+) -> str:
     """
     The main agent's whole instructions, replacing MUCA-Server's own. Built
     at every connect, and a session lasts at most an hour (OpenAI's limit),
@@ -139,11 +176,17 @@ def main_instructions(today: date | None = None, *, channel_name: str = "") -> s
     (and sometimes guessed wrong) which cohort its own channel was in.
     """
 
-    schedule = load_schedule()
+    schedule = load_schedule(course)
     today = today or today_in(schedule)
-    cohort = cohort_for_channel(channel_name)
-    persona = (AUI_DIR / "persona.md").read_text(encoding="utf-8").strip()
-    task = (AUI_DIR / "task.md").read_text(encoding="utf-8").strip()
+    cohort = cohort_for_channel(channel_name, schedule)
+    persona = (
+        (COURSES_DIR / "persona.md")
+        .read_text(encoding="utf-8")
+        .strip()
+        .replace("{course_name}", schedule["name"])
+        .replace("{course_page}", schedule["course_page"])
+    )
+    task = (COURSES_DIR / "task.md").read_text(encoding="utf-8").strip()
     cohort_line = (
         f"This channel's team is in tutoring cohort {cohort} "
         f"({schedule['groups'][cohort]}) -- a known, certain fact about "
@@ -155,7 +198,7 @@ def main_instructions(today: date | None = None, *, channel_name: str = "") -> s
     )
     return (
         f"{persona}\n\nTask context:\n{task}\n\n{cohort_line}"
-        f"Course material:\n{load_knowledge()}"
+        f"Course material:\n{load_knowledge(course)}"
         f"\n\nToday is {today:%A} {today.day} {today:%B %Y}. "
         f"{next_deliverables(schedule, today, cohort=cohort)}"
     )

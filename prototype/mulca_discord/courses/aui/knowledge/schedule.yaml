@@ -1,8 +1,13 @@
 # The project-phase schedule. Rendered into the main agent's instructions
-# (aui.render_schedule), and used to tell it at each connect which
-# deliverable is next for each group (aui.next_deliverables).
+# (courses.render_schedule), and used to tell it at each connect which
+# deliverable is next for each group (courses.next_deliverables).
 # Only these deliverables are tracked; later deadlines are not the
 # assistant's to announce.
+
+# Fill persona.md's {course_name} and {course_page}.
+name: Advanced User Interfaces (AUI, Politecnico di Milano, 2026/27)
+course_page: the course page on WeBeep
+
 title: Project schedule (AUI 2026/27)
 header: "Type: normative · Version: v1 (2026-10-07) · Source: AUI 2026/27 project-phase agenda, from the teaching team"
 timezone: Europe/Rome
@@ -11,6 +16,13 @@ timezone: Europe/Rome
 groups:
   A: Mondays 14:30-16:00
   B: Wednesdays 08:30-10:00
+
+# Which project team (its Discord channel is named "group-<N>") sits in
+# which cohort -- not derivable from the dates below, which are only
+# cohort-level. Every team not listed is in default_group.
+teams:
+  A: [1, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15]
+default_group: B
 
 events:
   - date: 2026-10-07

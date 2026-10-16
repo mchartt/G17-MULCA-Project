@@ -1836,3 +1836,21 @@ def test_the_bots_own_mention_reaches_the_server_as_its_name():
     assert readable_mentions("<@!42> stop", me) == "@MULCA stop"
     assert readable_mentions("ask <@7>", me) == "ask <@7>"
     assert readable_mentions("<@42> hi", None) == "<@42> hi"
+
+
+def test_the_bots_own_role_counts_as_mentioning_it():
+    from types import SimpleNamespace
+
+    from mulca_discord.runtime import own_roles, readable_mentions
+
+    me = SimpleNamespace(id=42)
+    mine = SimpleNamespace(id=900, tags=SimpleNamespace(bot_id=42))
+    other_bot = SimpleNamespace(id=901, tags=SimpleNamespace(bot_id=7))
+    plain = SimpleNamespace(id=902, tags=None)
+    message = SimpleNamespace(role_mentions=[mine, other_bot, plain])
+
+    roles = own_roles(message, me)
+    assert roles == [mine]
+    assert readable_mentions("<@&900> read this", me, roles) == "@MULCA read this"
+    assert readable_mentions("<@&902> read this", me, roles) == "<@&902> read this"
+    assert own_roles(SimpleNamespace(), me) == []

@@ -35,16 +35,32 @@ logger = logging.getLogger(__name__)
 ReadyHook = Callable[["BotRuntime"], Awaitable[None]]
 
 
-def readable_mentions(text: str, me) -> str:
+def readable_mentions(text: str, me, roles=()) -> str:
     """
     The bot's own @mention as "@MULCA" -- MUCA-Server only sees the raw
     "<@1557...>" otherwise. Found live (15 Oct): "could you look up whether
     smoking is healthy @MULCA" went unanswered, judged an unknown role tag.
+    roles: the bot's own role(s) -- found live (16 Oct), students mention
+    the role "@MULCA" as often as the bot itself.
     """
 
+    if me is not None:
+        text = text.replace(f"<@{me.id}>", "@MULCA").replace(f"<@!{me.id}>", "@MULCA")
+    for role in roles:
+        text = text.replace(f"<@&{role.id}>", "@MULCA")
+    return text
+
+
+def own_roles(message, me) -> list:
+    """The roles mentioned in the message that are this bot's own."""
+
     if me is None:
-        return text
-    return text.replace(f"<@{me.id}>", "@MULCA").replace(f"<@!{me.id}>", "@MULCA")
+        return []
+    return [
+        role
+        for role in getattr(message, "role_mentions", None) or []
+        if getattr(getattr(role, "tags", None), "bot_id", None) == me.id
+    ]
 
 
 class AmbiguousBotName(Exception):
@@ -873,8 +889,10 @@ class BotRuntime:
             return
 
         channel = message.channel
-        tagged = self.client.user is not None and self.client.user in getattr(
-            message, "mentions", []
+        my_roles = own_roles(message, self.client.user)
+        tagged = bool(my_roles) or (
+            self.client.user is not None
+            and self.client.user in getattr(message, "mentions", [])
         )
         is_dm = isinstance(channel, discord.DMChannel)
         link: Link | None = None
@@ -1009,7 +1027,7 @@ class BotRuntime:
             await muca_client.send_user_text(
                 speaker=message.author.id,
                 speaker_name=message.author.display_name,
-                text=readable_mentions(message.content, self.client.user),
+                text=readable_mentions(message.content, self.client.user, my_roles),
                 mentions_assistant=tagged,
             )
 

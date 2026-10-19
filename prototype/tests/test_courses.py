@@ -53,7 +53,10 @@ def test_imi_has_a_single_group_whatever_the_channel():
         (date(2026, 10, 29), "Thu 29 Oct 2026"),  # due today
         (date(2026, 10, 30), "initial user scenarios (UX design), due on Thu 5 Nov 2026"),
         (date(2026, 11, 6), "revised scenarios"),
-        (date(2026, 11, 13), "further project work"),
+        (date(2026, 11, 13), "prototype update, due on Thu 19 Nov 2026"),
+        (date(2026, 11, 20), "prototype update; initial pitch material, due on Thu 26 Nov 2026"),
+        (date(2026, 11, 27), "Demo Madness: final pitch material"),
+        (date(2026, 12, 4), "the end of the course"),
     ],
 )
 def test_imi_is_told_its_next_deliverable(today, next_due):

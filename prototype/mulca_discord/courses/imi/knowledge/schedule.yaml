@@ -9,7 +9,7 @@ name: Interactive Multimodal Interfaces (IMI, 2026/27)
 course_page: the course's official page
 
 title: Project schedule (IMI 2026/27)
-header: "Type: normative · Version: v1 (2026-10-14) · Source: IMI 2026/27 project-phase agenda, from the teaching team"
+header: "Type: normative · Version: v2 (2026-10-19) · Source: IMI 2026/27 project-phase agenda, from the teaching team"
 timezone: Europe/Rome
 
 # Weekly tutoring slots: a single group, so every team is in it.
@@ -27,6 +27,14 @@ events:
     what: autonomous project work (no tutoring)
   - date: 2026-11-09
     what: autonomous project work (no tutoring)
+  - date: 2026-11-16
+    what: autonomous project work (no tutoring)
+  - date: 2026-11-23
+    what: autonomous project work (no tutoring)
+  - date: 2026-11-30
+    what: autonomous project work (no tutoring)
+  - date: 2026-12-03
+    what: "DEMO MADNESS (elevator pitch): every group pitches and demos its prototype -- END OF THE COURSE"
 
 # Each is due on these dates.
 deliverables:
@@ -36,7 +44,13 @@ deliverables:
     due: {IMI: 2026-11-05}
   - what: revised scenarios; technology feasibility report and architecture draft (UX design + technology feasibility analysis)
     due: {IMI: 2026-11-12}
+  - what: prototype update
+    due: {IMI: 2026-11-19}
+  - what: prototype update; initial pitch material
+    due: {IMI: 2026-11-26}
+  - what: "Demo Madness: final pitch material, and a demo of your prototype"
+    due: {IMI: 2026-12-03}
 
 # After the last dated deliverable.
-then: further project work, as the teaching team announces it
+then: the end of the course; for anything after it, the teaching team
 untracked: Later deliverables and deadlines exist but are not tracked here; for those, refer students to the teaching team.

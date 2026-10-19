@@ -66,7 +66,9 @@ def test_imi_instructions_name_imi_and_nothing_of_auis_university():
     text = main_instructions(today=date(2026, 10, 30), course="imi")
 
     assert "course teaching assistant for Interactive Multimodal Interfaces (IMI, 2026/27)." in text
-    assert "This channel's team is in tutoring cohort IMI (Thursdays)" in text
+    # One tutoring group: no cohorts to tell apart, whatever the channel.
+    assert "cohort" not in text.lower()
+    assert "Tutoring: Thursdays" in text
     assert "{course_" not in text
     for banned in ("AUI", "Advanced User Interfaces", "Politecnico", "PoliMi", "Milan", "WeBeep"):
         assert not re.search(re.escape(banned), text, re.IGNORECASE), banned

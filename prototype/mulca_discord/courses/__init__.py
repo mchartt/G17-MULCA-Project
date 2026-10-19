@@ -88,9 +88,11 @@ def _day(value: date) -> str:
 def render_schedule(schedule: dict) -> str:
     """The whole schedule as text, for the main agent's instructions."""
 
+    # A course with one tutoring group (IMI) has no cohorts to tell apart.
+    single = len(schedule["groups"]) == 1
     lines = [f"# {schedule['title']}", schedule["header"], ""]
     lines += [
-        f"Tutoring of cohort {group}: {slot}."
+        f"Tutoring: {slot}." if single else f"Tutoring of cohort {group}: {slot}."
         for group, slot in schedule["groups"].items()
     ]
     lines += ["", "Events:"]
@@ -98,7 +100,8 @@ def render_schedule(schedule: dict) -> str:
     lines += ["", "Deliverables and their due dates:"]
     for item in schedule["deliverables"]:
         dates = ", ".join(
-            f"cohort {group} on {_day(due)}" for group, due in item["due"].items()
+            _day(due) if single else f"cohort {group} on {_day(due)}"
+            for group, due in item["due"].items()
         )
         lines.append(f"- {item['what']}: {dates}")
     lines += [f"- Then: {schedule['then']}", "", schedule["untracked"]]
@@ -187,13 +190,15 @@ def main_instructions(
         .replace("{course_page}", schedule["course_page"])
     )
     task = (COURSES_DIR / "task.md").read_text(encoding="utf-8").strip()
+    # Only where there are cohorts to tell apart: with a single tutoring
+    # group (IMI), every channel's dates are the same.
     cohort_line = (
         f"This channel's team is in tutoring cohort {cohort} "
         f"({schedule['groups'][cohort]}) -- a known, certain fact about "
         "everyone in this channel, not a guess. When asked about a "
         "deadline or tutoring date, just answer directly for this "
         "cohort.\n\n"
-        if cohort is not None
+        if cohort is not None and len(schedule["groups"]) > 1
         else ""
     )
     return (

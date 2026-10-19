@@ -9,7 +9,7 @@ name: Advanced User Interfaces (AUI, Politecnico di Milano, 2026/27)
 course_page: the course page on WeBeep
 
 title: Project schedule (AUI 2026/27)
-header: "Type: normative · Version: v2 (2026-10-15) · Source: AUI 2026/27 project-phase agenda, from the teaching team"
+header: "Type: normative · Version: v3 (2026-10-19) · Source: AUI 2026/27 project-phase agenda, from the teaching team"
 timezone: Europe/Rome
 
 # Weekly tutoring slots.
@@ -31,6 +31,18 @@ events:
     what: "cohort A: deadline for the initial user requirements analysis and state-of-the-art review (postponed from 12 Oct)"
   - date: 2026-10-21
     what: suspended (Master graduation day)
+  - date: 2026-11-23
+    what: "cohort A: no tutoring (classroom not available, Academic Year Inauguration); Prototype V2 is still due that day"
+  - date: 2026-11-30
+    what: "cohort A tutoring: Demo Madness pitch preparation"
+  - date: 2026-12-02
+    what: "14:30-16:00, DEMO MADNESS (elevator pitch): every group presents its project and demos its prototype"
+  - date: 2026-12-07
+    what: holiday (no tutoring)
+  - date: 2026-12-09
+    what: "cohort B: final project tutoring (optional)"
+  - date: 2026-12-14
+    what: "cohort A: final project tutoring (optional)"
 
 # Each is due on these dates, per cohort.
 deliverables:
@@ -40,7 +52,17 @@ deliverables:
     due: {A: 2026-10-26, B: 2026-10-28}
   - what: refined UX design; technology requirements and feasibility analysis
     due: {A: 2026-11-02, B: 2026-11-04}
+  - what: Prototype V0
+    due: {A: 2026-11-09, B: 2026-11-11}
+  - what: Prototype V1
+    due: {A: 2026-11-16, B: 2026-11-18}
+  - what: Prototype V2
+    due: {A: 2026-11-23, B: 2026-11-25}
+  - what: "Demo Madness: a presentation of your project and a demo of your prototype"
+    due: {A: 2026-12-02, B: 2026-12-02}
+  - what: Prototype V3 (almost final)
+    due: {A: 2026-12-14, B: 2026-12-09}
 
 # After the last dated deliverable.
-then: initial prototyping, at the following tutoring
+then: the final project, as the teaching team announces it
 untracked: Later deliverables and deadlines exist but are not tracked here; for those, refer students to the teaching team.

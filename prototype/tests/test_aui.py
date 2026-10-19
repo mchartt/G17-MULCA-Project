@@ -25,7 +25,11 @@ COHORT_A_TEAMS = SCHEDULE["teams"]["A"]
 REQUIREMENTS = "initial user requirements analysis"
 UX = "initial UX design (with scenarios)"
 REFINED = "refined UX design"
-PROTOTYPING = "initial prototyping, at the following tutoring"
+V0 = "Prototype V0"
+V2 = "Prototype V2"
+DEMO = "Demo Madness"
+V3 = "Prototype V3 (almost final)"
+FINAL = "the final project, as the teaching team announces it"
 
 
 @pytest.mark.parametrize(
@@ -35,8 +39,13 @@ PROTOTYPING = "initial prototyping, at the following tutoring"
         (date(2026, 10, 19), "Mon 19 Oct 2026", "Wed 28 Oct 2026"),  # due today (A)
         (date(2026, 10, 15), REQUIREMENTS, f"{UX}, due on Wed 28 Oct"),
         (date(2026, 10, 27), REFINED, f"{UX}, due on Wed 28 Oct"),
-        (date(2026, 11, 3), PROTOTYPING, f"{REFINED}"),
-        (date(2026, 11, 10), PROTOTYPING, PROTOTYPING),
+        (date(2026, 11, 3), f"{V0}, due on Mon 9 Nov", f"{REFINED}"),
+        (date(2026, 11, 10), "Prototype V1, due on Mon 16 Nov", f"{V0}, due on Wed 11 Nov"),
+        # No tutoring for A on 23 Nov, but V2 is still due.
+        (date(2026, 11, 20), f"{V2}, due on Mon 23 Nov", f"{V2}, due on Wed 25 Nov"),
+        (date(2026, 11, 26), f"{DEMO}", f"{DEMO}"),
+        (date(2026, 12, 3), f"{V3}, due on Mon 14 Dec", f"{V3}, due on Wed 9 Dec"),
+        (date(2026, 12, 15), FINAL, FINAL),
     ],
 )
 def test_each_group_is_told_its_own_next_deliverable(today, group_a, group_b):
@@ -92,8 +101,9 @@ def test_the_schedule_stops_at_the_listed_deliverables():
 
     for item in SCHEDULE["deliverables"]:
         assert item["what"] in text
-    assert "Wed 4 Nov 2026" in text
-    assert "Dec" not in text
+    assert "Wed 9 Dec 2026" in text  # cohort B's Prototype V3
+    assert "Mon 14 Dec 2026" in text  # cohort A's
+    assert "2027" not in text
     assert "not tracked here" in text
 
 

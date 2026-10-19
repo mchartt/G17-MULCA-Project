@@ -26,7 +26,7 @@ BACK_ONLINE = "I'm back online."
 AVAILABLE_AGAIN = "I'm available again."
 PAUSED = "I'm paused by a server admin and won't answer until I'm started again."
 TURN_FAILED = "Sorry, something went wrong and I couldn't answer that. Please try again."
-ATTACHMENTS = "I can only read text messages -- I can't see attachments, images or stickers."
+ATTACHMENTS = "I can read text, Word and PDF files, but not images, scans or stickers."
 
 # The diary every participant fills in after a session -- same link for
 # everyone, not per-deployment config, so it's a plain constant here rather

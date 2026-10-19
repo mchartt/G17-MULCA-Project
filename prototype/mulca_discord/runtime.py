@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 import discord
 
 from . import courses, messages
+from .attachments import read_attachments
 from .links import BotRecord, Link, LinkStore, link_for_channel
 from .messages import Notices
 from .muca_client import MucaWsClient
@@ -885,7 +886,8 @@ class BotRuntime:
             message.content,
         )
 
-        if message.author.bot or not message.content:
+        attachments = getattr(message, "attachments", None) or []
+        if message.author.bot or not (message.content or attachments):
             return
 
         channel = message.channel
@@ -970,6 +972,9 @@ class BotRuntime:
         if link is not None and not roster:
             roster = await _roster(message.channel)
 
+        # Read once, not again on a reconnect's resend.
+        attached = await read_attachments(attachments)
+
         async def send(muca_client) -> None:
             if link is not None:
                 await muca_client.send_participants(roster, modality="text")
@@ -1029,6 +1034,7 @@ class BotRuntime:
                 speaker_name=message.author.display_name,
                 text=readable_mentions(message.content, self.client.user, my_roles),
                 mentions_assistant=tagged,
+                attachments=attached,
             )
 
         try:
@@ -1057,7 +1063,8 @@ class BotRuntime:
         await self.notices.resolve(OFFLINE, messages.BACK_ONLINE)
 
         if tagged:
-            if getattr(message, "attachments", None) or getattr(message, "stickers", None):
+            unreadable = any(not attachment.readable for attachment in attached)
+            if unreadable or getattr(message, "stickers", None):
                 await messages.post(channel, messages.ATTACHMENTS)
             await self.notices.remind(channel)
 

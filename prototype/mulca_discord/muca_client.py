@@ -26,6 +26,7 @@ from websockets.exceptions import ConnectionClosed
 from muca_server.agents.options import INTERVENTION_DETECTION
 from muca_server.protocol import (
     ArmListeningMessage,
+    Attachment,
     AudioStreamMessage,
     ConnectAgentMessage,
     CreateAuxiliaryAgentMessage,
@@ -411,6 +412,7 @@ class MucaWsClient:
         speaker_name: str,
         text: str,
         mentions_assistant: bool = False,
+        attachments=(),
     ) -> None:
         await self._send(
             UserTextMessage(
@@ -419,6 +421,15 @@ class MucaWsClient:
                 speaker_name=speaker_name,
                 text=text,
                 mentions_assistant=mentions_assistant,
+                attachments=[
+                    Attachment(
+                        name=attachment.name,
+                        text=attachment.text,
+                        chars=attachment.chars,
+                        readable=attachment.readable,
+                    )
+                    for attachment in attachments
+                ],
             )
         )
 

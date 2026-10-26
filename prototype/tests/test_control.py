@@ -1854,3 +1854,33 @@ def test_the_bots_own_role_counts_as_mentioning_it():
     assert readable_mentions("<@&900> read this", me, roles) == "@MULCA read this"
     assert readable_mentions("<@&902> read this", me, roles) == "<@&902> read this"
     assert own_roles(SimpleNamespace(), me) == []
+
+
+def test_a_forwarded_messages_text_and_files_are_read():
+    from types import SimpleNamespace
+
+    from mulca_discord.runtime import message_parts
+
+    report = SimpleNamespace(filename="report.pdf")
+    forward = SimpleNamespace(
+        content="",
+        attachments=[],
+        message_snapshots=[
+            SimpleNamespace(content="Requirements: no player exclusion", attachments=[report]),
+        ],
+    )
+    assert message_parts(forward) == (
+        "[Forwarded message:]\nRequirements: no player exclusion",
+        [report],
+    )
+
+    commented = SimpleNamespace(
+        content="mulca read this",
+        attachments=[],
+        message_snapshots=[SimpleNamespace(content="", attachments=[report])],
+    )
+    assert message_parts(commented) == ("mulca read this", [report])
+
+    # Blank text is no text: nothing to send.
+    blank = SimpleNamespace(content="  \n", attachments=[])
+    assert message_parts(blank) == ("", [])

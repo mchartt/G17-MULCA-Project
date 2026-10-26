@@ -52,6 +52,23 @@ def readable_mentions(text: str, me, roles=()) -> str:
     return text
 
 
+def message_parts(message) -> tuple[str, list]:
+    """
+    A message's text and files, a forwarded message's included -- Discord
+    puts those in a snapshot, not in the message itself. Found live (21-24
+    Oct): students shared files, then asked "can you read the file I
+    shared?", and MULCA had nothing. Blank text counts as none.
+    """
+
+    parts = [message.content] if (message.content or "").strip() else []
+    files = list(getattr(message, "attachments", None) or [])
+    for snapshot in getattr(message, "message_snapshots", None) or []:
+        if (snapshot.content or "").strip():
+            parts.append(f"[Forwarded message:]\n{snapshot.content}")
+        files.extend(getattr(snapshot, "attachments", None) or [])
+    return "\n\n".join(parts), files
+
+
 def own_roles(message, me) -> list:
     """The roles mentioned in the message that are this bot's own."""
 
@@ -886,8 +903,8 @@ class BotRuntime:
             message.content,
         )
 
-        attachments = getattr(message, "attachments", None) or []
-        if message.author.bot or not (message.content or attachments):
+        content, attachments = message_parts(message)
+        if message.author.bot or not (content or attachments):
             return
 
         channel = message.channel
@@ -1032,7 +1049,7 @@ class BotRuntime:
             await muca_client.send_user_text(
                 speaker=message.author.id,
                 speaker_name=message.author.display_name,
-                text=readable_mentions(message.content, self.client.user, my_roles),
+                text=readable_mentions(content, self.client.user, my_roles),
                 mentions_assistant=tagged,
                 attachments=attached,
             )

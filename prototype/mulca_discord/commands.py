@@ -1516,12 +1516,13 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot="Which MULCA bot (default: the main one).",
         transcripts="Also post what MULCA says out loud in the text channel.",
         dms="Let people who can see the text channel DM MULCA (default: unchanged, off for a new link).",
+        # Discord shows at most 100 characters (discord.py cuts the rest
+        # off). The other modes: toggle (/listen or the button opens a
+        # window), transcribe ("MULCA start" opens a window hands-free).
+        # Default: unchanged, the server's own for a new link.
         mode=(
-            "ambient (every turn judged), toggle (/listen or the button "
-            "opens a window), transcribe (say \"assistant\" to open a "
-            "window hands-free), or wake (say \"assistant\" and MULCA "
-            "joins the discussion until it goes quiet) -- default: "
-            "unchanged, the server's own for a new link."
+            "wake: \"MULCA start\" brings MULCA in until it goes quiet. "
+            "ambient: judges every turn."
         ),
     )
     @app_commands.autocomplete(bot=bot_choices)

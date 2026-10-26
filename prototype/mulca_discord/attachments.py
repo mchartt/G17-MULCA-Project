@@ -3,9 +3,10 @@ The text of files attached to a message, for MUCA-Server.
 
 Found live (16-17 Oct): Discord turns a paste over 2,000 characters into a
 message.txt attachment, which the bot dropped -- groups pasted their user
-analysis and MULCA never got it. Plain text, Word (.docx) and PDF are read;
-anything else is named, so MULCA can say it couldn't read it. A PDF made of
-scanned images has no text to read and is named the same way.
+analysis and MULCA never got it. Plain text, Word (.docx), PDF and
+PowerPoint (.pptx, its slides' text) are read; anything else is named, so
+MULCA can say it couldn't read it. A PDF made of scanned images has no text
+to read and is named the same way.
 """
 
 from __future__ import annotations
@@ -46,6 +47,9 @@ def _kind(name: str, content_type: str | None) -> str | None:
         return "pdf"
     if lower.endswith(".docx"):
         return "docx"
+    # Found live (group 3, 25 Oct): a group shared its presentation.
+    if lower.endswith(".pptx"):
+        return "pptx"
     if lower.endswith(TEXT_EXTENSIONS) or (content_type or "").startswith("text/"):
         return "text"
     return None
@@ -68,6 +72,26 @@ def extract_text(name: str, data: bytes, content_type: str | None = None) -> str
 
             reader = pypdf.PdfReader(io.BytesIO(data))
             return "\n".join(page.extract_text() or "" for page in reader.pages)
+        if kind == "pptx":
+            import pptx  # python-pptx
+
+            slides = []
+            for number, slide in enumerate(pptx.Presentation(io.BytesIO(data)).slides, 1):
+                texts = [
+                    shape.text_frame.text
+                    for shape in slide.shapes
+                    if shape.has_text_frame and shape.text_frame.text.strip()
+                ]
+                notes = (
+                    slide.notes_slide.notes_text_frame.text.strip()
+                    if slide.has_notes_slide and slide.notes_slide.notes_text_frame
+                    else ""
+                )
+                if notes:
+                    texts.append(f"Notes: {notes}")
+                if texts:
+                    slides.append(f"Slide {number}:\n" + "\n".join(texts))
+            return "\n\n".join(slides)
     except Exception:
         logger.warning("Could not read the text of %s", name, exc_info=True)
     return None

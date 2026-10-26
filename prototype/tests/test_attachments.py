@@ -71,6 +71,25 @@ def test_a_word_file_is_read():
     )
 
 
+def test_a_powerpoint_file_is_read_slide_by_slide():
+    pptx = pytest.importorskip("pptx")
+    presentation = pptx.Presentation()
+    first = presentation.slides.add_slide(presentation.slide_layouts[1])
+    first.shapes.title.text = "Math Without Pressure"
+    first.placeholders[1].text = "A farm game for children 6-10"
+    first.notes_slide.notes_text_frame.text = "Mention the art style"
+    second = presentation.slides.add_slide(presentation.slide_layouts[5])
+    second.shapes.title.text = "Art direction"
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+
+    assert extract_text("pitch.pptx", buffer.getvalue()) == (
+        "Slide 1:\nMath Without Pressure\nA farm game for children 6-10\n"
+        "Notes: Mention the art style\n\n"
+        "Slide 2:\nArt direction"
+    )
+
+
 def test_a_pdf_is_read():
     pytest.importorskip("pypdf")
     # A minimal one-page PDF with one line of text.

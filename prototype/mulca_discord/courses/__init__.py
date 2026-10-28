@@ -26,10 +26,12 @@ import yaml
 
 COURSES_DIR = Path(__file__).resolve().parent
 
-# "wake_v2" links: persona_voice_v2.md goes after the persona, and the voice
-# length line with it unless MULCA_VOICE_TWO_SENTENCES=0. Found in the
-# 15-28 Oct exports: spoken replies ran long, came in English to Italian
-# speakers, and offered limitations nobody asked about.
+# "wake" and "wake_v2" links ("" is the server's default, "wake"):
+# persona_voice_v2.md goes after the persona; "wake_v2" adds the voice
+# length line unless MULCA_VOICE_TWO_SENTENCES=0. Found in the 15-28 Oct
+# exports: spoken replies ran long, came in English to Italian speakers,
+# and offered limitations nobody asked about.
+WAKE_MODES = ("", "wake", "wake_v2")
 VOICE_TWO_SENTENCES = os.environ.get("MULCA_VOICE_TWO_SENTENCES", "1") != "0"
 
 # Every course with its own folder here, e.g. ("aui", "imi").
@@ -173,7 +175,7 @@ def main_instructions(
     *,
     channel_name: str = "",
     course: str = DEFAULT_COURSE,
-    wake_v2: bool = False,
+    listening_mode: str | None = None,
 ) -> str:
     """
     The main agent's whole instructions, replacing MUCA-Server's own. Built
@@ -197,11 +199,11 @@ def main_instructions(
         .replace("{course_name}", schedule["name"])
         .replace("{course_page}", schedule["course_page"])
     )
-    if wake_v2:
-        persona += "\n\n" + (COURSES_DIR / "persona_voice_v2.md").read_text(
+    if listening_mode in WAKE_MODES:
+        persona +="\n\n" + (COURSES_DIR / "persona_voice_v2.md").read_text(
             encoding="utf-8"
         ).strip()
-        if VOICE_TWO_SENTENCES:
+        if listening_mode == "wake_v2" and VOICE_TWO_SENTENCES:
             persona += "\n- In voice, at most two sentences."
     task = (COURSES_DIR / "task.md").read_text(encoding="utf-8").strip()
     # Only where there are cohorts to tell apart: with a single tutoring

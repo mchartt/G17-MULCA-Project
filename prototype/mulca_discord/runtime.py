@@ -154,9 +154,9 @@ _NOT_A_NAME = re.compile(r"^((group|gruppo)\d*|\d+)$", re.IGNORECASE)
 
 def spoken_names(names: dict[int, str]) -> dict[int, str]:
     """
-    "wake_v2": the names MULCA calls people by -- the first name from a
-    display name ("delia_trabuio_group11" is Delia), with the surname too
-    when two people here share it. Found in the 15-28 Oct exports: MULCA
+    "wake" and "wake_v2": the names MULCA calls people by -- the first name
+    from a display name ("name_surname_group11" is Name), with the surname
+    too when two people here share it. Found in the 15-28 Oct exports: MULCA
     read whole display names aloud.
     """
 
@@ -329,7 +329,7 @@ class BotRuntime:
 
         channel = self.client.get_channel(link.text_channel_id)
         names = {member.id: member.display_name for member in _humans(channel)}
-        return spoken_names(names) if link.listening_mode == "wake_v2" else names
+        return spoken_names(names) if link.listening_mode in courses.WAKE_MODES else names
 
     def roster_voice(self, link: Link) -> dict[int, str]:
         """
@@ -347,7 +347,7 @@ class BotRuntime:
             else None
         )
         names = {member.id: member.display_name for member in _humans(channel)}
-        return spoken_names(names) if link.listening_mode == "wake_v2" else names
+        return spoken_names(names) if link.listening_mode in courses.WAKE_MODES else names
 
     def _can_see(self, user_id: int, channel_id: int) -> bool:
         channel = self.client.get_channel(channel_id)
@@ -1019,9 +1019,9 @@ class BotRuntime:
         roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
             roster = await _roster(message.channel)
-        # "wake_v2": the author by the same name as in the roster.
-        wake_v2 = link is not None and link.listening_mode == "wake_v2"
-        if wake_v2:
+        # "wake" and "wake_v2": the author by the same name as in the roster.
+        first_names = link is not None and link.listening_mode in courses.WAKE_MODES
+        if first_names:
             roster = spoken_names(
                 {message.author.id: message.author.display_name, **roster}
             )
@@ -1087,7 +1087,7 @@ class BotRuntime:
                 speaker=message.author.id,
                 speaker_name=(
                     roster[message.author.id]
-                    if wake_v2
+                    if first_names
                     else message.author.display_name
                 ),
                 text=readable_mentions(content, self.client.user, my_roles),

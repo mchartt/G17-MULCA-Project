@@ -13,33 +13,33 @@ from mulca_discord.runtime import spoken_names
 def test_spoken_names_are_first_names_with_surnames_for_namesakes():
     assert spoken_names(
         {
-            1: "Francesco.Orlando.Group-17",
-            2: "delia_trabuio_group11",
-            3: "Pourya.Shahbazzadeh.3",
-            4: "Andrea.Mori.group-6",
-            5: "Andrea.Santarsiero.Group-18",
+            1: "Name1.Surname1.Group-17",
+            2: "name2_surname2_group11",
+            3: "Name3.Surname3.3",
+            4: "Name4.Surname4.group-6",
+            5: "Name4.Surname5.Group-18",
             6: "Admin",
         }
     ) == {
-        1: "Francesco",
-        2: "Delia",
-        3: "Pourya",
-        4: "Andrea Mori",
-        5: "Andrea Santarsiero",
+        1: "Name1",
+        2: "Name2",
+        3: "Name3",
+        4: "Name4 Surname4",
+        5: "Name4 Surname5",
         6: "Admin",
     }
     # Already spoken names stay as they are.
-    assert spoken_names({1: "Andrea Mori", 2: "Andrea Santarsiero", 3: "Delia"}) == {
-        1: "Andrea Mori",
-        2: "Andrea Santarsiero",
-        3: "Delia",
+    assert spoken_names({1: "Name4 Surname4", 2: "Name4 Surname5", 3: "Name2"}) == {
+        1: "Name4 Surname4",
+        2: "Name4 Surname5",
+        3: "Name2",
     }
 
 
 def test_wake_v2_adds_the_voice_lines_to_the_persona(monkeypatch):
     today = date(2026, 10, 13)
-    plain = main_instructions(today=today)
-    v2 = main_instructions(today=today, wake_v2=True)
+    plain = main_instructions(today=today)  # a DM: no link, no mode
+    v2 = main_instructions(today=today, listening_mode="wake_v2")
 
     assert "language of the turn you are answering" not in plain
     assert "language of the turn you are answering" in v2
@@ -48,4 +48,18 @@ def test_wake_v2_adds_the_voice_lines_to_the_persona(monkeypatch):
     assert v2.index("at most two sentences") < v2.index("Task context:")
 
     monkeypatch.setattr(courses, "VOICE_TWO_SENTENCES", False)
-    assert "at most two sentences" not in main_instructions(today=today, wake_v2=True)
+    assert "at most two sentences" not in main_instructions(
+        today=today, listening_mode="wake_v2"
+    )
+
+
+def test_wake_and_the_default_get_the_lines_but_not_two_sentences():
+    today = date(2026, 10, 13)
+    for mode in ("wake", ""):  # "": the server's default, "wake"
+        text = main_instructions(today=today, listening_mode=mode)
+        assert "language of the turn you are answering" in text, mode
+        assert "only when asked to do that exact thing" in text, mode
+        assert "at most two sentences" not in text, mode
+    for mode in ("ambient", "toggle", "transcribe"):
+        text = main_instructions(today=today, listening_mode=mode)
+        assert "language of the turn you are answering" not in text, mode

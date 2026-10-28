@@ -329,7 +329,9 @@ class MucaWsClient:
                         "instructions": courses.main_instructions(
                             channel_name=self._channel_name,
                             course=self._course,
-                            wake_v2=self._listening_mode == "wake_v2",
+                            listening_mode=(
+                                None if self._is_dm else self._listening_mode
+                            ),
                         ),
                         **({"output_modalities": ["text"]} if self.text_replies else {}),
                     },

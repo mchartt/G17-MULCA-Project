@@ -16,6 +16,7 @@ the assistant's to announce.
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -24,6 +25,12 @@ from zoneinfo import ZoneInfo
 import yaml
 
 COURSES_DIR = Path(__file__).resolve().parent
+
+# "wake_v2" links: persona_voice_v2.md goes after the persona, and the voice
+# length line with it unless MULCA_VOICE_TWO_SENTENCES=0. Found in the
+# 15-28 Oct exports: spoken replies ran long, came in English to Italian
+# speakers, and offered limitations nobody asked about.
+VOICE_TWO_SENTENCES = os.environ.get("MULCA_VOICE_TWO_SENTENCES", "1") != "0"
 
 # Every course with its own folder here, e.g. ("aui", "imi").
 COURSES = tuple(
@@ -166,6 +173,7 @@ def main_instructions(
     *,
     channel_name: str = "",
     course: str = DEFAULT_COURSE,
+    wake_v2: bool = False,
 ) -> str:
     """
     The main agent's whole instructions, replacing MUCA-Server's own. Built
@@ -189,6 +197,12 @@ def main_instructions(
         .replace("{course_name}", schedule["name"])
         .replace("{course_page}", schedule["course_page"])
     )
+    if wake_v2:
+        persona += "\n\n" + (COURSES_DIR / "persona_voice_v2.md").read_text(
+            encoding="utf-8"
+        ).strip()
+        if VOICE_TWO_SENTENCES:
+            persona += "\n- In voice, at most two sentences."
     task = (COURSES_DIR / "task.md").read_text(encoding="utf-8").strip()
     # Only where there are cohorts to tell apart: with a single tutoring
     # group (IMI), every channel's dates are the same.

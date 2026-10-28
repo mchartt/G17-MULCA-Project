@@ -397,7 +397,12 @@ async def link_channels(
                     " Listening mode: wake (say \"assistant\" and MULCA joins"
                     " the discussion until it goes quiet)."
                     if listening_mode == "wake"
-                    else ""
+                    else (
+                        " Listening mode: wake_v2 (wake, with the fixes from"
+                        " the October tests)."
+                        if listening_mode == "wake_v2"
+                        else ""
+                    )
                 )
             )
         ),
@@ -1533,7 +1538,7 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         bot: str | None = None,
         transcripts: bool = False,
         dms: bool | None = None,
-        mode: Literal["ambient", "toggle", "transcribe", "wake"] | None = None,
+        mode: Literal["ambient", "toggle", "transcribe", "wake", "wake_v2"] | None = None,
     ) -> None:
         text = text or interaction.channel
         if not isinstance(text, discord.TextChannel):
@@ -1678,13 +1683,13 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
         description="Switch every linked channel (or one bot's) to a listening mode, no relink needed.",
     )
     @app_commands.describe(
-        mode="ambient, toggle, transcribe or wake (see /mulca link).",
+        mode="ambient, toggle, transcribe, wake or wake_v2 (see /mulca link).",
         bot="One bot (default: every bot in this server).",
     )
     @app_commands.autocomplete(bot=bot_choices)
     async def mode_command(
         interaction: discord.Interaction,
-        mode: Literal["ambient", "toggle", "transcribe", "wake"],
+        mode: Literal["ambient", "toggle", "transcribe", "wake", "wake_v2"],
         bot: str | None = None,
     ) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
@@ -145,6 +146,34 @@ GREETING_EXCLUDED_AUTHOR_NAMES = {"mats", "admin"}
 async def _roster(channel: discord.abc.Messageable) -> dict[int, str]:
     members = getattr(channel, "members", [])
     return {member.id: member.display_name for member in members if not member.bot}
+
+
+_NAME_PARTS = re.compile(r"[._\-\s]+")
+_NOT_A_NAME = re.compile(r"^((group|gruppo)\d*|\d+)$", re.IGNORECASE)
+
+
+def spoken_names(names: dict[int, str]) -> dict[int, str]:
+    """
+    "wake_v2": the names MULCA calls people by -- the first name from a
+    display name ("delia_trabuio_group11" is Delia), with the surname too
+    when two people here share it. Found in the 15-28 Oct exports: MULCA
+    read whole display names aloud.
+    """
+
+    parts = {
+        user_id: [
+            part.capitalize()
+            for part in _NAME_PARTS.split(name)
+            if part and not _NOT_A_NAME.match(part)
+        ]
+        or [name]
+        for user_id, name in names.items()
+    }
+    firsts = [words[0].lower() for words in parts.values()]
+    return {
+        user_id: " ".join(words[:2] if firsts.count(words[0].lower()) > 1 else words[:1])
+        for user_id, words in parts.items()
+    }
 
 
 def _humans(channel) -> list:
@@ -299,7 +328,8 @@ class BotRuntime:
         """Everyone in the link's text channel."""
 
         channel = self.client.get_channel(link.text_channel_id)
-        return {member.id: member.display_name for member in _humans(channel)}
+        names = {member.id: member.display_name for member in _humans(channel)}
+        return spoken_names(names) if link.listening_mode == "wake_v2" else names
 
     def roster_voice(self, link: Link) -> dict[int, str]:
         """
@@ -316,7 +346,8 @@ class BotRuntime:
             if link.voice_channel_id
             else None
         )
-        return {member.id: member.display_name for member in _humans(channel)}
+        names = {member.id: member.display_name for member in _humans(channel)}
+        return spoken_names(names) if link.listening_mode == "wake_v2" else names
 
     def _can_see(self, user_id: int, channel_id: int) -> bool:
         channel = self.client.get_channel(channel_id)
@@ -988,6 +1019,12 @@ class BotRuntime:
         roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
             roster = await _roster(message.channel)
+        # "wake_v2": the author by the same name as in the roster.
+        wake_v2 = link is not None and link.listening_mode == "wake_v2"
+        if wake_v2:
+            roster = spoken_names(
+                {message.author.id: message.author.display_name, **roster}
+            )
 
         # Read once, not again on a reconnect's resend.
         attached = await read_attachments(attachments)
@@ -1048,7 +1085,11 @@ class BotRuntime:
 
             await muca_client.send_user_text(
                 speaker=message.author.id,
-                speaker_name=message.author.display_name,
+                speaker_name=(
+                    roster[message.author.id]
+                    if wake_v2
+                    else message.author.display_name
+                ),
                 text=readable_mentions(content, self.client.user, my_roles),
                 mentions_assistant=tagged,
                 attachments=attached,

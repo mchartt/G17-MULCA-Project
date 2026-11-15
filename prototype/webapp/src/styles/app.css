@@ -121,6 +121,18 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .card__status { font-size: var(--t-xs); font-weight: 600; }
 .card__actions { display: flex; gap: .5rem; }
 .card__notice { margin-top: .7rem; font-size: var(--t-xs); color: var(--warn); }
+.card--snoozed { border-color: var(--line); opacity: .8; }
+.card__actions { flex-wrap: wrap; }
+.card__options { margin-top: .6rem; padding-left: 1.2rem; display: grid; gap: .35rem; }
+.card__meta { display: flex; gap: 1.1rem; margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--line); }
+.link-btn { background: none; border: 0; padding: .2rem 0; font: inherit; font-size: var(--t-xs); font-weight: 500; color: var(--ink-soft); display: inline-flex; gap: .4rem; align-items: center; cursor: pointer; border-radius: 6px; }
+.link-btn:hover { color: var(--ink); }
+.link-btn:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.link-btn:disabled { opacity: .5; cursor: default; }
+.card__whybox { margin-top: .8rem; padding: .8rem 1rem; border-radius: var(--r-field); background: var(--sky-tint); font-size: var(--t-sm); animation: rise 400ms var(--ease) both; }
+.card__evidence { list-style: none; padding: 0; margin-top: .5rem; display: grid; gap: .4rem; }
+.card__evidence li { padding-left: .7rem; border-left: 3px solid var(--dot-slate); }
+.card__speaker { font-weight: 600; margin-right: .3rem; }
 
 /* ---------- Console ---------- */
 .console { display: grid; grid-template-columns: 17rem minmax(0, 1fr) 23rem; height: 100vh; background: var(--mist); }

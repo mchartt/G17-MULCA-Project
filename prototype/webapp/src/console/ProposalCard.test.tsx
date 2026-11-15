@@ -39,7 +39,7 @@ test("clicking Confirm sends the action once and shows a refusal from the server
   render(<ProposalCard proposal={pending} agentName="Cadence" onAnswer={onAnswer} />);
   await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
   expect(onAnswer).toHaveBeenCalledTimes(1);
-  expect(onAnswer).toHaveBeenCalledWith("confirm");
+  expect(onAnswer).toHaveBeenCalledWith({ action: "confirm" });
   expect(await screen.findByRole("alert")).toHaveTextContent("Only members of this group");
 });
 

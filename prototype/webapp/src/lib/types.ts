@@ -12,7 +12,18 @@ export type ChatMessage = {
   ts: number;
 };
 
-export type ProposalStatus = "pending" | "applied" | "rejected" | "expired";
+export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "snoozed";
+
+/** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
+export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now";
+export type Click = { action: CardAction; option?: number };
+
+/** Why a proactive card exists (M3): strategy, topic, and the messages behind it. */
+export type ProactiveContext = {
+  strategy_id: string;
+  topic: string;
+  evidence: { speaker: string; text: string; at_ms: number }[];
+};
 
 export type Milestone = { title: string; due_date?: string | null; status?: string };
 
@@ -26,6 +37,14 @@ export type Proposal = {
     goal?: string;
     deliverables?: string[];
     milestones?: Milestone[];
+    // M3 proactive cards (task_owner, delegation, decision)
+    context?: ProactiveContext;
+    title?: string;
+    owner_id?: number | null;
+    due_date?: string | null;
+    return_to?: string;
+    question?: string;
+    options?: { label: string; argument?: string }[];
     [key: string]: unknown;
   };
 };

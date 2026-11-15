@@ -29,7 +29,7 @@ import discord
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..sessions import Scope, SessionRegistry
-from .cards import CardButton, card_view, proposal_embed
+from .cards import CardButton, card_view, proposal_embed, why_text
 
 if TYPE_CHECKING:
     from ..runtime import BotManager, BotRuntime
@@ -54,6 +54,8 @@ class CoordinatorBridge:
         self._waiting: dict[str, asyncio.Future] = {}
         # proposal id -> the Discord message showing its card (this run only)
         self._cards: dict[str, discord.Message] = {}
+        # proposal id -> the last proposal seen, for "Why?" (this run only)
+        self._proposals: dict[str, dict] = {}
         # Bot clients whose card buttons are registered (see _register_buttons).
         self._buttons_on: set[int] = set()
 
@@ -89,7 +91,24 @@ class CoordinatorBridge:
             ),
         )
 
-    async def click(self, interaction: discord.Interaction, action: str, proposal_id: str) -> None:
+    async def why(self, interaction: discord.Interaction, proposal_id: str) -> None:
+        """"Why?": the strategy and the messages behind the card, privately, no server call."""
+        proposal = self._proposals.get(proposal_id)
+        text = (
+            why_text(proposal)
+            if proposal is not None
+            else "The details of this card are no longer here (the bot restarted); its reason is in italics on the card."
+        )
+        await interaction.response.send_message(text, ephemeral=True)
+
+    async def click(
+        self,
+        interaction: discord.Interaction,
+        action: str,
+        proposal_id: str,
+        *,
+        option: int | None = None,
+    ) -> None:
         """A card button: send the click, tell the member privately what happened."""
         await interaction.response.defer(ephemeral=True, thinking=True)
         request_id = uuid.uuid4().hex
@@ -100,6 +119,7 @@ class CoordinatorBridge:
                 event="proposal_response",
                 proposal_id=proposal_id,
                 action=action,
+                option=option,
                 member_id=interaction.user.id,
                 channel="discord",
                 request_id=request_id,
@@ -166,6 +186,7 @@ class CoordinatorBridge:
     async def _show_card(self, session: "ScopeSession", proposal: dict) -> None:
         """Edit the card if this run posted it; otherwise post it (e.g. after a restart)."""
         proposal_id = proposal.get("proposal_id", "")
+        self._proposals[proposal_id] = proposal
         embed, view = proposal_embed(proposal), card_view(proposal)
         existing = self._cards.get(proposal_id)
         try:

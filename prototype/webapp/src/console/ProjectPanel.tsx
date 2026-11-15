@@ -23,71 +23,69 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
         <button className="btn btn--soft btn--small" onClick={onRefresh}><FontAwesomeIcon icon={faRotate} /> Refresh</button>
       </div>
 
+      {/* The goal waits for the kickoff; tasks and decisions can come before it (M3 cards). */}
       {!charter ? (
         <div className="panel__empty">
           <p>No goal yet. Paste the assignment and Cadence proposes a goal, deliverables and milestones for the group to confirm.</p>
           <button className="btn btn--primary" onClick={onKickoff}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
         </div>
       ) : (
-        <>
-          <section className="panel__section panel-card">
-            <h3><FontAwesomeIcon icon={faBullseye} /> Goal</h3>
-            <p className="panel__goal">{charter.goal}</p>
-            {charter.confirmed_by && <p className="muted small">Confirmed by {nameOf(charter.confirmed_by) ?? "a member"}</p>}
-          </section>
-
-          <section className="panel__section panel-card">
-            <h3><FontAwesomeIcon icon={faFlag} /> Milestones</h3>
-            {state?.milestones?.length ? (
-              <ol className="timeline">
-                {state.milestones.map((m) => (
-                  <li key={m.title}>
-                    <span className="timeline__date">{m.due_date ? formatDate(m.due_date) : "no date"}</span>
-                    <span>{m.title}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="muted">No milestones yet.</p>
-            )}
-          </section>
-
-          <section className="panel__section panel-card">
-            <h3><FontAwesomeIcon icon={faListCheck} /> Tasks</h3>
-            {state?.tasks?.length ? (
-              <ul className="tasks">
-                {state.tasks.map((t) => (
-                  <li key={t.title}>
-                    <span className="dot" style={{ background: t.owner_id ? dotFor(t.owner_id, members) : "var(--line)" }} aria-hidden="true" />
-                    <span className="tasks__title">{t.title}</span>
-                    <span className="muted small">{t.owner_id ? nameOf(t.owner_id) ?? "member" : "No owner"}</span>
-                    <span className="tag">{t.status}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No tasks yet. They come with the planning step.</p>
-            )}
-          </section>
-
-          <section className="panel__section panel-card">
-            <h3><FontAwesomeIcon icon={faScaleBalanced} /> Decisions</h3>
-            {state?.decisions?.length ? (
-              <ul className="decisions">
-                {state.decisions.map((d) => (
-                  <li key={d.question}>
-                    <p>{d.question}</p>
-                    <p className="decisions__choice">{d.choice}</p>
-                    {d.reason && <p className="muted small">{d.reason}</p>}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">No decisions recorded yet.</p>
-            )}
-          </section>
-        </>
+        <section className="panel__section panel-card">
+          <h3><FontAwesomeIcon icon={faBullseye} /> Goal</h3>
+          <p className="panel__goal">{charter.goal}</p>
+          {charter.confirmed_by && <p className="muted small">Confirmed by {nameOf(charter.confirmed_by) ?? "a member"}</p>}
+        </section>
       )}
+      <section className="panel__section panel-card">
+        <h3><FontAwesomeIcon icon={faFlag} /> Milestones</h3>
+        {state?.milestones?.length ? (
+          <ol className="timeline">
+            {state.milestones.map((m) => (
+              <li key={m.title}>
+                <span className="timeline__date">{m.due_date ? formatDate(m.due_date) : "no date"}</span>
+                <span>{m.title}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted">No milestones yet.</p>
+        )}
+      </section>
+
+      <section className="panel__section panel-card">
+        <h3><FontAwesomeIcon icon={faListCheck} /> Tasks</h3>
+        {state?.tasks?.length ? (
+          <ul className="tasks">
+            {state.tasks.map((t) => (
+              <li key={t.title}>
+                <span className="dot" style={{ background: t.owner_id ? dotFor(t.owner_id, members) : "var(--line)" }} aria-hidden="true" />
+                <span className="tasks__title">{t.title}</span>
+                <span className="muted small">{t.owner_id ? nameOf(t.owner_id) ?? "member" : "No owner"}</span>
+                <span className="tag">{t.status}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No tasks yet. They arrive when a member takes a card or the group plans together.</p>
+        )}
+      </section>
+
+      <section className="panel__section panel-card">
+        <h3><FontAwesomeIcon icon={faScaleBalanced} /> Decisions</h3>
+        {state?.decisions?.length ? (
+          <ul className="decisions">
+            {state.decisions.map((d) => (
+              <li key={d.question}>
+                <p>{d.question}</p>
+                <p className="decisions__choice">{d.choice}</p>
+                {d.reason && <p className="muted small">{d.reason}</p>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No decisions recorded yet.</p>
+        )}
+      </section>
     </aside>
   );
 }

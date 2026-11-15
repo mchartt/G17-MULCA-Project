@@ -309,3 +309,27 @@ async def test_health_and_cors_only_for_the_listed_origins(hub):
         assert ok.headers.get("access-control-allow-origin") == "https://cadence.example"
         no = await api.options("/api/groups", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
         assert no.headers.get("access-control-allow-origin") is None
+
+
+async def test_a_broadcast_never_overtakes_a_new_members_hello(hub):
+    """
+    M3 e2e finding: "Bruno joined" written to Ada's socket before her hello
+    would be overwritten by the older member list inside the hello.
+    """
+    group, ada, _ = hub.create_group("G", "Ada")
+    order: list[str] = []
+    gate = asyncio.Event()
+
+    class SlowSocket:
+        async def send_json(self, data):
+            if data["type"] == "hello":
+                await gate.wait()  # the hello is still being written...
+            order.append(data["type"])
+
+    connecting = asyncio.create_task(hub.connect(SlowSocket(), ada))
+    await asyncio.sleep(0)
+    joining = asyncio.create_task(hub.join_group(group.invite_code, "Bruno"))  # ...when Bruno joins
+    await asyncio.sleep(0.05)
+    gate.set()
+    await asyncio.gather(connecting, joining)
+    assert order == ["hello", "members"]

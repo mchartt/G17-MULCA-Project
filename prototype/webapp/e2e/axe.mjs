@@ -21,4 +21,10 @@ await page.getByRole("textbox", { name: "Assignment" }).fill("Deliver by 2 Dec."
 await page.getByRole("button", { name: "Send to Cadence" }).click();
 await page.waitForTimeout(2500);
 await report("console with card");
+// M3: a proactive card (scripted trigger on the offline stack) with Why? open.
+await page.getByLabel("Message to the group").fill("Which font do we use?");
+await page.keyboard.press("Enter");
+await page.locator(".card", { hasText: "One person can do this" }).getByRole("button", { name: "Why?" }).click();
+await page.waitForTimeout(800);
+await report("console with proactive card and Why? open");
 await browser.close();

@@ -96,6 +96,7 @@ class WebHub:
         self.registry.on_coordinator_event = self._on_coordinator_event
         self._course = course
         self._sockets: dict[int, set[Socket]] = {}
+        self._locks: dict[int, asyncio.Lock] = {}
         self._channels: dict[int, WebChannel] = {}
         self._waiting: dict[str, asyncio.Future] = {}
 
@@ -126,8 +127,21 @@ class WebHub:
     # Sockets
     # ------------------------------------------------------------------
 
+    def _lock(self, group_id: int) -> asyncio.Lock:
+        """
+        One lock per group around "join the broadcast list + hello" and around
+        each broadcast. Without it a broadcast (e.g. "Bruno joined") could be
+        written to a new socket *before* its hello, and the older hello would
+        then overwrite the newer member list (found by the M3 e2e tests).
+        """
+        return self._locks.setdefault(group_id, asyncio.Lock())
+
     async def connect(self, socket: Socket, member: Member) -> None:
-        self._sockets.setdefault(member.group_id, set()).add(socket)
+        async with self._lock(member.group_id):
+            self._sockets.setdefault(member.group_id, set()).add(socket)
+            await self._hello(socket, member)
+
+    async def _hello(self, socket: Socket, member: Member) -> None:
         group = self.store.group(member.group_id)
         await socket.send_json(
             {
@@ -144,11 +158,12 @@ class WebHub:
         self._sockets.get(member.group_id, set()).discard(socket)
 
     async def broadcast(self, group_id: int, data: dict) -> None:
-        for socket in list(self._sockets.get(group_id, ())):
-            try:
-                await socket.send_json(data)
-            except Exception:  # a closed tab must not stop the others
-                self._sockets[group_id].discard(socket)
+        async with self._lock(group_id):
+            for socket in list(self._sockets.get(group_id, ())):
+                try:
+                    await socket.send_json(data)
+                except Exception:  # a closed tab must not stop the others
+                    self._sockets[group_id].discard(socket)
 
     # ------------------------------------------------------------------
     # Going out: what a member does
@@ -191,7 +206,7 @@ class WebHub:
             ),
         )
 
-    async def click(self, member: Member, proposal_id: str, action: str) -> dict:
+    async def click(self, member: Member, proposal_id: str, action: str, *, option: int | None = None) -> dict:
         request_id = uuid.uuid4().hex
         return await self._ask(
             member,
@@ -200,6 +215,7 @@ class WebHub:
                 event="proposal_response",
                 proposal_id=proposal_id,
                 action=action,
+                option=option,
                 member_id=member.id,
                 channel="web",
                 request_id=request_id,

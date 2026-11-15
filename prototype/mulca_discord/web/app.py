@@ -8,7 +8,7 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
          -> {type:"command", command:"profile"|"kickoff"|"state", args, requestId}
-         -> {type:"click", proposalId, action:"confirm"|"reject", requestId}
+         -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now", option?, requestId}
          <- hello, message, members, proposal, state, status, reply{requestId, answer}
 
 Every request is checked server side: the token names exactly one member of one
@@ -60,7 +60,8 @@ class CommandFrame(BaseModel):
 class ClickFrame(BaseModel):
     type: Literal["click"]
     proposal_id: str = Field(alias="proposalId", max_length=64)
-    action: Literal["confirm", "reject"]
+    action: Literal["confirm", "reject", "take", "choose", "not_now"]
+    option: int | None = None  # "choose": index of the option on a decision card
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
 
@@ -162,7 +163,7 @@ async def _handle(hub: WebHub, ws: WebSocket, member, frame: dict) -> None:
             await ws.send_json({"type": "reply", "requestId": cmd.request_id, "answer": answer})
         elif kind == "click":
             click = ClickFrame.model_validate(frame)
-            answer = await hub.click(member, click.proposal_id, click.action)
+            answer = await hub.click(member, click.proposal_id, click.action, option=click.option)
             await ws.send_json({"type": "reply", "requestId": click.request_id, "answer": answer})
     except ValidationError:
         await ws.send_json({"type": "error", "text": "That request was not understood."})

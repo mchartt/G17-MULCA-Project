@@ -90,7 +90,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
           space={space}
           disabled={status !== "open"}
           onSay={(text) => socket.current?.say(text)}
-          onAnswer={(proposalId, action) => ask({ type: "click", proposalId, action })}
+          onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
         />
       </main>
       {panelOpen && (

@@ -39,6 +39,11 @@ browser ── {command} / {click} ─────────> WebHub.command /
 - Web member ids are in [1e8, 1e9): never equal to a Discord id (snowflake).
 - The coordinator hook is set on the web registry **instance**: Discord's hook
   (on the class, `coordinator/bridge.py`) is untouched (tested).
+- Clicks carry every M3 button: `confirm`, `reject`, `take`, `choose` (+ `option`),
+  `not_now` (`ClickFrame` in `app.py`, `WebHub.click` in `hub.py`).
+- One lock per group (`WebHub._lock`) around "join the broadcast list + hello"
+  and around every broadcast, so a broadcast never reaches a new socket before
+  its hello (found by the M3 e2e; regression test in `tests/test_web.py`).
 - MUCA-Server down: the chat keeps working, the members see "coordinator
   unavailable", commands answer in words (tested).
 

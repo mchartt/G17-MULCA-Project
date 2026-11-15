@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { faCompass, faPaperPlane } from "../lib/icons";
-import type { Answer, Person } from "../lib/types";
+import type { Answer, Click, Person } from "../lib/types";
 import { ProposalCard } from "./ProposalCard";
 import { dotFor, type Space } from "./space";
 
@@ -10,7 +10,7 @@ const CHANNEL_NAMES: Record<string, string> = { web: "Web", discord: "Discord", 
 type Props = {
   space: Space;
   onSay: (text: string) => void;
-  onAnswer: (proposalId: string, action: "confirm" | "reject") => Promise<Answer>;
+  onAnswer: (proposalId: string, click: Click) => Promise<Answer>;
   disabled: boolean;
 };
 
@@ -52,7 +52,8 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
                 key={`p-${item.id}`}
                 proposal={space.proposals[item.id]}
                 agentName={space.agentName}
-                onAnswer={(action) => onAnswer(item.id, action)}
+                memberName={(id) => space.members.find((m) => m.id === id)?.name ?? "a member"}
+                onAnswer={(click) => onAnswer(item.id, click)}
               />
             )
           ) : (

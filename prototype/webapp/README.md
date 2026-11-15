@@ -19,6 +19,21 @@ cd mulca/prototype && python -m mulca_discord.web
 Development with hot reload: `npm run dev` (Vite on :5173, forwards `/api`, `/ws`,
 `/film` to the adapter on :8080).
 
+## Online preview (Vercel)
+
+Vercel hosts only the static site (landing, film, interface): MUCA-Server and
+the web adapter are long-running processes and stay on the demo laptop. On the
+preview the entry says so and keeps the forms disabled (it asks `/api/health`).
+
+```bash
+npm run build                      # dist/ with the film and dist/vercel.json (SPA routes)
+bash scripts/deploy-vercel.sh      # token from webapp/.env.vercel, or browser login
+```
+
+To make the preview talk to a running adapter: build with
+`VITE_ADAPTER_URL=https://<adapter address>` and start the adapter with
+`MULCA_WEB_ALLOWED_ORIGINS=https://<vercel address>` (CORS, tokens in headers).
+
 ## Rehearse without Azure (no cost)
 
 `python webapp/e2e/fake_stack.py` (from `mulca/prototype`) starts an in-process
@@ -30,10 +45,10 @@ the live proof.
 
 | What | Command | Result 15/11 |
 |---|---|---|
-| Card, panel, state reducer (Vitest) | `npm test` | 15 passed |
+| Card, panel, state reducer, film titles (Vitest) | `npm test` | 17 passed |
 | Two members end to end (Playwright, fake stack) | `npm run e2e` | 1 passed |
 | Accessibility WCAG 2.1 AA (axe-core, fake stack running) | `npm run axe` | 0 violations on landing and console |
-| Web adapter (pytest) | `cd .. && python -m pytest tests/test_web.py` | 14 passed, coverage 98 % |
+| Web adapter (pytest) | `cd .. && python -m pytest tests/test_web.py` | 16 passed, coverage 98 % |
 
 On the Linux shell of the Claude app, Chromium needs `libXdamage.so.1`
 (downloaded with `apt-get download libxdamage1`, extracted, `LD_LIBRARY_PATH`).

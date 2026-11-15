@@ -15,14 +15,14 @@
 - [x] 6. Asset: film di 436 fotogrammi (Higgsfield, gratis), `film/lavori.json`
 - [x] 7. Costruzione: landing + console + adattatore web, 15/11
 - [~] 8. Verifica: test automatici e controllo visivo fatti; axe-core e prova dal vivo con Azure da fare
-- [-] 9. Messa online: non prevista (servita in locale dall'adattatore, istruzioni §0)
+- [~] 9. Messa online: anteprima statica su Vercel preparata (`scripts/deploy-vercel.sh`), non ancora pubblicata: serve il token in `.env.vercel` o il login dal terminale di Matteo
 - [ ] 10. Ricetta salvata e manuale consegnato (`libreria-ricette`)
 
 ## Fase corrente
 8 Verifica: manca solo la prova dal vivo (Azure + due browser) e il controllo axe-core.
 
 ## Prossima azione
-Matteo crea le distribuzioni Azure e il `.env`; poi prova dal vivo con due browser (README della webapp), costo annotato.
+Pubblicare l'anteprima su Vercel (README, sezione Online preview); poi prova dal vivo con Azure.
 
 ## Vincoli già decisi fuori da questo percorso (non si richiedono)
 - Stack: React + TypeScript + Vite, servita dall'adattatore web nel processo MULCA (istruzioni di progetto, sezione 6).
@@ -44,6 +44,7 @@ transazione, copertura dei test, branch, commit, push, remoto, bundle, interrutt
 
 ## Registro sessioni
 - 15/11/2026: creato il quaderno di cantiere, modalità guidata, nome Ctrl+Alt+Design.
+- 15/11/2026 sera: interfaccia v2 morbida in stile Apple (SF Pro/Geist, Font Awesome, Lenis); controllo /api/health e CORS nell'adattatore; deploy Vercel preparato, non pubblicato (token non trovato).
 - 15/11/2026: film (4 clip, 18 s dopo il raccordo e la rimozione dei fotogrammi doppi), adattatore web, landing e console; test: pytest 14 (copertura 98 %), Vitest 15, Playwright 1 e2e; screenshot in `docs/screens/`.
 - 15/11/2026: fase 0 chiusa. Ambiente Python 3.11 ricreato, suite rieseguite (server 481 + 1 noto, MULCA 258), Playwright pronto, Higgsfield collegato in prova gratuita, Mobbin bloccato dal piano.
 

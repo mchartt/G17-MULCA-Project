@@ -1,0 +1,36 @@
+# Render Blueprint for Cadence online (free plan). Render reads this file from
+# the "render" branch (deploy/render/update-branch.sh) when you create a
+# Blueprint: Dashboard > New > Blueprint > repository G17-MULCA-Project.
+# Secrets are never written here: Render asks for AZURE_OPENAI_API_KEY at
+# creation (sync: false) and generates MUCA_ADMIN_TOKEN itself.
+services:
+  - type: web
+    name: cadence-coordinator
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: render
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: AZURE_OPENAI_ENDPOINT
+        value: https://g17-coordinator.openai.azure.com
+      - key: AZURE_OPENAI_API_KEY
+        sync: false
+      - key: MUCA_ADMIN_TOKEN
+        generateValue: true
+      - key: MUCA_COORDINATOR_ENABLED
+        value: "true"
+      - key: MUCA_COORDINATOR_CHECKIN_HOURS
+        value: "24"
+      - key: MUCA_COORDINATOR_MODEL
+        value: gpt-6.1-sol
+      - key: MUCA_SUMMARY_MODEL
+        value: gpt-6-luna
+      - key: MUCA_DAILY_SUMMARY_MODEL
+        value: gpt-6-luna
+      # The Vercel site that may call the API (production address).
+      - key: MULCA_WEB_ALLOWED_ORIGINS
+        value: https://cadence-group-coordinator.vercel.app

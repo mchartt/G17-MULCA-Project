@@ -47,6 +47,7 @@ def install_coordinator(
     # Like the lab's add_view: no API call, just the custom_id -> class mapping,
     # so cards posted before a restart answer again at once.
     manager.primary.client.add_dynamic_items(CardButton)
+    bridge._buttons_on.add(id(manager.primary.client))
     tree.add_command(CoordinatorGroup(bridge))
     return bridge
 

@@ -32,8 +32,8 @@ member: clicks Confirm        ──> cards.py CardButton.callback
 | File | Lines | Responsibility |
 |---|---|---|
 | `__init__.py` | 8 | Exports `install_coordinator`. |
-| `commands.py` | 120 | The switch, `install_coordinator`, the `/coordinator` group, the plan embed. |
-| `bridge.py` | 184 | Sends commands and clicks to MUCA-Server and routes its answers back. |
+| `commands.py` | 121 | The switch, `install_coordinator`, the `/coordinator` group, the plan embed. |
+| `bridge.py` | 202 | Sends commands and clicks to MUCA-Server and routes its answers back. |
 | `cards.py` | 137 | How a proposal looks: embed + persistent buttons. |
 
 ## `commands.py`
@@ -41,7 +41,7 @@ member: clicks Confirm        ──> cards.py CardButton.callback
 | Name | What it does |
 |---|---|
 | `coordinator_enabled(env)` | True if `MULCA_COORDINATOR_ENABLED` is `1/true/yes/on`. |
-| `install_coordinator(manager, tree, env)` | Off → does nothing, returns None. On → creates the bridge, attaches it to every bot's session registry, registers the card buttons (`add_dynamic_items`, so old cards work after a restart) and adds `/coordinator` to the command tree. |
+| `install_coordinator(manager, tree, env)` | Off → does nothing, returns None. On → creates the bridge, attaches it (`attach()`), registers the card buttons on the primary bot (`add_dynamic_items`, so old cards work after a restart) and adds `/coordinator` to the command tree. |
 | `CoordinatorGroup` | `/coordinator`, open to every member of a linked channel. |
 | `profile(discipline, skills, weekly_hours)` | Saves your own profile (0–80 hours). |
 | `kickoff(text)` | Sends the assignment text; the card appears in the channel. |
@@ -55,14 +55,15 @@ model can take some seconds, then the final answer, also private.
 
 | Name | What it does |
 |---|---|
-| `attach()` | Sets `registry.on_coordinator_event` of every bot to `on_event`. |
+| `attach()` | Sets `SessionRegistry.on_coordinator_event` **on the class**, so every bot's registry gets the events, also bots added later with `/mulca bot add`. |
+| `_register_buttons(client)` | Registers the card button class on the client of the bot that will post a card (clicks arrive on that bot's client), once per client. |
 | `send_command(interaction, command, args)` | Builds a `coordinator_command` with a fresh request id and waits for the answer. |
 | `click(interaction, action, proposal_id)` | Builds a `proposal_response`, waits for the notice, tells the member privately what happened. |
-| `_send(interaction, request_id, message)` | The common path: finds the channel's link, opens the group's one session with `SessionRegistry.run` (never a second connection), sends the roster first (the server checks clicks against it) and then the message; waits up to 60 s. `retry_once=False`: a command is never sent twice. Any error → None, never an exception. |
+| `_send(interaction, request_id, message)` | The common path: finds the channel's link, registers the buttons on that bot, opens the group's one session with `SessionRegistry.run` (never a second connection), sends the roster first (the server checks clicks against it) and then the message; waits up to 60 s. `retry_once=False`: a command is never sent twice. Any error → None, never an exception. |
 | `on_event(session, data)` | From MUCA-Server: a `coordinator_proposal` posts or edits the card; a notice or state with a request id wakes the waiting command; a state nobody waits for (meant for the web app) is ignored. |
 | `_show_card(session, proposal)` | Edits the card if this run posted it, otherwise posts it while pending. A Discord error is logged, not raised. |
 | `scope_for(bot, link)` | The group's `Scope`, built exactly as `runtime.py` builds it. |
-| `answer_text(answer)` | The sentence shown to the member (or "did not answer in time"). |
+| `answer_text(answer)` | The sentence shown to the member; without an answer in 60 s: "still working, the card appears if it succeeds, no need to try again" (the server also refuses a second kickoff while one runs). |
 
 ## `cards.py`
 
@@ -85,13 +86,14 @@ model can take some seconds, then the final answer, also private.
 
 ## Known limits
 
-- Bots added at runtime with `/mulca bot add` get the coordinator events only
-  after a restart (`attach()` runs once at start).
+- After a restart, the buttons of cards posted by an **added** bot work again
+  only once that bot has run one `/coordinator` command (the primary bot's
+  work at once).
 - A card posted before a bot restart still works, but its later status
   changes are posted as a new message only while pending; a closed card from
   a previous run is not edited.
 - `kickoff` takes the assignment as text (Discord allows up to 6000
   characters); attachments are not read yet.
 
-Tests: `tests/test_coordinator_discord.py` (21 tests, including one end to
+Tests: `tests/test_coordinator_discord.py` (22 tests, including one end to
 end against a real local MUCA-Server with the coordinator on and a fake model).

@@ -134,12 +134,13 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     bridge = install_coordinator(manager, tree, env={"MULCA_COORDINATOR_ENABLED": "1"})
 
     assert isinstance(bridge, CoordinatorBridge)
-    assert registry.on_coordinator_event == bridge.on_event
+    assert SessionRegistry.on_coordinator_event == bridge.on_event
     assert added_items == [CardButton] and CardButton.bridge is bridge
     (group,) = groups
     assert isinstance(group, CoordinatorGroup) and group.name == "coordinator"
     assert sorted(c.name for c in group.commands) == ["kickoff", "plan", "profile"]
     CardButton.bridge = None
+    SessionRegistry.on_coordinator_event = None
 
 
 def test_the_plan_embed_lists_every_part_of_the_state():
@@ -255,8 +256,12 @@ async def test_kickoff_card_and_confirm_end_to_end(coordinator_server):
         roster_text=lambda link: {1: "Ada", 2: "Bruno"},
         _channel_name_for=lambda link: "group-17",
         course_for=lambda guild_id: "aui",
-        client=SimpleNamespace(get_channel=lambda channel_id: channel),
+        client=SimpleNamespace(
+            get_channel=lambda channel_id: channel,
+            add_dynamic_items=lambda *items: registered.extend(items),
+        ),
     )
+    registered = []
     manager = SimpleNamespace(bots=[bot], link_for_channel=lambda channel_id: (bot, link))
     bridge = CoordinatorBridge(manager)
     bridge.attach()
@@ -286,8 +291,11 @@ async def test_kickoff_card_and_confirm_end_to_end(coordinator_server):
     outsider = SimpleNamespace(**{**click.__dict__, "user": SimpleNamespace(id=99)})
     followups.clear()
     await bridge.click(outsider, "reject", proposal_id)
-    assert followups[-1] == "Only members of this group can answer this card."
+    assert followups[-1] == "Only members of this group can use the coordinator here."
+    # The bot that posted the card has the button class registered (once).
+    assert registered == [CardButton]
     await registry.close_all()
+    SessionRegistry.on_coordinator_event = None
 
 
 # ----------------------------------------------------------------------
@@ -353,7 +361,7 @@ def a_bridge_whose_server(run):
         roster_text=lambda link: {1: "Ada"},
         _channel_name_for=lambda link: "g",
         course_for=lambda guild_id: "aui",
-        client=SimpleNamespace(get_channel=lambda channel_id: None),
+        client=SimpleNamespace(get_channel=lambda channel_id: None, add_dynamic_items=lambda *i: None),
     )
     return CoordinatorBridge(SimpleNamespace(bots=[bot], link_for_channel=lambda cid: (bot, link)))
 
@@ -399,3 +407,12 @@ async def test_a_card_discord_refuses_is_logged_not_raised():
     await CoordinatorBridge(SimpleNamespace(bots=[])).on_event(
         session, {"event": "coordinator_proposal", "proposal": PENDING}
     )
+
+
+def test_a_registry_created_after_attach_still_gets_the_events():
+    """Bots added later with /mulca bot add get new registries."""
+    bridge = CoordinatorBridge(SimpleNamespace(bots=[]))
+    bridge.attach()
+    later = SessionRegistry("ws://unused/")
+    assert later.on_coordinator_event == bridge.on_event
+    SessionRegistry.on_coordinator_event = None

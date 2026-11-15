@@ -28,8 +28,8 @@ from typing import TYPE_CHECKING, Any
 import discord
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
-from ..sessions import Scope
-from .cards import card_view, proposal_embed
+from ..sessions import Scope, SessionRegistry
+from .cards import CardButton, card_view, proposal_embed
 
 if TYPE_CHECKING:
     from ..runtime import BotManager, BotRuntime
@@ -41,7 +41,10 @@ logger = logging.getLogger(__name__)
 # The kickoff waits for the model: give it time, then say so.
 ANSWER_TIMEOUT_SECONDS = 60
 NOT_LINKED = "The coordinator works only in a channel linked to MULCA."
-NO_ANSWER = "The coordinator did not answer in time. Try again in a minute."
+NO_ANSWER = (
+    "The coordinator is still working. If it succeeds, the card appears in "
+    "this channel: no need to try again."
+)
 
 
 class CoordinatorBridge:
@@ -51,11 +54,15 @@ class CoordinatorBridge:
         self._waiting: dict[str, asyncio.Future] = {}
         # proposal id -> the Discord message showing its card (this run only)
         self._cards: dict[str, discord.Message] = {}
+        # Bot clients whose card buttons are registered (see _register_buttons).
+        self._buttons_on: set[int] = set()
 
     def attach(self) -> None:
-        """Receive coordinator events from every bot's sessions."""
-        for bot in self._manager.bots:
-            bot.registry.on_coordinator_event = self.on_event
+        """
+        Receive coordinator events from every bot's sessions, including bots
+        added later: the hook is set on the SessionRegistry class itself.
+        """
+        SessionRegistry.on_coordinator_event = self.on_event
 
     # ------------------------------------------------------------------
     # Going out
@@ -106,6 +113,7 @@ class CoordinatorBridge:
         if found is None:
             return {"event": "coordinator_notice", "ok": False, "text": NOT_LINKED}
         bot, link = found
+        self._register_buttons(bot.client)
 
         future = asyncio.get_running_loop().create_future()
         self._waiting[request_id] = future
@@ -130,6 +138,16 @@ class CoordinatorBridge:
             return None
         finally:
             self._waiting.pop(request_id, None)
+
+    def _register_buttons(self, client) -> None:
+        """
+        A card's clicks arrive on the client of the bot that posted it, so
+        every bot that posts cards needs the button class registered (the
+        primary bot already has it from install_coordinator).
+        """
+        if id(client) not in self._buttons_on:
+            client.add_dynamic_items(CardButton)
+            self._buttons_on.add(id(client))
 
     # ------------------------------------------------------------------
     # Coming back

@@ -150,6 +150,11 @@ class ScopeSession:
 
 
 class SessionRegistry:
+    # Group Coordinator: (session, event dict) for coordinator_* events. A
+    # class attribute on purpose: set once (coordinator/bridge.py attach()),
+    # it reaches every bot's registry, also bots added later with /mulca bot add.
+    on_coordinator_event: CoordinatorHook | None = None
+
     def __init__(
         self,
         url: str,
@@ -182,8 +187,6 @@ class SessionRegistry:
         # Set by the bot too: what each server call cost, and whether its
         # sessions answer every turn in text (set_text_replies).
         self.on_usage: UsageHook | None = None
-        # Group Coordinator: (session, event dict) for coordinator_* events.
-        self.on_coordinator_event: CoordinatorHook | None = None
         self.text_replies = False
 
     @property

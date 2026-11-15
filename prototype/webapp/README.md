@@ -9,7 +9,7 @@ same `SessionRegistry` Discord uses.
 
 ```bash
 # 1. MUCA-Server with the coordinator on (needs Azure in muca-server/.env)
-cd muca-server && MUCA_COORDINATOR_ENABLED=true python run_server.py
+cd muca-server && MUCA_COORDINATOR_ENABLED=true python -m muca_server.run_server
 # 2. Build the frontend once
 cd mulca/prototype/webapp && npm ci && npm run build
 # 3. The web adapter (serves the app, the film and the API) -> http://127.0.0.1:8080

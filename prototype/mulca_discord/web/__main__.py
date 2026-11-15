@@ -48,6 +48,9 @@ def main() -> None:
         host=os.environ.get("MULCA_WEB_HOST", "127.0.0.1"),
         port=int(os.environ.get("MULCA_WEB_PORT", "8080")),
         log_level="info",
+        # The access log would print every URL, including the secret of a
+        # calendar feed (/api/calendar/<secret>.ics): off (M5 review).
+        access_log=False,
     )
 
     async def run() -> None:

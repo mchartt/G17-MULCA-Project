@@ -299,3 +299,13 @@ async def test_messages_reach_the_group_in_the_order_they_were_typed(web):
     mine = [e["message"]["text"] for e in tab.seen if e["type"] == "message" and e["message"]["author"]]
     assert mine == ["m0", "m1", "m2", "m3", "m4"]
     await tab.ws.close()
+
+
+async def test_health_and_cors_only_for_the_listed_origins(hub):
+    app = create_web_app(hub, allowed_origins=["https://cadence.example"])
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as api:
+        assert (await api.get("/api/health")).json() == {"ok": True}
+        ok = await api.options("/api/groups", headers={"Origin": "https://cadence.example", "Access-Control-Request-Method": "POST"})
+        assert ok.headers.get("access-control-allow-origin") == "https://cadence.example"
+        no = await api.options("/api/groups", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"})
+        assert no.headers.get("access-control-allow-origin") is None

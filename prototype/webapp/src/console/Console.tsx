@@ -1,4 +1,6 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { faFileLines, faTableColumns } from "../lib/icons";
 import { saveToken } from "../lib/api";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer } from "../lib/types";
@@ -77,8 +79,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             {STATUS_TEXT[status] && <p className="banner" role="status">{STATUS_TEXT[status]}</p>}
           </div>
           <div className="console__tools">
-            <button className="btn btn--quiet btn--small" onClick={() => setDialog("kickoff")}>Paste the assignment</button>
-            <button className="btn btn--quiet btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
+            <button className="btn btn--soft btn--small" onClick={() => setDialog("kickoff")}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
+            <button className="btn btn--soft btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
+              <FontAwesomeIcon icon={faTableColumns} />{" "}
               {panelOpen ? "Hide plan" : "Show plan"}
             </button>
           </div>

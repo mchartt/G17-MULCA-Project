@@ -1,4 +1,5 @@
 // One WebSocket to the adapter, re-opened with a growing wait if it drops.
+import { ADAPTER_URL } from "./api";
 import type { Answer, ServerEvent } from "./types";
 
 export type SocketStatus = "connecting" | "open" | "closed" | "unauthorized";
@@ -19,7 +20,8 @@ export class SpaceSocket {
 
   open(): void {
     this.stopped = false;
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+    const base = ADAPTER_URL || `${location.protocol}//${location.host}`;
+    const url = `${base.replace(/^http/, "ws")}/ws`;
     this.onStatus("connecting");
     const ws = new WebSocket(url);
     this.ws = ws;

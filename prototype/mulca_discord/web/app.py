@@ -4,6 +4,7 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
     POST /api/groups   {groupName, displayName}   -> {token, inviteCode}   create a space
     POST /api/join     {inviteCode, displayName}  -> {token}               join with a code
     GET  /api/session  Authorization: Bearer <t>  -> {group, me}           who am I
+    GET  /api/health                              -> {ok: true}            is the adapter there
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
          -> {type:"command", command:"profile"|"kickoff"|"state", args, requestId}
@@ -22,6 +23,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
@@ -62,8 +64,23 @@ class ClickFrame(BaseModel):
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
 
-def create_web_app(hub: WebHub, *, static_dir: str | Path | None = None, film_dir: str | Path | None = None) -> FastAPI:
+def create_web_app(
+    hub: WebHub,
+    *,
+    static_dir: str | Path | None = None,
+    film_dir: str | Path | None = None,
+    allowed_origins: list[str] | None = None,
+) -> FastAPI:
     app = FastAPI(title="Cadence web adapter", docs_url=None, redoc_url=None)
+    if allowed_origins:
+        # Only when the frontend is hosted elsewhere (e.g. the Vercel preview):
+        # the listed origins may call the API. Tokens travel in headers, no cookies.
+        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+
+    @app.get("/api/health")
+    async def health() -> dict:
+        """The frontend asks this before showing the forms (the static preview has no adapter)."""
+        return {"ok": True}
 
     @app.post("/api/groups")
     async def create_group(body: CreateGroup) -> dict:

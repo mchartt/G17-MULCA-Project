@@ -1,4 +1,6 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { faCompass, faPaperPlane } from "../lib/icons";
 import type { Answer, Person } from "../lib/types";
 import { ProposalCard } from "./ProposalCard";
 import { dotFor, type Space } from "./space";
@@ -70,7 +72,7 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
           placeholder={disabled ? "Reconnecting…" : "Message the group"}
           disabled={disabled}
         />
-        <button className="btn btn--ink" type="submit" disabled={disabled || !draft.trim()}>Send</button>
+        <button className="btn btn--primary btn--round" type="submit" aria-label="Send" disabled={disabled || !draft.trim()}><FontAwesomeIcon icon={faPaperPlane} /></button>
       </form>
     </section>
   );
@@ -80,19 +82,28 @@ function Message({ space, author, text, channel, mine }: { space: Space; author:
   if (!author) {
     return (
       <div className="msg msg--agent">
-        <p className="msg__who"><span className="msg__agent-label">{space.agentName}</span><span className="tag">Coordinator</span></p>
-        <p className="msg__text">{text || "…"}</p>
+        <span className="avatar avatar--agent" aria-hidden="true"><FontAwesomeIcon icon={faCompass} /></span>
+        <div className="bubble">
+          <p className="msg__who"><span className="msg__agent-label">{space.agentName}</span><span className="tag">Coordinator</span></p>
+          <p className="msg__text">{text || "…"}</p>
+        </div>
       </div>
     );
   }
   return (
     <div className={`msg${mine ? " msg--mine" : ""}`}>
-      <p className="msg__who">
-        <span className="dot" style={{ background: dotFor(author.id, space.members) }} aria-hidden="true" />
-        {author.name}
-        {channel !== "web" && <span className="tag">{CHANNEL_NAMES[channel] ?? channel}</span>}
-      </p>
-      <p className="msg__text">{text}</p>
+      <span className="avatar" style={{ background: dotFor(author.id, space.members) }} aria-hidden="true">{initials(author.name)}</span>
+      <div className="bubble">
+        <p className="msg__who">
+          {mine ? "You" : author.name}
+          {channel !== "web" && <span className="tag">{CHANNEL_NAMES[channel] ?? channel}</span>}
+        </p>
+        <p className="msg__text">{text}</p>
+      </div>
     </div>
   );
+}
+
+export function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 }

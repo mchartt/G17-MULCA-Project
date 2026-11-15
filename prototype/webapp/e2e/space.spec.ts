@@ -6,7 +6,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   const ada = await (await browser.newContext()).newPage();
   await ada.goto("/");
   await expect(ada.getByRole("heading", { name: "Cadence", level: 1 })).toBeAttached();
-  await ada.getByRole("link", { name: "Skip the film" }).click();
+  await ada.getByRole("link", { name: "Open your space" }).click();
 
   await ada.getByLabel("I have read this and I agree").check();
   await ada.locator("#c-name").fill("Ada");

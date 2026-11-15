@@ -37,8 +37,8 @@ export function KickoffDialog({ open, onClose, onSend }: { open: boolean; onClos
         <textarea id="kickoff-text" rows={10} value={text} onChange={(e) => setText(e.target.value)} required />
         {error && <p className="form__error" role="alert">{error}</p>}
         <div className="form__actions">
-          <button type="button" className="btn btn--quiet" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn--confirm" disabled={busy || !text.trim()}>{busy ? "Cadence is reading…" : "Send to Cadence"}</button>
+          <button type="button" className="btn btn--soft" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>{busy ? "Cadence is reading…" : "Send to Cadence"}</button>
         </div>
       </form>
     </Dialog>
@@ -73,8 +73,8 @@ export function ProfileDialog({ open, onClose, onSave }: { open: boolean; onClos
         <input id="p-hours" type="number" min={0} max={80} value={profile.weekly_hours} onChange={(e) => setProfile({ ...profile, weekly_hours: Number(e.target.value) })} />
         {error && <p className="form__error" role="alert">{error}</p>}
         <div className="form__actions">
-          <button type="button" className="btn btn--quiet" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn--confirm" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
+          <button type="button" className="btn btn--soft" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={busy}>{busy ? "Saving…" : "Save profile"}</button>
         </div>
       </form>
     </Dialog>

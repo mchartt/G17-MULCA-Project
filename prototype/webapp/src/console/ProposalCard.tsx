@@ -1,4 +1,6 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
+import { faCheck, faCompass, faXmark } from "../lib/icons";
 import type { Answer, Proposal } from "../lib/types";
 
 const KIND_TITLES: Record<string, string> = { charter: "Project charter" };
@@ -33,7 +35,7 @@ export function ProposalCard({ proposal, agentName, onAnswer }: Props) {
   return (
     <article className={`card card--${status}`} aria-labelledby={`card-${proposal.proposal_id}`}>
       <header className="card__head">
-        <span className="card__from">{agentName}</span>
+        <span className="card__from"><FontAwesomeIcon icon={faCompass} /> {agentName}</span>
         <h3 id={`card-${proposal.proposal_id}`} className="card__title">{title}</h3>
       </header>
       {proposal.rationale && <p className="card__why">{proposal.rationale}</p>}
@@ -65,8 +67,8 @@ export function ProposalCard({ proposal, agentName, onAnswer }: Props) {
         <p className="card__status" role="status">{STATUS_WORDS[status] ?? status}</p>
         {status === "pending" && (
           <div className="card__actions">
-            <button className="btn btn--confirm" disabled={busy} onClick={() => answer("confirm")}>Confirm</button>
-            <button className="btn btn--quiet" disabled={busy} onClick={() => answer("reject")}>Reject</button>
+            <button className="btn btn--primary" disabled={busy} onClick={() => answer("confirm")}><FontAwesomeIcon icon={faCheck} /> Confirm</button>
+            <button className="btn btn--soft" disabled={busy} onClick={() => answer("reject")}><FontAwesomeIcon icon={faXmark} /> Reject</button>
           </div>
         )}
       </footer>

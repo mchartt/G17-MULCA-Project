@@ -7,6 +7,7 @@ Run the web adapter on its own:  python -m mulca_discord.web
     MULCA_WEB_DB      default data/web.sqlite3 (data/ is git-ignored)
     MULCA_WEB_STATIC  built frontend, default webapp/dist
     MULCA_WEB_FILM    film frames, default webapp/film/public
+    MULCA_WEB_ALLOWED_ORIGINS  comma-separated origins of a frontend hosted elsewhere (optional)
 
 Needs no Discord token: useful for the web-only demo and for development.
 Running it inside the Discord process (same event loop) is assumption A5 in
@@ -40,6 +41,7 @@ def main() -> None:
         hub,
         static_dir=os.environ.get("MULCA_WEB_STATIC", HERE / "webapp" / "dist"),
         film_dir=os.environ.get("MULCA_WEB_FILM", HERE / "webapp" / "film" / "public"),
+        allowed_origins=[o.strip() for o in os.environ.get("MULCA_WEB_ALLOWED_ORIGINS", "").split(",") if o.strip()],
     )
     config = uvicorn.Config(
         app,

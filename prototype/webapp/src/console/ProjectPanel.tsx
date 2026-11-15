@@ -1,3 +1,5 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBullseye, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced } from "../lib/icons";
 import type { Person, ProjectState } from "../lib/types";
 import { formatDate } from "./ProposalCard";
 import { dotFor } from "./space";
@@ -18,24 +20,24 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
     <aside className="panel" aria-labelledby="panel-title">
       <div className="panel__head">
         <h2 id="panel-title">Project plan</h2>
-        <button className="btn btn--quiet btn--small" onClick={onRefresh}>Refresh</button>
+        <button className="btn btn--soft btn--small" onClick={onRefresh}><FontAwesomeIcon icon={faRotate} /> Refresh</button>
       </div>
 
       {!charter ? (
         <div className="panel__empty">
           <p>No goal yet. Paste the assignment and Cadence proposes a goal, deliverables and milestones for the group to confirm.</p>
-          <button className="btn btn--confirm" onClick={onKickoff}>Paste the assignment</button>
+          <button className="btn btn--primary" onClick={onKickoff}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
         </div>
       ) : (
         <>
-          <section className="panel__section">
-            <h3>Goal</h3>
+          <section className="panel__section panel-card">
+            <h3><FontAwesomeIcon icon={faBullseye} /> Goal</h3>
             <p className="panel__goal">{charter.goal}</p>
             {charter.confirmed_by && <p className="muted small">Confirmed by {nameOf(charter.confirmed_by) ?? "a member"}</p>}
           </section>
 
-          <section className="panel__section">
-            <h3>Milestones</h3>
+          <section className="panel__section panel-card">
+            <h3><FontAwesomeIcon icon={faFlag} /> Milestones</h3>
             {state?.milestones?.length ? (
               <ol className="timeline">
                 {state.milestones.map((m) => (
@@ -50,8 +52,8 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
             )}
           </section>
 
-          <section className="panel__section">
-            <h3>Tasks</h3>
+          <section className="panel__section panel-card">
+            <h3><FontAwesomeIcon icon={faListCheck} /> Tasks</h3>
             {state?.tasks?.length ? (
               <ul className="tasks">
                 {state.tasks.map((t) => (
@@ -68,8 +70,8 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
             )}
           </section>
 
-          <section className="panel__section">
-            <h3>Decisions</h3>
+          <section className="panel__section panel-card">
+            <h3><FontAwesomeIcon icon={faScaleBalanced} /> Decisions</h3>
             {state?.decisions?.length ? (
               <ul className="decisions">
                 {state.decisions.map((d) => (

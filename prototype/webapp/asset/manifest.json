@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "id": "hero-gym-floor",
+      "kind": "photo",
+      "description": "Sala pesi vista dall'ingresso, luce del mattino",
+      "usage": ["home/hero"],
+      "source": "ai-generated",
+      "tool": "openai:gpt-image",
+      "prompt": "Wide shot of a modern gym floor at morning light, ...",
+      "license": "Generated for this project; check provider terms",
+      "author": "",
+      "altText": "Sala pesi luminosa con rastrelliere di manubri",
+      "original": "asset/originali/hero-gym-floor.png",
+      "optimized": ["asset/ottimizzati/hero-gym-floor-1600.webp"],
+      "costUsd": 0.07,
+      "createdAt": "2026-11-03"
+    }
+  ]
+}

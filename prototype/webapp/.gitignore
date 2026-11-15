@@ -1,0 +1,9 @@
+# Heavy film sources (PNG keyframes 4 MB each, raw clips). Kept on disk, listed in film/lavori.json;
+# the assembled frames for the page are decided at build time.
+film/keyframe/*.png
+film/v1-scartata/*.png
+film/clip/
+node_modules/
+dist/
+test-results/
+playwright-report/

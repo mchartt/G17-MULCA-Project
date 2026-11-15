@@ -1,0 +1,24 @@
+id: pleasant_conversation
+trigger_description: >
+  A message contains offensive, toxic, hateful, or deliberately disrespectful
+  language directed at another participant or group -- insults, slurs,
+  harassment, demeaning remarks. Ordinary disagreement or blunt criticism is
+  not, on its own, a trigger; this is about targeting people, not about
+  strong opinions.
+trigger_variables: []
+# Deliberately no cooldown_messages, unlike participation_equality/
+# maintain_focus (those are pacing/nagging concerns) -- if the
+# same behavior continues or escalates, suppressing a safety-relevant
+# intervention because one just fired recently would be the wrong tradeoff.
+prompt_template: |
+  Someone's message crossed into offensive or disrespectful territory. {prompt_fragment}
+  Address it calmly and firmly without escalating -- name the behavior, not
+  the person's character, and remind the group of respectful conduct. Do not
+  quote or repeat the offensive language itself.
+# Used instead of prompt_template when this rides along on top of a
+# different primary strategy (e.g. answering a direct question that also
+# contained offensive language) -- a brief aside, not the focus of the reply.
+overlay_template: >
+  Briefly and calmly note that the language just used was disrespectful and
+  ask that the group keep it civil -- one short aside, not the focus of
+  your reply, and do not quote or repeat the offensive language itself.

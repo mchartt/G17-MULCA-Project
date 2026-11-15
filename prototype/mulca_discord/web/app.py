@@ -1,0 +1,210 @@
+"""
+The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
+
+    POST /api/groups   {groupName, displayName}   -> {token, inviteCode}   create a space
+    POST /api/join     {inviteCode, displayName}  -> {token}               join with a code
+    GET  /api/session  Authorization: Bearer <t>  -> {group, me}           who am I
+    GET  /api/health                              -> {ok: true}            is the adapter there
+    POST /api/groups/delete {confirm: group name} + Bearer -> {deleted: true}  delete everything (rule 10)
+    WS   /ws           first frame {type:"auth", token}, then:
+         -> {type:"message", text}
+         -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why", args, requestId}
+         -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now"|"helpful", option?, requestId}
+         <- hello, message, members, proposal, state, status, reply{requestId, answer}, deleted
+
+Every request is checked server side: the token names exactly one member of one
+group, and a socket only ever receives its own group's events (section 10).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+from typing import Literal
+
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, ValidationError
+
+from .hub import WebHub
+
+logger = logging.getLogger(__name__)
+
+AUTH_TIMEOUT_SECONDS = 10
+
+
+class CreateGroup(BaseModel):
+    group_name: str = Field(alias="groupName", min_length=1, max_length=80)
+    display_name: str = Field(alias="displayName", min_length=1, max_length=40)
+
+
+class JoinGroup(BaseModel):
+    invite_code: str = Field(alias="inviteCode", min_length=4, max_length=20)
+    display_name: str = Field(alias="displayName", min_length=1, max_length=40)
+
+
+class DeleteGroup(BaseModel):
+    # The member types the space's name: a deliberate act, not a stray click.
+    confirm: str = Field(max_length=80)
+
+
+class ChatFrame(BaseModel):
+    type: Literal["message"]
+    text: str = Field(max_length=4000)
+
+
+class CommandFrame(BaseModel):
+    type: Literal["command"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why"]
+    args: dict = Field(default_factory=dict)
+    request_id: str = Field(default="", alias="requestId", max_length=64)
+
+
+class ClickFrame(BaseModel):
+    type: Literal["click"]
+    proposal_id: str = Field(alias="proposalId", max_length=64)
+    action: Literal["confirm", "reject", "take", "choose", "not_now", "helpful"]
+    option: int | None = None  # "choose": index of the option on a decision card
+    request_id: str = Field(default="", alias="requestId", max_length=64)
+
+
+def create_web_app(
+    hub: WebHub,
+    *,
+    static_dir: str | Path | None = None,
+    film_dir: str | Path | None = None,
+    allowed_origins: list[str] | None = None,
+) -> FastAPI:
+    app = FastAPI(title="Cadence web adapter", docs_url=None, redoc_url=None)
+    if allowed_origins:
+        # Only when the frontend is hosted elsewhere (e.g. the Vercel preview):
+        # the listed origins may call the API. Tokens travel in headers, no cookies.
+        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+
+    @app.get("/api/health")
+    async def health() -> dict:
+        """The frontend asks this before showing the forms (the static preview has no adapter)."""
+        return {"ok": True}
+
+    @app.post("/api/groups")
+    async def create_group(body: CreateGroup) -> dict:
+        group, member, token = hub.create_group(body.group_name, body.display_name)
+        return {"token": token, "inviteCode": group.invite_code, "memberId": member.id}
+
+    @app.post("/api/join")
+    async def join_group(body: JoinGroup) -> dict:
+        joined = await hub.join_group(body.invite_code, body.display_name)
+        if joined is None:
+            raise HTTPException(404, "No space with this invite code.")
+        group, member, token = joined
+        return {"token": token, "inviteCode": group.invite_code, "memberId": member.id}
+
+    @app.get("/api/session")
+    async def session(authorization: str = Header(default="")) -> dict:
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        group = hub.store.group(member.group_id)
+        return {
+            "group": {"id": group.id, "name": group.name, "inviteCode": group.invite_code},
+            "me": {"id": member.id, "name": member.display_name},
+        }
+
+    @app.post("/api/groups/delete")
+    async def delete_group(body: DeleteGroup, authorization: str = Header(default="")) -> dict:
+        """Rule 10: delete all the group's data (MUCA-Server and web), after typing its name."""
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        group = hub.store.group(member.group_id)
+        if " ".join(body.confirm.split()).lower() != group.name.lower():
+            raise HTTPException(400, "Type the name of the space exactly to delete it.")
+        if not await hub.delete_group(member):
+            raise HTTPException(502, "The coordinator server could not delete the data. Nothing was deleted: try again later.")
+        return {"deleted": True}
+
+    @app.post("/api/calendar")
+    async def calendar_link(authorization: str = Header(default="")) -> dict:
+        """M5: a new private feed link for the member's group (the old link stops working)."""
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        return {"path": f"/api/calendar/{hub.calendar.new_link(member.group_id)}.ics"}
+
+    @app.get("/api/calendar/{token}.ics")
+    async def calendar_feed(token: str) -> Response:
+        text = hub.calendar.feed(token)
+        if text is None:
+            raise HTTPException(404, "This calendar link does not exist or was replaced.")
+        return Response(text, media_type="text/calendar; charset=utf-8", headers={"Cache-Control": "no-store"})
+
+    @app.websocket("/ws")
+    async def socket(ws: WebSocket) -> None:
+        await ws.accept()
+        try:
+            first = await asyncio.wait_for(ws.receive_json(), AUTH_TIMEOUT_SECONDS)
+        except (asyncio.TimeoutError, WebSocketDisconnect, ValueError):
+            await ws.close(code=4401)
+            return
+        member = hub.store.member_by_token(str(first.get("token", ""))) if first.get("type") == "auth" else None
+        if member is None:
+            await ws.close(code=4401)
+            return
+        await hub.connect(ws, member)
+        try:
+            while True:
+                frame = await ws.receive_json()
+                if frame.get("type") == "message":
+                    # Chat messages one at a time, so MUCA-Server gets them in the order typed.
+                    await _handle(hub, ws, member, frame)
+                else:
+                    # Commands and clicks wait for the model: never block the chat behind them.
+                    asyncio.create_task(_handle(hub, ws, member, frame))
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            hub.disconnect(ws, member)
+
+    if film_dir and Path(film_dir).is_dir():
+        app.mount("/film", StaticFiles(directory=str(film_dir)), name="film")
+    if static_dir and Path(static_dir).is_dir():
+        root = Path(static_dir)
+        app.mount("/assets", StaticFiles(directory=str(root / "assets")), name="assets")
+
+        @app.get("/{path:path}")
+        async def spa(path: str) -> FileResponse:
+            # Real files (favicon, og image) as they are; every route of the app -> index.html.
+            candidate = (root / path).resolve()
+            if path and candidate.is_file() and root.resolve() in candidate.parents:
+                return FileResponse(candidate)
+            return FileResponse(root / "index.html")
+
+    return app
+
+
+async def _handle(hub: WebHub, ws: WebSocket, member, frame: dict) -> None:
+    """One frame from a member; answers to commands and clicks go back to that member only."""
+    kind = frame.get("type")
+    try:
+        if kind == "message":
+            await hub.post_message(member, ChatFrame.model_validate(frame).text)
+        elif kind == "command":
+            cmd = CommandFrame.model_validate(frame)
+            answer = await hub.command(member, cmd.command, cmd.args)
+            await ws.send_json({"type": "reply", "requestId": cmd.request_id, "answer": answer})
+        elif kind == "click":
+            click = ClickFrame.model_validate(frame)
+            answer = await hub.click(member, click.proposal_id, click.action, option=click.option)
+            await ws.send_json({"type": "reply", "requestId": click.request_id, "answer": answer})
+    except ValidationError:
+        text = "That request was not understood."
+        request_id = frame.get("requestId") if isinstance(frame, dict) else None
+        if isinstance(request_id, str) and request_id:
+            # Answer the waiting request too, so the button does not spin forever.
+            await ws.send_json({"type": "reply", "requestId": request_id[:64], "answer": {"type": "notice", "ok": False, "text": text}})
+        await ws.send_json({"type": "error", "text": text})
+    except Exception:  # never let one frame kill the socket
+        logger.exception("Web frame %s failed", kind)

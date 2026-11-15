@@ -1,0 +1,45 @@
+// Screenshots for the visual review (not a test).
+import { chromium } from "@playwright/test";
+const out = process.argv[2];
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await page.goto("http://127.0.0.1:8090/");
+await page.waitForTimeout(2500);
+const h = await page.evaluate(() => document.querySelector(".film").offsetHeight - innerHeight);
+for (const p of [0, 0.45, 0.85, 1]) {
+  await page.evaluate((y) => scrollTo(0, y), Math.round(h * p));
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: `${out}/film-${p}.png` });
+}
+await page.evaluate(() => document.querySelector(".problem").scrollIntoView());
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${out}/problem.png` });
+await page.evaluate(() => document.querySelector("#how").scrollIntoView());
+await page.screenshot({ path: `${out}/how.png` });
+await page.evaluate(() => document.querySelector(".rule").scrollIntoView());
+await page.screenshot({ path: `${out}/rule.png` });
+await page.evaluate(() => document.querySelector("#enter").scrollIntoView());
+await page.screenshot({ path: `${out}/entry.png` });
+await page.getByLabel("I have read this and I agree").check();
+await page.locator("#c-name").fill("Ada");
+await page.locator("#c-project").fill("AUI group 17");
+await page.getByRole("button", { name: "Create the space" }).click();
+await page.waitForTimeout(1200);
+await page.screenshot({ path: `${out}/console-empty.png` });
+await page.getByLabel("Message to the group").fill("Hi all, I pasted the brief in the panel. @coordinator can you help us start?");
+await page.keyboard.press("Enter");
+await page.waitForTimeout(1500);
+await page.getByRole("button", { name: "Paste the assignment" }).first().click();
+await page.getByRole("textbox", { name: "Assignment" }).fill("Deliver the prototype by 2 December.");
+await page.screenshot({ path: `${out}/dialog.png` });
+await page.getByRole("button", { name: "Send to Cadence" }).click();
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${out}/console-card.png` });
+await page.locator(".card").getByRole("button", { name: "Confirm" }).click();
+await page.waitForTimeout(2000);
+await page.screenshot({ path: `${out}/console-confirmed.png` });
+const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+await mobile.goto("http://127.0.0.1:8090/");
+await mobile.waitForTimeout(2000);
+await mobile.screenshot({ path: `${out}/mobile-film.png` });
+await browser.close();

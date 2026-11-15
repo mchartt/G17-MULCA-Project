@@ -1,0 +1,45 @@
+/* Cadence design tokens, v2 (15/11): soft, premium, Apple-like.
+   Contrast ratios measured on --paper (#fff) unless noted. */
+:root {
+  --paper: #ffffff;
+  --mist: #f5f5f7;            /* section and console background */
+  --line: rgba(29, 29, 31, 0.08);
+  --ink: #1d1d1f;             /* 16.8:1 */
+  --ink-soft: #636366;        /* 5.9:1, 5.4:1 on --mist */
+  --sage: #2f6f5e;            /* actions; white text on it 6.0:1 */
+  --sage-deep: #255a4c;
+  --sage-tint: #e9f2ee;       /* agent bubble, selected states */
+  --sand-tint: #f6f1ea;       /* soft warm panels */
+  --sky-tint: #eaf0f8;
+  --warn: #8a5300;            /* 6.4:1 */
+  --warn-tint: #fff3dd;
+  --danger: #b3261e;
+
+  --dot-sage: #5aa38b;
+  --dot-slate: #6b8fc7;
+  --dot-ochre: #d9a441;
+  --dot-coral: #e0876f;
+
+  /* SF Pro on Apple devices (system font), Geist elsewhere. */
+  --font: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Geist Variable", system-ui, sans-serif;
+
+  --t-xs: 0.8125rem;
+  --t-sm: 0.9375rem;
+  --t-base: 1.0625rem;
+  --t-md: 1.3125rem;
+  --t-lg: 1.75rem;
+  --t-xl: clamp(2rem, 3.6vw, 3rem);
+  --t-hero: clamp(2.6rem, 6.2vw, 5.2rem);
+
+  --r-card: 22px;
+  --r-field: 14px;
+  --r-pill: 999px;
+
+  --shadow-soft: 0 1px 2px rgba(29, 29, 31, 0.04), 0 12px 32px -12px rgba(29, 29, 31, 0.14);
+  --shadow-float: 0 2px 6px rgba(29, 29, 31, 0.05), 0 30px 60px -24px rgba(29, 29, 31, 0.28);
+
+  /* Apple-like curve: slower than the defaults, reads as polish. */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --slow: 700ms;
+  --focus: 3px solid #0a66d8;
+}

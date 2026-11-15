@@ -19,6 +19,7 @@ from contextlib import suppress
 from dotenv import load_dotenv
 
 from .commands import install_commands
+from .coordinator import install_coordinator
 from .discord_client import build_discord_client, close_all_sessions
 from .links import LinkStore, configured_db_path
 from .runtime import BotManager
@@ -77,7 +78,9 @@ def main() -> None:
         ),
         primary_token=discord_token,
     )
-    install_commands(manager)
+    tree = install_commands(manager)
+    # Group Coordinator: does nothing unless MULCA_COORDINATOR_ENABLED is on.
+    install_coordinator(manager, tree)
 
     async def shutdown() -> None:
         await manager.stop_added_bots()

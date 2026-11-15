@@ -1,0 +1,81 @@
+{
+  "name": "cadence-fog-to-daylight",
+  "version": "v2 photographic (15/11/2026), v1 stylised 3D discarded",
+  "aspect": "16:9",
+  "resolution": "720p",
+  "engine": "higgsfield seedance_2_0 std, audio off, free trial",
+  "style": "A real photograph, 35mm full-frame camera, natural film grain, true-to-life colours, real-world imperfections, no CGI look, no glow, no lens flare, no people. Cards and notes blank or with faint printed ruled lines only: no handwriting, no letters, no numbers, no logos.",
+  "vector": "the camera only moves forward, from the middle of a dark study room to a cork board on the far wall, never pulls back",
+  "vector_direction": "in",
+  "reversal_at": null,
+  "acceptance": [
+    "looks like a real photo shoot (practical effects), not a 3D render",
+    "no handwriting, letters or numbers",
+    "same room, same notes, same board across frames",
+    "light: night blue -> dawn grey -> warm morning sun from the window on the RIGHT of the board",
+    "each keyframe further forward than the previous one"
+  ],
+  "keyframes": [
+    {
+      "id": "kf1",
+      "job": "a6073b2d-fe1b-4754-a4cb-906a470515fe",
+      "prompt": "Study room at blue hour, haze, paper sticky notes and index cards hanging on fishing line at random angles, tall window with a street lamp at the far end."
+    },
+    {
+      "id": "kf2",
+      "job": "2c3c0392-d200-4fc7-8295-006cb0a2e9b8",
+      "prompt": "A few steps further in; notes hang still and turn to the camera; first pale dawn in the window."
+    },
+    {
+      "id": "kf3",
+      "job": "ceb3dc9f-a50f-4daa-b1be-71a15aba1617",
+      "prompt": "Halfway down the room; an empty wooden-framed cork board on the far wall left of the window; cool dawn daylight, haze almost gone."
+    },
+    {
+      "id": "kf3b",
+      "job": "ab30c71b-d562-49cf-85e4-236f837759af",
+      "prompt": "Board at half the frame, window on its right, cards drifting to it and the first pinned, low early sun warming."
+    },
+    {
+      "id": "kf4",
+      "job": "3e1eead4-263c-42f9-910e-637ac64eb7ac",
+      "prompt": "Close to the board, slight angle; half the cards pinned in three columns, others still hanging; warm morning sun from the window on the right."
+    },
+    {
+      "id": "kf5",
+      "job": "ac95e933-70ea-410f-ba33-8cd6dbbfad1d",
+      "prompt": "Front-on, board fills the frame; all pinned except one last yellow note on its line."
+    },
+    {
+      "id": "kf6",
+      "job": "180bfc18-87ee-4f2d-b568-acd70df62de6",
+      "prompt": "Slightly closer, centred on the middle column; everything pinned; the card outlined in sage green washi tape with two dot stickers at the centre."
+    }
+  ],
+  "clips": [
+    {
+      "id": "c1",
+      "duration": 5,
+      "job": "d0af69c4-96e4-4cd9-b7a3-3e3d418f4f81",
+      "prompt": "The camera slowly moves forward through the dark hazy study room toward the tall window; the hanging notes sway less and turn to face the camera; the window sky starts to turn to the first pale grey of dawn."
+    },
+    {
+      "id": "c2",
+      "duration": 5,
+      "prompt": "Continuing the same slow forward move toward the far wall, an empty cork board comes into view left of the window; the hanging notes line up in rows and columns in front of it; cool dawn daylight fills the room."
+    },
+    {
+      "id": "c3a",
+      "duration": 5,
+      "job": "34d9480a-5d8c-4791-8879-1eef980de0ec",
+      "prompt": "Continuing the same forward move at constant speed toward the cork board until it fills half of the frame; cards drift toward the board and the first are pinned; light warms."
+    },
+    {
+      "id": "c3b",
+      "duration": 5,
+      "prompt": "Continuing forward until the board fills most of the frame, the window edge on the right; the cards are pinned into three columns; warm morning sun from the right.",
+      "note": "generated with start frame only (end keyframe broke geometry)"
+    }
+  ],
+  "note": "Final cut: 4 clips, 20 s. kf4-kf6 kept as references only; the film ends on the last frame of c3b."
+}

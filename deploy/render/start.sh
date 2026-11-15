@@ -3,6 +3,12 @@
 # If either process stops, the container stops, and Render restarts it.
 set -e
 mkdir -p "$MUCA_DB_DIR"
+# Both processes must share this token ("Delete space" removes the server's
+# data with it). If Render has none, make one for this container's life.
+if [ -z "${MUCA_ADMIN_TOKEN:-}" ]; then
+  MUCA_ADMIN_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  export MUCA_ADMIN_TOKEN
+fi
 
 python -m muca_server.run_server &
 SERVER=$!

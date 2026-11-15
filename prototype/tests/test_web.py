@@ -286,3 +286,16 @@ def test_the_runner_builds_the_app_from_the_environment(tmp_path, monkeypatch):
     runner.main()
     assert served == [("127.0.0.1", 8099)]
     assert (tmp_path / "data" / "w.db").exists()
+
+
+async def test_messages_reach_the_group_in_the_order_they_were_typed(web):
+    hub, http, ws_url = web
+    async with httpx.AsyncClient(base_url=http) as api:
+        ada = (await api.post("/api/groups", json={"groupName": "T", "displayName": "Ada"})).json()
+    tab = await Tab.open(ws_url, ada["token"])
+    for i in range(5):
+        await tab.send(type="message", text=f"m{i}")
+    await tab.wait_for(lambda e: e["type"] == "message" and e["message"]["text"] == "m4")
+    mine = [e["message"]["text"] for e in tab.seen if e["type"] == "message" and e["message"]["author"]]
+    assert mine == ["m0", "m1", "m2", "m3", "m4"]
+    await tab.ws.close()

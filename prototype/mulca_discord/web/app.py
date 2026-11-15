@@ -105,7 +105,12 @@ def create_web_app(hub: WebHub, *, static_dir: str | Path | None = None, film_di
         try:
             while True:
                 frame = await ws.receive_json()
-                asyncio.create_task(_handle(hub, ws, member, frame))
+                if frame.get("type") == "message":
+                    # Chat messages one at a time, so MUCA-Server gets them in the order typed.
+                    await _handle(hub, ws, member, frame)
+                else:
+                    # Commands and clicks wait for the model: never block the chat behind them.
+                    asyncio.create_task(_handle(hub, ws, member, frame))
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:

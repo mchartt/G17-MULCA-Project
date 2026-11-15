@@ -80,3 +80,34 @@ export function ProfileDialog({ open, onClose, onSave }: { open: boolean; onClos
     </Dialog>
   );
 }
+
+/** M4 /planning: the members write the tasks; Cadence suggests owners on a card. */
+export function PlanningDialog({ open, onClose, onSend }: { open: boolean; onClose: () => void; onSend: (text: string) => Promise<string | null> }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const result = await onSend(text);
+    setBusy(false);
+    setError(result);
+    if (!result) setText("");
+  }
+
+  return (
+    <Dialog open={open} title="Plan the work together" onClose={onClose}>
+      <form onSubmit={submit} className="form">
+        <p className="muted">Write the tasks the group agreed on, one per line. Cadence suggests who could take each one, with a reason, from your profiles. Nothing is saved until a member confirms the card.</p>
+        <label htmlFor="planning-text">Tasks</label>
+        <textarea id="planning-text" rows={8} value={text} onChange={(e) => setText(e.target.value)} required placeholder={"Server API\nUI screens\nUser test with 5 people"} />
+        {error && <p className="form__error" role="alert">{error}</p>}
+        <div className="form__actions">
+          <button type="button" className="btn btn--soft" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={busy || !text.trim()}>{busy ? "Cadence is planning…" : "Suggest owners"}</button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}

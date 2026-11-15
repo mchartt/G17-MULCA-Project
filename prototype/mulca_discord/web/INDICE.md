@@ -41,6 +41,9 @@ browser ── {command} / {click} ─────────> WebHub.command /
   (on the class, `coordinator/bridge.py`) is untouched (tested).
 - Clicks carry every M3 button: `confirm`, `reject`, `take`, `choose` (+ `option`),
   `not_now` (`ClickFrame` in `app.py`, `WebHub.click` in `hub.py`).
+- Commands carry every M4 command (`planning`, `checkin`, `task`, `why`). A frame
+  that does not validate still answers its `requestId` with a refusing notice,
+  so no button waits forever (tested).
 - One lock per group (`WebHub._lock`) around "join the broadcast list + hello"
   and around every broadcast, so a broadcast never reaches a new socket before
   its hello (found by the M3 e2e; regression test in `tests/test_web.py`).

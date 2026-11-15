@@ -27,4 +27,14 @@ await page.keyboard.press("Enter");
 await page.locator(".card", { hasText: "One person can do this" }).getByRole("button", { name: "Why?" }).click();
 await page.waitForTimeout(800);
 await report("console with proactive card and Why? open");
+// M4: planning dialog, plan card confirmed (status selects), decision + Ask why.
+await page.getByRole("button", { name: "Plan tasks" }).click();
+await page.getByLabel("Tasks").fill("Server API\nUI screens");
+await page.waitForTimeout(800); // let the dialog finish fading in
+await report("planning dialog open");
+await page.getByRole("button", { name: "Suggest owners" }).click();
+await page.locator(".card", { hasText: "Plan: who does what" }).getByRole("button", { name: "Confirm" }).click();
+// (A CS3 card would be vetoed here: R3/R4, the CS2 card was posted minutes ago.)
+await page.waitForTimeout(1200);
+await report("console with plan card and status selects");
 await browser.close();

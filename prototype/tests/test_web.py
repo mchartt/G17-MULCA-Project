@@ -333,3 +333,19 @@ async def test_a_broadcast_never_overtakes_a_new_members_hello(hub):
     gate.set()
     await asyncio.gather(connecting, joining)
     assert order == ["hello", "members"]
+
+
+async def test_a_frame_that_does_not_validate_still_answers_its_request(hub):
+    """M4 finding: an unknown command left the button waiting forever."""
+    from mulca_discord.web.app import _handle
+
+    sent = []
+
+    class Ws:
+        async def send_json(self, data):
+            sent.append(data)
+
+    group, ada, _ = hub.create_group("G", "Ada")
+    await _handle(hub, Ws(), ada, {"type": "command", "command": "delete_everything", "requestId": "r9"})
+    assert sent[0] == {"type": "reply", "requestId": "r9", "answer": {"type": "notice", "ok": False, "text": "That request was not understood."}}
+    assert sent[1]["type"] == "error"

@@ -1,6 +1,6 @@
 // One WebSocket to the adapter, re-opened with a growing wait if it drops.
 import { ADAPTER_URL } from "./api";
-import type { Answer, CardAction, ServerEvent } from "./types";
+import type { Answer, CardAction, CommandName, ServerEvent } from "./types";
 
 export type SocketStatus = "connecting" | "open" | "closed" | "unauthorized";
 
@@ -58,7 +58,7 @@ export class SpaceSocket {
     this.ws?.send(JSON.stringify({ type: "message", text }));
   }
 
-  ask(frame: { type: "command"; command: "profile" | "kickoff" | "state"; args?: object } | { type: "click"; proposalId: string; action: CardAction; option?: number }): Promise<Answer> {
+  ask(frame: { type: "command"; command: CommandName; args?: object } | { type: "click"; proposalId: string; action: CardAction; option?: number }): Promise<Answer> {
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
       this.waiting.set(requestId, resolve);

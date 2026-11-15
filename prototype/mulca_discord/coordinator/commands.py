@@ -87,6 +87,38 @@ class CoordinatorGroup(app_commands.Group):
         answer = await self._bridge.send_command(interaction, "kickoff", {"text": text})
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
+    @app_commands.command(name="planning", description="Write the tasks: the coordinator suggests who takes each one.")
+    @app_commands.describe(tasks="The tasks, separated by ';' (e.g. Server API; UI screens; Slides)")
+    async def planning(self, interaction: discord.Interaction, tasks: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        # Discord has no multi-line option: ';' separates the tasks.
+        text = "\n".join(part.strip() for part in tasks.split(";") if part.strip())
+        answer = await self._bridge.send_command(interaction, "planning", {"text": text})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="checkin", description="Compare the plan with reality: what is late or at risk.")
+    async def checkin(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "checkin")
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="task", description="Update a task: its number in /coordinator plan and the new status.")
+    @app_commands.describe(task="The task's number in /coordinator plan", status="The new status")
+    @app_commands.choices(
+        status=[app_commands.Choice(name=s, value=s) for s in ("todo", "doing", "done", "blocked")]
+    )
+    async def task(self, interaction: discord.Interaction, task: app_commands.Range[int, 1, 99], status: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "task", {"task": str(task), "status": status})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="why", description="Ask why the group decided something: the answer cites the decision log.")
+    @app_commands.describe(question="e.g. Why did we drop the notifications?")
+    async def why(self, interaction: discord.Interaction, question: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "why", {"question": question})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
     @app_commands.command(name="plan", description="Show the project state (only you see it).")
     async def plan(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -112,7 +144,12 @@ def state_embed(state: dict) -> discord.Embed:
             f"{m['display_name']}" + (f" · {m['discipline']}" if m.get("discipline") else "")
             for m in state.get("members", [])
         ],
-        "Tasks": [f"{t['title']} · {t['status']}" for t in state.get("tasks", [])],
+        # Numbered: /coordinator task takes this number.
+        "Tasks": [
+            f"{n}. {t['title']} · {t['status']}" + (f" · <@{t['owner_id']}>" if t.get("owner_id") else "")
+            + (f" · {t['due_date']}" if t.get("due_date") else "")
+            for n, t in enumerate(state.get("tasks", []), start=1)
+        ],
         "Decisions": [f"{d['question']} → {d['choice']}" for d in state.get("decisions", [])],
     }
     for name, lines in sections.items():

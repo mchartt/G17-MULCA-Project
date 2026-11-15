@@ -17,6 +17,7 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "s
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
 export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now";
 export type Click = { action: CardAction; option?: number };
+export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why";
 
 /** Why a proactive card exists (M3): strategy, topic, and the messages behind it. */
 export type ProactiveContext = {
@@ -45,6 +46,10 @@ export type Proposal = {
     return_to?: string;
     question?: string;
     options?: { label: string; argument?: string }[];
+    // M4 cards (plan, checkin, blocker)
+    items?: { title: string; owner_id?: number | null; reason?: string; due_date?: string | null }[];
+    findings?: string[];
+    helper_id?: number | null;
     [key: string]: unknown;
   };
 };
@@ -53,7 +58,7 @@ export type ProjectState = {
   charter?: { goal: string; deliverables?: string[]; confirmed_by?: number } | null;
   milestones?: Milestone[];
   members?: { member_id?: number; display_name: string; discipline?: string; skills?: string; weekly_hours?: number }[];
-  tasks?: { title: string; status: string; owner_id?: number | null; due_date?: string | null }[];
+  tasks?: { task_id?: string; title: string; status: string; owner_id?: number | null; due_date?: string | null }[];
   decisions?: { question: string; choice: string; reason?: string }[];
 };
 

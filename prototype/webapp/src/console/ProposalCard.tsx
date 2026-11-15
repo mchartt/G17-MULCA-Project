@@ -9,6 +9,9 @@ const KIND_TITLES: Record<string, string> = {
   task_owner: "Owner and date",
   delegation: "One person can do this",
   decision: "Close the decision",
+  plan: "Plan: who does what",
+  checkin: "Check-in",
+  blocker: "Something is blocked",
 };
 const STATUS_WORDS: Record<string, string> = {
   pending: "Waiting for a member to confirm",
@@ -22,6 +25,7 @@ const STRATEGY_WHY: Record<string, string> = {
   cs5_owner_and_date: "An action the group agreed on had no owner or no date.",
   cs2_delegate_simple_task: "Several of you were discussing a task one person can do alone.",
   cs3_close_decision: "The same question had two or more options and no decision.",
+  cs7_blockers_dependencies: "Someone is stuck or waiting on other work, and a deadline is at risk.",
 };
 
 type Props = {
@@ -114,6 +118,39 @@ function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (i
       </>
     );
   }
+  if (kind === "plan") {
+    return (
+      <ul className="card__items">
+        {(payload.items ?? []).map((i) => (
+          <li key={i.title}>
+            <strong>{i.title}</strong>
+            <span className="muted small">
+              {i.owner_id ? memberName(i.owner_id) : "anyone"}
+              {i.due_date ? ` · ${formatDate(i.due_date)}` : ""}
+              {i.reason ? ` · ${i.reason}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (kind === "checkin") {
+    return (
+      <div className="card__field">
+        <h4>What is late or at risk</h4>
+        <ul>{(payload.findings ?? []).map((f) => <li key={f}>{f}</li>)}</ul>
+      </div>
+    );
+  }
+  if (kind === "blocker") {
+    return (
+      <>
+        <Field label="Task">{payload.title}</Field>
+        {payload.question && <Field label="Question">{payload.question}</Field>}
+        {payload.helper_id ? <Field label="Who could help">{memberName(payload.helper_id)}</Field> : null}
+      </>
+    );
+  }
   if (kind === "decision") {
     return (
       <>
@@ -156,7 +193,7 @@ function Answers({ proposal, busy, answer }: { proposal: Proposal; busy: boolean
   const { kind, payload } = proposal;
   const reject = <button className="btn btn--soft" disabled={busy} onClick={() => answer({ action: "reject" })}><FontAwesomeIcon icon={faXmark} /> Reject</button>;
   const take = <button className="btn btn--primary" disabled={busy} onClick={() => answer({ action: "take" })}><FontAwesomeIcon icon={faHandshake} /> I'll take it</button>;
-  if (kind === "decision") {
+  if (kind === "decision" || kind === "checkin") {
     return (
       <>
         {(payload.options ?? []).map((o, n) => (
@@ -167,6 +204,14 @@ function Answers({ proposal, busy, answer }: { proposal: Proposal; busy: boolean
     );
   }
   if (kind === "delegation") return <>{take}{reject}</>;
+  if (kind === "blocker") {
+    return (
+      <>
+        <button className="btn btn--primary" disabled={busy} onClick={() => answer({ action: "confirm" })}><FontAwesomeIcon icon={faCheck} /> Mark as blocked</button>
+        {reject}
+      </>
+    );
+  }
   if (kind === "task_owner") {
     return (
       <>

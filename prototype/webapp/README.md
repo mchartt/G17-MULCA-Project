@@ -39,7 +39,8 @@ To make the preview talk to a running adapter: build with
 `python webapp/e2e/fake_stack.py` (from `mulca/prototype`) starts an in-process
 MUCA-Server with a FAKE model (scripted drafts per card schema, the agent
 echoes) and a FAKE intervention agent (a message with "font" fires CS2, one with
-"think-aloud" fires CS3), plus the adapter on http://127.0.0.1:8090. Everything
+"think-aloud" fires CS3; planning, check-in and why get scripted answers built
+from the real ids in the request), plus the adapter on http://127.0.0.1:8090. Everything
 after the trigger is the real code (rules, validation, proposals, cards). Only for tests and rehearsals: never for
 the live proof.
 
@@ -47,10 +48,10 @@ the live proof.
 
 | What | Command | Result 15/11 (M3) |
 |---|---|---|
-| Cards of every kind, Why?, Not now, panel, state reducer, film titles (Vitest) | `npm test` | 23 passed |
-| End to end (Playwright, fake stack): charter; CS2 card + Why? + I'll take it; CS3 choice; Not now | `npm run e2e` | 4 passed |
-| Accessibility WCAG 2.1 AA (axe-core, fake stack running) | `npm run axe` | 0 violations on landing, console with card, proactive card with Why? open |
-| Web adapter (pytest) | `cd .. && python -m pytest tests/test_web.py` | 17 passed, coverage 97 % |
+| Cards of every kind, Why?, Not now, panel (status, Ask why), state reducer, film titles (Vitest) | `npm test` | 27 passed |
+| End to end (Playwright, fake stack): charter; CS2 card + Why? + I'll take it; CS3 choice; Not now; planning + status + check-in + why with source | `npm run e2e` | 5 passed |
+| Accessibility WCAG 2.1 AA (axe-core, fake stack running) | `npm run axe` | 0 violations on landing, console with card, proactive card with Why? open, planning dialog, plan with status selects |
+| Web adapter (pytest) | `cd .. && python -m pytest tests/test_web.py` | 18 passed |
 
 On the Linux shell of the Claude app, Chromium needs `libXdamage.so.1`
 (downloaded with `apt-get download libxdamage1`, extracted, `LD_LIBRARY_PATH`).

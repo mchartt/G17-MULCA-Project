@@ -33,9 +33,9 @@ member: clicks Confirm        ──> cards.py CardButton.callback
 | File | Lines | Responsibility |
 |---|---|---|
 | `__init__.py` | 8 | Exports `install_coordinator`. |
-| `commands.py` | 121 | The switch, `install_coordinator`, the `/coordinator` group, the plan embed. |
+| `commands.py` | 158 | The switch, `install_coordinator`, the `/coordinator` group, the plan embed. |
 | `bridge.py` | 223 | Sends commands and clicks to MUCA-Server and routes its answers back; answers "Why?". |
-| `cards.py` | 222 | How a proposal looks: embed + persistent buttons, for every kind. |
+| `cards.py` | 257 | How a proposal looks: embed + persistent buttons, for every kind. |
 
 ## `commands.py`
 
@@ -46,7 +46,11 @@ member: clicks Confirm        ──> cards.py CardButton.callback
 | `CoordinatorGroup` | `/coordinator`, open to every member of a linked channel. |
 | `profile(discipline, skills, weekly_hours)` | Saves your own profile (0–80 hours). |
 | `kickoff(text)` | Sends the assignment text; the card appears in the channel. |
-| `plan()` | Shows the project state, only to you. |
+| `planning(tasks)` | M4: the tasks separated by `;` (Discord has no multi-line option) → a plan card with suggested owners. |
+| `checkin()` | M4: "on track" privately, or a check-in card in the channel. |
+| `task(task, status)` | M4: the task's number in `/coordinator plan` and its new status (todo, doing, done, blocked). |
+| `why(question)` | M4: the answer from the decision log with its source, privately. |
+| `plan()` | Shows the project state, only to you; tasks are numbered for `/coordinator task`. |
 | `state_embed(state)` | Draws the state: goal, milestones, members, tasks, decisions. |
 
 Every command first answers "thinking…" privately (`defer`), because the
@@ -75,7 +79,7 @@ model can take some seconds, then the final answer, also private.
 | `STATUS_WORDS`, `STATUS_COLOURS` | The status is always written in words (including "Not now: silenced for 30 minutes"); the colour only adds to it. |
 | `KIND_TITLES`, `STRATEGY_NAMES` | Card titles per kind; the strategy in plain words for "Why?". |
 | `proposal_embed(proposal)` | Title "Coordinator · …", the reason in italics, the content of the kind (`_fields`), status and expiry in the footer. A suggested owner is a Discord mention. Long fields are cut to Discord's limit. |
-| `card_view(proposal)` | While pending: charter → Confirm, Reject; task_owner → Confirm (only with a suggested owner), I'll take it, Reject; delegation → I'll take it, Reject (never assigns); decision → one button per option, Reject. Proactive cards add Why? and Not now on a second row. No buttons once closed. |
+| `card_view(proposal)` | While pending: charter → Confirm, Reject; task_owner → Confirm (only with a suggested owner), I'll take it, Reject; delegation → I'll take it, Reject (never assigns); decision → one button per option, Reject; plan → Confirm, Reject; checkin → one button per option, Reject; blocker → Confirm, Reject. Proactive cards (task_owner, delegation, decision, blocker) add Why? and Not now on a second row. No buttons once closed. |
 | `why_text(proposal)` | Strategy, topic and the messages behind the card, as a private message. |
 | `CardButton` | A `DynamicItem`: discord.py rebuilds it from the custom_id (`from_custom_id`), also after a restart; `callback` hands "Why?" to `bridge.why` and every other button to `bridge.click`. |
 | `split_action(action)` | `choose1` → (`choose`, 1). |
@@ -105,5 +109,6 @@ model can take some seconds, then the final answer, also private.
 
 Tests: `tests/test_coordinator_discord.py` (22 tests, including one end to
 end against a real local MUCA-Server with the coordinator on and a fake model)
-and `tests/test_coordinator_discord_m3.py` (M3 cards and buttons, and one end
-to end "choose" against a real local MUCA-Server).
+`tests/test_coordinator_discord_m3.py` (M3 cards and buttons, and one end
+to end "choose" against a real local MUCA-Server) and
+`tests/test_coordinator_discord_m4.py` (M4 commands and cards).

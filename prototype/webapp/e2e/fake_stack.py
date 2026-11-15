@@ -60,6 +60,44 @@ DRAFTS = {
         "rationale": "Stepping in because the test method is open and both options are on the table.",
     },
 }
+def scripted(name: str, user: str) -> dict:
+    """The draft for one schema, built from ids that really are in the request."""
+    import re
+
+    if name in DRAFTS:
+        draft = dict(DRAFTS[name])
+        if "evidence" in draft:
+            # Point at the chat lines the writer numbered ([1], [2], ...): a
+            # number that is not a line would be refused (proactive_writer.py).
+            lines = user.split("<chat>")[1].count("\n[")
+            draft["evidence"] = list(range(1, min(lines, 5) + 1))
+        return draft
+    members = [int(m) for m in re.findall(r"- id (\d+):", user)]
+    if name == "plan_draft":
+        titles = [t.strip() for t in user.split("<tasks>")[1].split("</tasks>")[0].splitlines() if t.strip()]
+        return {
+            "items": [
+                {"title": t, "owner_id": members[n % len(members)] if members else None,
+                 "reason": "Free hours this week.", "due_date": None}
+                for n, t in enumerate(titles)
+            ],
+            "rationale": "Stepping in because you listed the tasks: here is a first split.",
+        }
+    if name == "checkin_options":
+        task_id = re.findall(r"task_id (\w+):", user)[0]
+        return {
+            "options": [
+                {"label": "Move it one week later", "task_id": task_id, "new_due_date": "2027-12-01", "new_owner_id": None, "drop": False},
+                {"label": "Drop it: not essential", "task_id": task_id, "new_due_date": None, "new_owner_id": None, "drop": True},
+            ],
+            "rationale": "Stepping in because a task is late.",
+        }
+    if name == "decision_answer":
+        ids = re.findall(r"- id (\w+):", user.split("<decisions>")[1])
+        return {"answer": "The group chose it in the decision card.", "decision_ids": ids[:1]}
+    raise KeyError(name)
+
+
 # Phrase in a message -> the strategy the fake "intervention agent" picks.
 TRIGGERS = {"font": "cs2_delegate_simple_task", "think-aloud": "cs3_close_decision"}
 
@@ -72,13 +110,7 @@ class ScriptedModel:
 
     async def _create(self, **kwargs):
         name = kwargs["response_format"]["json_schema"]["name"]
-        draft = dict(DRAFTS[name])
-        if "evidence" in draft:
-            # Point at the chat lines the writer numbered ([1], [2], ...): a
-            # number that is not a line would be refused (proactive_writer.py).
-            lines = kwargs["messages"][1]["content"].split("<chat>")[1].count("\n[")
-            draft["evidence"] = list(range(1, min(lines, 5) + 1))
-        content = json.dumps(draft)
+        content = json.dumps(scripted(name, kwargs["messages"][1]["content"]))
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))], usage=None)
 
 

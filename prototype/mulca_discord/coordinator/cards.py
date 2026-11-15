@@ -17,6 +17,9 @@ Kinds (MUCA-Server docs/PROTOCOL.md, "Group Coordinator"):
     task_owner   Confirm (if an owner is suggested), I'll take it, Reject, Why?, Not now
     delegation   I'll take it, Reject, Why?, Not now
     decision     one button per option, Reject, Why?, Not now
+    blocker      Confirm, Reject, Why?, Not now                    (M4, CS7)
+    plan         Confirm, Reject                                  (M4, /planning)
+    checkin      one button per option, Reject                    (M4, /checkin)
 """
 
 from __future__ import annotations
@@ -55,14 +58,18 @@ KIND_TITLES = {
     "task_owner": "Owner and date",
     "delegation": "One person can do this",
     "decision": "Close the decision",
+    "plan": "Plan: who does what",
+    "checkin": "Check-in",
+    "blocker": "Something is blocked",
 }
 # Plain names of the strategies, for "Why?" (spec S5, S2, S3).
 STRATEGY_NAMES = {
     "cs5_owner_and_date": "Owner and date (CS5): an agreed action had no owner or no date.",
     "cs2_delegate_simple_task": "Delegate simple tasks (CS2): several of you were discussing a task one person can do alone.",
     "cs3_close_decision": "Close the decision (CS3): the same question had two or more options and no decision.",
+    "cs7_blockers_dependencies": "Blockers (CS7): someone is stuck or waiting on other work, and a deadline is at risk.",
 }
-PROACTIVE_KINDS = ("task_owner", "delegation", "decision")
+PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker")
 LABELS = {
     "confirm": ("Confirm", discord.ButtonStyle.success),
     "take": ("I'll take it", discord.ButtonStyle.success),
@@ -123,6 +130,31 @@ def _fields(kind: str | None, payload: dict) -> list[tuple[str, str]]:
                 ) or "—",
             ),
         ]
+    if kind == "plan":
+        return [
+            (
+                "Tasks",
+                "\n".join(
+                    f"• **{i.get('title')}** — "
+                    + (f"<@{i['owner_id']}>" if i.get("owner_id") else "anyone")
+                    + (f" · {i['due_date']}" if i.get("due_date") else "")
+                    + (f"\n  _{i['reason']}_" if i.get("reason") else "")
+                    for i in payload.get("items", [])
+                ) or "—",
+            )
+        ]
+    if kind == "checkin":
+        return [
+            ("What is late or at risk", _bullets(payload.get("findings", []))),
+            ("Options", "\n".join(f"**{n}.** {o.get('label')}" for n, o in enumerate(payload.get("options", []), start=1)) or "—"),
+        ]
+    if kind == "blocker":
+        fields = [("Task", payload.get("title", ""))]
+        if payload.get("question"):
+            fields.append(("Question", payload["question"]))
+        if payload.get("helper_id"):
+            fields.append(("Who could help", f"<@{payload['helper_id']}>"))
+        return fields
     return []
 
 
@@ -134,7 +166,7 @@ def card_view(proposal: dict) -> discord.ui.View | None:
     payload = proposal.get("payload", {})
     proposal_id = proposal["proposal_id"]
     view = discord.ui.View(timeout=None)
-    if kind == "decision":
+    if kind in ("decision", "checkin"):
         for n, option in enumerate(payload.get("options", [])[:3]):
             view.add_item(CardButton(f"choose{n}", proposal_id, label=option.get("label", f"Option {n + 1}")))
     actions = {
@@ -142,6 +174,9 @@ def card_view(proposal: dict) -> discord.ui.View | None:
         "task_owner": (["confirm"] if payload.get("owner_id") else []) + ["take", "reject"],
         "delegation": ["take", "reject"],
         "decision": ["reject"],
+        "checkin": ["reject"],
+        "plan": ["confirm", "reject"],
+        "blocker": ["confirm", "reject"],
     }.get(kind, ["confirm", "reject"])
     if kind in PROACTIVE_KINDS:
         actions += ["why", "not_now"]

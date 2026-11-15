@@ -7,7 +7,7 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
     GET  /api/health                              -> {ok: true}            is the adapter there
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
-         -> {type:"command", command:"profile"|"kickoff"|"state", args, requestId}
+         -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why", args, requestId}
          -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now", option?, requestId}
          <- hello, message, members, proposal, state, status, reply{requestId, answer}
 
@@ -52,7 +52,7 @@ class ChatFrame(BaseModel):
 
 class CommandFrame(BaseModel):
     type: Literal["command"]
-    command: Literal["profile", "kickoff", "state"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why"]
     args: dict = Field(default_factory=dict)
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
@@ -166,6 +166,11 @@ async def _handle(hub: WebHub, ws: WebSocket, member, frame: dict) -> None:
             answer = await hub.click(member, click.proposal_id, click.action, option=click.option)
             await ws.send_json({"type": "reply", "requestId": click.request_id, "answer": answer})
     except ValidationError:
-        await ws.send_json({"type": "error", "text": "That request was not understood."})
+        text = "That request was not understood."
+        request_id = frame.get("requestId") if isinstance(frame, dict) else None
+        if isinstance(request_id, str) and request_id:
+            # Answer the waiting request too, so the button does not spin forever.
+            await ws.send_json({"type": "reply", "requestId": request_id[:64], "answer": {"type": "notice", "ok": False, "text": text}})
+        await ws.send_json({"type": "error", "text": text})
     except Exception:  # never let one frame kill the socket
         logger.exception("Web frame %s failed", kind)

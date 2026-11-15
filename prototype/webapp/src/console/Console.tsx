@@ -1,11 +1,11 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { faFileLines, faTableColumns } from "../lib/icons";
+import { faClipboardCheck, faFileLines, faListOl, faTableColumns } from "../lib/icons";
 import { saveToken } from "../lib/api";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer } from "../lib/types";
 import { Chat } from "./Chat";
-import { KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
 import { emptySpace, reduce } from "./space";
@@ -20,7 +20,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | null>(null);
+  // Short answers to commands (check-in "on track", task updates), shown above the chat.
+  const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
 
   useEffect(() => {
@@ -60,6 +62,31 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     return answer.type === "notice" ? answer.text : "Cadence could not read the assignment.";
   };
 
+  const planning = async (text: string) => {
+    const answer = await ask({ type: "command", command: "planning", args: { text } });
+    if (answer.ok) {
+      setDialog(null);
+      return null;
+    }
+    return answer.type === "notice" ? answer.text : "Cadence could not read the tasks.";
+  };
+
+  const checkin = async () => {
+    setNotice("Cadence is comparing the plan with the dates…");
+    const answer = await ask({ type: "command", command: "checkin" });
+    setNotice(answer.type === "notice" ? answer.text : null);
+  };
+
+  const taskStatus = async (task: string, status: string) => {
+    const answer = await ask({ type: "command", command: "task", args: { task, status } });
+    if (!answer.ok && answer.type === "notice") setNotice(answer.text);
+  };
+
+  const why = async (question: string) => {
+    const answer = await ask({ type: "command", command: "why", args: { question } });
+    return answer.type === "notice" ? answer.text : "No answer.";
+  };
+
   const saveProfile = async (profile: Profile) => {
     const answer = await ask({ type: "command", command: "profile", args: profile });
     return answer.ok ? null : answer.type === "notice" ? answer.text : "Profile not saved.";
@@ -77,9 +104,16 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
               <p className="banner banner--warn" role="status">Cadence is not available right now. The chat still works.</p>
             )}
             {STATUS_TEXT[status] && <p className="banner" role="status">{STATUS_TEXT[status]}</p>}
+            {notice && (
+              <p className="banner banner--info" role="status">
+                {notice} <button className="link-btn" onClick={() => setNotice(null)}>Dismiss</button>
+              </p>
+            )}
           </div>
           <div className="console__tools">
             <button className="btn btn--soft btn--small" onClick={() => setDialog("kickoff")}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
+            <button className="btn btn--soft btn--small" onClick={() => setDialog("planning")}><FontAwesomeIcon icon={faListOl} /> Plan tasks</button>
+            <button className="btn btn--soft btn--small" onClick={() => void checkin()}><FontAwesomeIcon icon={faClipboardCheck} /> Check-in</button>
             <button className="btn btn--soft btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
               <FontAwesomeIcon icon={faTableColumns} />{" "}
               {panelOpen ? "Hide plan" : "Show plan"}
@@ -100,11 +134,14 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             members={space.members}
             onKickoff={() => setDialog("kickoff")}
             onRefresh={() => void ask({ type: "command", command: "state" })}
+            onTaskStatus={(taskId, value) => void taskStatus(taskId, value)}
+            onWhy={why}
           />
         </div>
       )}
       <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} />
       <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
+      <PlanningDialog open={dialog === "planning"} onClose={() => setDialog(null)} onSend={planning} />
     </div>
   );
 }

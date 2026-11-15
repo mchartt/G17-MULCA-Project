@@ -1,5 +1,6 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBullseye, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced } from "../lib/icons";
+import { useState, type FormEvent } from "react";
 import type { Person, ProjectState } from "../lib/types";
 import { formatDate } from "./ProposalCard";
 import { dotFor } from "./space";
@@ -9,10 +10,16 @@ type Props = {
   members: Person[];
   onKickoff: () => void;
   onRefresh: () => void;
+  /** M4: a member updates a task's status (their own action, no card). */
+  onTaskStatus?: (taskId: string, status: string) => void;
+  /** M4: "why did we decide X?"; resolves to the answer with its source. */
+  onWhy?: (question: string) => Promise<string>;
 };
 
+const STATUSES = ["todo", "doing", "done", "blocked"];
+
 /** The plan as the group agreed it: always visible next to the chat (UC9). */
-export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
+export function ProjectPanel({ state, members, onKickoff, onRefresh, onTaskStatus, onWhy }: Props) {
   const charter = state?.charter;
   const nameOf = (id?: number | null) => members.find((m) => m.id === id)?.name;
 
@@ -61,7 +68,18 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
                 <span className="dot" style={{ background: t.owner_id ? dotFor(t.owner_id, members) : "var(--line)" }} aria-hidden="true" />
                 <span className="tasks__title">{t.title}</span>
                 <span className="muted small">{t.owner_id ? nameOf(t.owner_id) ?? "member" : "No owner"}</span>
-                <span className="tag">{t.status}</span>
+                {onTaskStatus && t.task_id ? (
+                  <select
+                    className="tasks__status"
+                    aria-label={`Status of ${t.title}`}
+                    value={t.status}
+                    onChange={(e) => onTaskStatus(t.task_id!, e.target.value)}
+                  >
+                    {STATUSES.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                ) : (
+                  <span className="tag">{t.status}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -85,7 +103,34 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh }: Props) {
         ) : (
           <p className="muted">No decisions recorded yet.</p>
         )}
+        {onWhy && !!state?.decisions?.length && <AskWhy onWhy={onWhy} />}
       </section>
     </aside>
+  );
+}
+
+/** UC9: ask about a past decision; the answer cites the decision log. */
+function AskWhy({ onWhy }: { onWhy: (q: string) => Promise<string> }) {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!question.trim()) return;
+    setBusy(true);
+    setAnswer(await onWhy(question.trim()));
+    setBusy(false);
+  }
+
+  return (
+    <form className="askwhy" onSubmit={submit}>
+      <label htmlFor="askwhy-q" className="small">Ask why the group decided something</label>
+      <div className="askwhy__row">
+        <input id="askwhy-q" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Why did we choose…?" />
+        <button className="btn btn--soft btn--small" type="submit" disabled={busy || !question.trim()}>{busy ? "Looking…" : "Ask"}</button>
+      </div>
+      {answer && <p className="askwhy__answer" role="status">{answer}</p>}
+    </form>
   );
 }

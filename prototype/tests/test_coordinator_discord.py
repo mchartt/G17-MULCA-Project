@@ -138,7 +138,7 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     assert added_items == [CardButton] and CardButton.bridge is bridge
     (group,) = groups
     assert isinstance(group, CoordinatorGroup) and group.name == "coordinator"
-    assert sorted(c.name for c in group.commands) == ["kickoff", "plan", "profile"]
+    assert sorted(c.name for c in group.commands) == ["checkin", "kickoff", "plan", "planning", "profile", "task", "why"]
     CardButton.bridge = None
     SessionRegistry.on_coordinator_event = None
 
@@ -153,7 +153,7 @@ def test_the_plan_embed_lists_every_part_of_the_state():
             "decisions": [{"question": "Stack?", "choice": "React"}],
         }
     )
-    assert [f.value for f in embed.fields] == ["G", "• Demo — no date", "• Ada · CS", "• Mockup · doing", "• Stack? → React"]
+    assert [f.value for f in embed.fields] == ["G", "• Demo — no date", "• Ada · CS", "• 1. Mockup · doing", "• Stack? → React"]
     assert state_embed({}).fields[0].value.startswith("No charter yet")
 
 

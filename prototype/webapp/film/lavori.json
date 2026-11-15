@@ -1,0 +1,29 @@
+{
+  "note": "Higgsfield job ids (free trial, use_unlim). v1 = stylised 3D (discarded at Matteo's request: 'less AI slop, more real'); v2 = photographic.",
+  "v1_discarded": {
+    "kf1": "7d821cf8-e807-4d4c-af94-42e526f6d507",
+    "kf2": "0f8c673e-257d-412d-9b46-4be503f95eac",
+    "kf3": "58f54f68-063d-40d3-817f-2102071fc1e8",
+    "kf4": "424e505d-3653-491a-8f30-fae1f9390105",
+    "kf5": "0219c57f-fe20-4186-93b8-0c87b67d0f37",
+    "kf6": "9c908a4d-17be-40f3-bef9-7ec572e85eb3",
+    "c1_engine_test": "47d933f2-4efa-4ba1-b78e-dc366d9f0b76"
+  },
+  "v2": {
+    "kf1": "a6073b2d-fe1b-4754-a4cb-906a470515fe",
+    "kf2": "2c3c0392-d200-4fc7-8295-006cb0a2e9b8",
+    "kf3": "ceb3dc9f-a50f-4daa-b1be-71a15aba1617",
+    "kf6": "180bfc18-87ee-4f2d-b568-acd70df62de6",
+    "c1": "d0af69c4-96e4-4cd9-b7a3-3e3d418f4f81",
+    "kf4": "3e1eead4-263c-42f9-910e-637ac64eb7ac",
+    "kf5": "ac95e933-70ea-410f-ba33-8cd6dbbfad1d",
+    "kf6_first_try_light_from_left": "8347ef90-e1db-454b-9d57-93bdb310026f",
+    "c1_last_frame_upload": "b03b8b29-d4f7-4d16-9e98-447aa79359b4",
+    "c2": "e8b3ea8e-bead-43bd-b9dd-6e4eb1d8a080"
+  },
+  "engine_test_15_11": "start frame respected: SSIM first frame vs kf1 = 0.974 (crude global SSIM)",
+  "cost": "0 (free trial until 2026-11-16 09:49 UTC)",
+  "checks": {
+    "c1": "controlla-continuita PASSA (mediana SSIM 0.818, fermo nell'ultimo confronto: coda ferma da tagliare in montaggio)"
+  }
+}

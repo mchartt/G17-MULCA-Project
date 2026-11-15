@@ -28,7 +28,8 @@ browser ── {command} / {click} ─────────> WebHub.command /
 | `store.py` | ~200 | SQLite: groups (invite code, conversation id `web:<code>`), members (name, hashed token), messages. |
 | `hub.py` | ~260 | The channel: sockets per group, messages and commands to MUCA-Server, events back. |
 | `calendar.py` | ~150 | M5: the read-only iCalendar feed of a group (milestones and open task dates), private revocable link. |
-| `app.py` | ~150 | HTTP routes, the WebSocket and its frame validation, the built frontend and the film. |
+| `app.py` | ~200 | HTTP routes (incl. `POST /api/groups/delete`), the WebSocket and its frame validation, the built frontend and the film. |
+| `server_data.py` | ~60 | Deletes a group's data on MUCA-Server (`DELETE /conversation`, `MUCA_ADMIN_TOKEN`). |
 | `__main__.py` | ~60 | Standalone runner, configured by environment variables. |
 
 ## Rules it enforces (project instructions, section 10)
@@ -61,9 +62,18 @@ browser ── {command} / {click} ─────────> WebHub.command /
 - One all-day event per dated milestone and per task not done with a date;
   RFC 5545 escaping and line folding (tested).
 
-## Not done here (yet)
+## Added after M5
 
-- Same conversation for a Discord channel and a web group (multichannel):
-  needs A5/A6 verified live (PROGRESS.md).
-- Deleting the group's data on MUCA-Server: the protocol has no event for it;
-  `WebStore.delete_group` deletes only the web side.
+- "Helpful" clicks pass through like the other buttons.
+- "@coordinator why ..." typed in the chat (`TYPED_WHY` in `hub.py`) is answered
+  from the decision log and posted in the chat by Cadence; it is not sent to
+  the lab's agent.
+- Delete space: the member types the space's name; the hub closes the session,
+  asks MUCA-Server to delete the conversation file, then deletes the web side
+  and closes every socket of the group with code 4410. If the server part
+  fails, nothing is deleted.
+
+## Not done here
+
+- Same conversation for a Discord channel and a web group: dropped by decision
+  (web and Discord stay separate groups, DECISIONS.md).

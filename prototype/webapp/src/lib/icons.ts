@@ -1,6 +1,8 @@
 // Font Awesome Free icons (CC BY 4.0, https://fontawesome.com/license/free), only the ones we use.
 export {
   faArrowRight,
+  faThumbsUp,
+  faTrashCan,
   faBellSlash,
   faBullseye,
   faCalendarCheck,

@@ -81,6 +81,35 @@ export function ProfileDialog({ open, onClose, onSave }: { open: boolean; onClos
   );
 }
 
+/** Rule 10: delete every piece of the group's data, after typing the space's name. */
+export function DeleteDialog({ open, spaceName, onClose, onDelete }: { open: boolean; spaceName: string; onClose: () => void; onDelete: (confirm: string) => Promise<string | null> }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(await onDelete(text));
+    setBusy(false);
+  }
+
+  return (
+    <Dialog open={open} title="Delete this space" onClose={onClose}>
+      <form onSubmit={submit} className="form">
+        <p className="muted">This deletes the chat, the plan, the decisions, the profiles and Cadence's memory of this group, for every member. It cannot be undone.</p>
+        <label htmlFor="delete-confirm">Type <strong>{spaceName}</strong> to confirm</label>
+        <input id="delete-confirm" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" required />
+        {error && <p className="form__error" role="alert">{error}</p>}
+        <div className="form__actions">
+          <button type="button" className="btn btn--soft" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn--danger" disabled={busy || text.trim().toLowerCase() !== spaceName.trim().toLowerCase()}>{busy ? "Deleting…" : "Delete everything"}</button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 /** M4 /planning: the members write the tasks; Cadence suggests owners on a card. */
 export function PlanningDialog({ open, onClose, onSend }: { open: boolean; onClose: () => void; onSend: (text: string) => Promise<string | null> }) {
   const [text, setText] = useState("");

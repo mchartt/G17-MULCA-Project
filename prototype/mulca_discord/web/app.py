@@ -5,11 +5,12 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
     POST /api/join     {inviteCode, displayName}  -> {token}               join with a code
     GET  /api/session  Authorization: Bearer <t>  -> {group, me}           who am I
     GET  /api/health                              -> {ok: true}            is the adapter there
+    POST /api/groups/delete {confirm: group name} + Bearer -> {deleted: true}  delete everything (rule 10)
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
          -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why", args, requestId}
-         -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now", option?, requestId}
-         <- hello, message, members, proposal, state, status, reply{requestId, answer}
+         -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now"|"helpful", option?, requestId}
+         <- hello, message, members, proposal, state, status, reply{requestId, answer}, deleted
 
 Every request is checked server side: the token names exactly one member of one
 group, and a socket only ever receives its own group's events (section 10).
@@ -45,6 +46,11 @@ class JoinGroup(BaseModel):
     display_name: str = Field(alias="displayName", min_length=1, max_length=40)
 
 
+class DeleteGroup(BaseModel):
+    # The member types the space's name: a deliberate act, not a stray click.
+    confirm: str = Field(max_length=80)
+
+
 class ChatFrame(BaseModel):
     type: Literal["message"]
     text: str = Field(max_length=4000)
@@ -60,7 +66,7 @@ class CommandFrame(BaseModel):
 class ClickFrame(BaseModel):
     type: Literal["click"]
     proposal_id: str = Field(alias="proposalId", max_length=64)
-    action: Literal["confirm", "reject", "take", "choose", "not_now"]
+    action: Literal["confirm", "reject", "take", "choose", "not_now", "helpful"]
     option: int | None = None  # "choose": index of the option on a decision card
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
@@ -106,6 +112,19 @@ def create_web_app(
             "group": {"id": group.id, "name": group.name, "inviteCode": group.invite_code},
             "me": {"id": member.id, "name": member.display_name},
         }
+
+    @app.post("/api/groups/delete")
+    async def delete_group(body: DeleteGroup, authorization: str = Header(default="")) -> dict:
+        """Rule 10: delete all the group's data (MUCA-Server and web), after typing its name."""
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        group = hub.store.group(member.group_id)
+        if " ".join(body.confirm.split()).lower() != group.name.lower():
+            raise HTTPException(400, "Type the name of the space exactly to delete it.")
+        if not await hub.delete_group(member):
+            raise HTTPException(502, "The coordinator server could not delete the data. Nothing was deleted: try again later.")
+        return {"deleted": True}
 
     @app.post("/api/calendar")
     async def calendar_link(authorization: str = Header(default="")) -> dict:

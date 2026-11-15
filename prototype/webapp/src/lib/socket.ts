@@ -40,7 +40,8 @@ export class SpaceSocket {
       this.onEvent(event);
     };
     ws.onclose = (e) => {
-      if (e.code === 4401) {
+      // 4401: the token is not valid; 4410: the space was deleted (by any member).
+      if (e.code === 4401 || e.code === 4410) {
         this.onStatus("unauthorized");
         return;
       }

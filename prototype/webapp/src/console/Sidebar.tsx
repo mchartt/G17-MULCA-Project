@@ -1,13 +1,13 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
-import { faCheck, faCopy, faRightFromBracket, faUserPen } from "../lib/icons";
+import { faCheck, faCopy, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
 import { initials } from "./Chat";
 import type { Space } from "./space";
 import { dotFor } from "./space";
 
-type Props = { space: Space; onProfile: () => void; onLeave: () => void };
+type Props = { space: Space; onProfile: () => void; onLeave: () => void; onDelete: () => void };
 
-export function Sidebar({ space, onProfile, onLeave }: Props) {
+export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
   const [copied, setCopied] = useState(false);
   const code = space.group?.inviteCode ?? "";
 
@@ -51,6 +51,7 @@ export function Sidebar({ space, onProfile, onLeave }: Props) {
       <div className="side__foot">
         <button className="btn btn--soft" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> Edit my profile</button>
         <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Leave on this browser</button>
+        <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
       </div>
     </nav>
   );

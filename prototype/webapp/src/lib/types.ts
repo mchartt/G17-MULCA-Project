@@ -15,7 +15,7 @@ export type ChatMessage = {
 export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "snoozed";
 
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
-export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now";
+export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now" | "helpful";
 export type Click = { action: CardAction; option?: number };
 export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why";
 
@@ -73,4 +73,5 @@ export type ServerEvent =
   | { type: "state"; state: ProjectState }
   | { type: "status"; coordinator: "unavailable" }
   | { type: "reply"; requestId: string; answer: Answer }
-  | { type: "error"; text: string };
+  | { type: "error"; text: string }
+  | { type: "deleted" };

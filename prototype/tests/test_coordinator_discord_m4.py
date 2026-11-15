@@ -62,4 +62,4 @@ def test_blocker_card_is_proactive():
     embed = proposal_embed(BLOCKER)
     assert embed.title == "Coordinator · Something is blocked"
     assert {f.name: f.value for f in embed.fields}["Who could help"] == "<@9>"
-    assert ids(card_view(BLOCKER)) == ["coord:confirm:e3", "coord:reject:e3", "coord:why:e3", "coord:not_now:e3"]
+    assert ids(card_view(BLOCKER)) == ["coord:confirm:e3", "coord:reject:e3", "coord:why:e3", "coord:helpful:e3", "coord:not_now:e3"]

@@ -9,15 +9,17 @@ card posted before a bot restart keeps working after it, the same idea as
 the lab's ListenView (commands.py, fixed custom_id + add_view).
 
 Nothing here changes any state: a click only sends `proposal_response` to
-MUCA-Server, which decides (bridge.py). "Why?" is the one button that never
-reaches the server: the card already carries the reason (bridge.py `why`).
+MUCA-Server, which decides (bridge.py). "Why?" reads the reason the card
+already carries (bridge.py `why`); only after a bot restart, when the card is
+no longer in memory, it asks the server for it (command "card"). "Helpful"
+is feedback: the server counts it and changes nothing (spec FR21).
 
 Kinds (MUCA-Server docs/PROTOCOL.md, "Group Coordinator"):
     charter      Confirm, Reject                                  (M1, asked for)
-    task_owner   Confirm (if an owner is suggested), I'll take it, Reject, Why?, Not now
-    delegation   I'll take it, Reject, Why?, Not now
-    decision     one button per option, Reject, Why?, Not now
-    blocker      Confirm, Reject, Why?, Not now                    (M4, CS7)
+    task_owner   Confirm (if an owner is suggested), I'll take it, Reject, Why?, Helpful, Not now
+    delegation   I'll take it, Reject, Why?, Helpful, Not now
+    decision     one button per option, Reject, Why?, Helpful, Not now
+    blocker      Confirm, Reject, Why?, Helpful, Not now            (M4, CS7)
     plan         Confirm, Reject                                  (M4, /planning)
     checkin      one button per option, Reject                    (M4, /checkin)
 """
@@ -35,7 +37,7 @@ if TYPE_CHECKING:
 
 CUSTOM_ID = "coord:{action}:{proposal_id}"
 CUSTOM_ID_PATTERN = (
-    r"coord:(?P<action>confirm|reject|take|not_now|why|choose[0-2]):(?P<proposal_id>[0-9a-f]{1,32})"
+    r"coord:(?P<action>confirm|reject|take|not_now|why|helpful|choose[0-2]):(?P<proposal_id>[0-9a-f]{1,32})"
 )
 
 # Colours only add to the text: the status is always written in words too.
@@ -70,11 +72,14 @@ STRATEGY_NAMES = {
     "cs7_blockers_dependencies": "Blockers (CS7): someone is stuck or waiting on other work, and a deadline is at risk.",
 }
 PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker")
+# The "about this card" buttons, on a second row so the answers come first.
+ABOUT_THE_CARD = ("why", "helpful", "not_now")
 LABELS = {
     "confirm": ("Confirm", discord.ButtonStyle.success),
     "take": ("I'll take it", discord.ButtonStyle.success),
     "reject": ("Reject", discord.ButtonStyle.secondary),
     "why": ("Why?", discord.ButtonStyle.secondary),
+    "helpful": ("Helpful", discord.ButtonStyle.secondary),
     "not_now": ("Not now", discord.ButtonStyle.secondary),
 }
 
@@ -179,10 +184,10 @@ def card_view(proposal: dict) -> discord.ui.View | None:
         "blocker": ["confirm", "reject"],
     }.get(kind, ["confirm", "reject"])
     if kind in PROACTIVE_KINDS:
-        actions += ["why", "not_now"]
+        actions += ["why", "helpful", "not_now"]
     for action in actions:
         # Second row for the "about this card" buttons, so the answers come first.
-        view.add_item(CardButton(action, proposal_id, row=1 if action in ("why", "not_now") else 0))
+        view.add_item(CardButton(action, proposal_id, row=1 if action in ABOUT_THE_CARD else 0))
     return view
 
 

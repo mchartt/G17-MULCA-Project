@@ -67,7 +67,7 @@ def test_delegation_card_never_names_an_owner_and_offers_take():
     assert embed.title == "Coordinator · One person can do this"
     fields = {f.name: f.value for f in embed.fields}
     assert fields == {"Task": "Fix the fonts", "By": "no date yet", "Then back to": "Evaluation protocol"}
-    assert ids(card_view(DELEGATION)) == ["coord:take:d1", "coord:reject:d1", "coord:why:d1", "coord:not_now:d1"]
+    assert ids(card_view(DELEGATION)) == ["coord:take:d1", "coord:reject:d1", "coord:why:d1", "coord:helpful:d1", "coord:not_now:d1"]
 
 
 def test_task_owner_card_suggests_with_a_mention_and_can_be_confirmed():
@@ -80,10 +80,13 @@ def test_task_owner_card_suggests_with_a_mention_and_can_be_confirmed():
 
 def test_decision_card_has_one_button_per_option_then_why_and_not_now_on_row_two():
     view = card_view(DECISION)
-    assert ids(view) == ["coord:choose0:c1", "coord:choose1:c1", "coord:reject:c1", "coord:why:c1", "coord:not_now:c1"]
+    assert ids(view) == [
+        "coord:choose0:c1", "coord:choose1:c1", "coord:reject:c1",
+        "coord:why:c1", "coord:helpful:c1", "coord:not_now:c1",
+    ]
     labels = [item.item.label for item in view.children]
     assert labels[:2] == ["Think-aloud", "SUS"]
-    assert [item.item.row for item in view.children][-2:] == [1, 1]
+    assert [item.item.row for item in view.children][-3:] == [1, 1, 1]
     options = {f.name: f.value for f in proposal_embed(DECISION).fields}["Options"]
     assert "**1. Think-aloud** — Shows why users get stuck." in options
 
@@ -115,9 +118,50 @@ async def test_why_answers_privately_from_the_card_it_saw():
     sent = []
     interaction = SimpleNamespace(response=SimpleNamespace(send_message=lambda text, ephemeral: _record(sent, (text, ephemeral))))
     await bridge.why(interaction, "d1")
-    await bridge.why(interaction, "unknown")
     assert sent[0][1] is True and "Fonts and margins" in sent[0][0]
-    assert "restarted" in sent[1][0]
+
+
+def _deferred_interaction(sent):
+    async def defer(**_):
+        sent.append("deferred")
+
+    return SimpleNamespace(
+        response=SimpleNamespace(defer=defer),
+        followup=SimpleNamespace(send=lambda text, ephemeral: _record(sent, (text, ephemeral))),
+    )
+
+
+async def test_why_after_a_restart_asks_the_server_for_the_card():
+    bridge = CoordinatorBridge(SimpleNamespace())
+    asked = []
+
+    async def send_command(interaction, command, args=None):
+        asked.append((command, args))
+        return {"event": "coordinator_notice", "ok": True, "text": "", "proposal": DELEGATION}
+
+    bridge.send_command = send_command
+    sent = []
+    await bridge.why(_deferred_interaction(sent), "d1")
+    assert asked == [("card", {"proposal_id": "d1"})]
+    assert sent[0] == "deferred" and "Fonts and margins" in sent[1][0] and sent[1][1] is True
+    assert bridge._proposals["d1"] is DELEGATION  # next time from memory
+
+
+async def test_why_for_a_card_the_server_does_not_know_says_so():
+    bridge = CoordinatorBridge(SimpleNamespace())
+
+    async def refused(interaction, command, args=None):
+        return {"event": "coordinator_notice", "ok": False, "text": "That card is not in this group."}
+
+    async def silent(interaction, command, args=None):
+        return None
+
+    sent = []
+    bridge.send_command = refused
+    await bridge.why(_deferred_interaction(sent), "zz")
+    bridge.send_command = silent
+    await bridge.why(_deferred_interaction(sent), "zz")
+    assert sent[1][0] == "That card is not in this group." and "still working" in sent[3][0]
 
 
 async def test_a_button_passes_its_option_to_the_bridge():
@@ -135,9 +179,10 @@ async def test_a_button_passes_its_option_to_the_bridge():
         await CardButton("choose1", "c1").callback(None)
         await CardButton("not_now", "c1").callback(None)
         await CardButton("why", "c1").callback(None)
+        await CardButton("helpful", "c1").callback(None)
     finally:
         CardButton.bridge = None
-    assert calls == [("choose", "c1", 1), ("not_now", "c1", None), ("why", "c1")]
+    assert calls == [("choose", "c1", 1), ("not_now", "c1", None), ("why", "c1"), ("helpful", "c1", None)]
 
 
 async def test_choose_on_discord_records_the_decision_end_to_end(coordinator_server, tmp_path):  # noqa: F811

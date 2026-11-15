@@ -8,6 +8,7 @@ Run the web adapter on its own:  python -m mulca_discord.web
     MULCA_WEB_STATIC  built frontend, default webapp/dist
     MULCA_WEB_FILM    film frames, default webapp/film/public
     MULCA_WEB_ALLOWED_ORIGINS  comma-separated origins of a frontend hosted elsewhere (optional)
+    MUCA_ADMIN_TOKEN  same value as MUCA-Server's: lets "Delete space" remove the group's server data
 
 Needs no Discord token: useful for the web-only demo and for development.
 Running it inside the Discord process (same event loop) is assumption A5 in
@@ -36,7 +37,11 @@ def main() -> None:
     logging.basicConfig(level="INFO")
     db = Path(os.environ.get("MULCA_WEB_DB", HERE / "data" / "web.sqlite3"))
     db.parent.mkdir(parents=True, exist_ok=True)
-    hub = WebHub(WebStore(db), os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/"))
+    hub = WebHub(
+        WebStore(db),
+        os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/"),
+        admin_token=os.environ.get("MUCA_ADMIN_TOKEN", ""),
+    )
     app = create_web_app(
         hub,
         static_dir=os.environ.get("MULCA_WEB_STATIC", HERE / "webapp" / "dist"),
@@ -46,7 +51,8 @@ def main() -> None:
     config = uvicorn.Config(
         app,
         host=os.environ.get("MULCA_WEB_HOST", "127.0.0.1"),
-        port=int(os.environ.get("MULCA_WEB_PORT", "8080")),
+        # PORT: the variable hosting services (Render) set for the public port.
+        port=int(os.environ.get("MULCA_WEB_PORT") or os.environ.get("PORT") or "8080"),
         log_level="info",
         # The access log would print every URL, including the secret of a
         # calendar feed (/api/calendar/<secret>.ics): off (M5 review).

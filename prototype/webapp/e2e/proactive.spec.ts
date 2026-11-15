@@ -52,6 +52,11 @@ test("CS2: a simple task becomes a card; Why? explains it; I'll take it puts it 
   await expect(card.getByRole("button", { name: "I'll take it" })).toHaveCount(0);
   await expect(ada.locator(".panel")).toContainText("Fix fonts and margins of the report");
   await expect(ada.locator(".panel")).toContainText("Bruno");
+
+  // Helpful: feedback only, counted by the server, the card stays confirmed.
+  await card.getByRole("button", { name: "Helpful" }).click();
+  await expect(card.locator(".card__thanks")).toHaveText("Thanks: noted as helpful (1 member so far).");
+  await expect(card.locator(".card__status")).toHaveText("Confirmed");
 });
 
 test("CS3: the decision card has one button per option; the choice goes to the decision log", async ({ browser }) => {

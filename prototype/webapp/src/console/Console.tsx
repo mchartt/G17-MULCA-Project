@@ -1,11 +1,11 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { faClipboardCheck, faFileLines, faListOl, faTableColumns } from "../lib/icons";
-import { calendarLink, saveToken } from "../lib/api";
+import { calendarLink, deleteSpace, saveToken } from "../lib/api";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer } from "../lib/types";
 import { Chat } from "./Chat";
-import { KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { DeleteDialog, KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
 import { emptySpace, reduce } from "./space";
@@ -20,7 +20,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
@@ -87,6 +87,12 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     return answer.type === "notice" ? answer.text : "No answer.";
   };
 
+  const removeSpace = async (confirm: string) => {
+    const error = await deleteSpace(token, confirm);
+    if (!error) leave();
+    return error;
+  };
+
   const saveProfile = async (profile: Profile) => {
     const answer = await ask({ type: "command", command: "profile", args: profile });
     return answer.ok ? null : answer.type === "notice" ? answer.text : "Profile not saved.";
@@ -95,7 +101,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} />
+      <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} />
       <main className="console__main">
         <header className="console__bar">
           <div>
@@ -143,6 +149,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} />
       <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
       <PlanningDialog open={dialog === "planning"} onClose={() => setDialog(null)} onSend={planning} />
+      <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>
   );
 }

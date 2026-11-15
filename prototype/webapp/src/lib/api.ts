@@ -55,6 +55,24 @@ async function post(path: string, body: unknown): Promise<{ token: string; invit
 export const createSpace = (groupName: string, displayName: string) => post("/api/groups", { groupName, displayName });
 export const joinSpace = (inviteCode: string, displayName: string) => post("/api/join", { inviteCode, displayName });
 
+/** Rule 10: delete everything about my space, after typing its name. */
+export async function deleteSpace(token: string, confirm: string): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${ADAPTER_URL}/api/groups/delete`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm }),
+    });
+  } catch {
+    return "Cadence can't be reached. Nothing was deleted.";
+  }
+  if (res.ok) return null;
+  if (res.status === 400) return "Type the name of the space exactly as it is written.";
+  if (res.status === 502) return "The coordinator server could not delete the data. Nothing was deleted: try again later.";
+  return "Something went wrong. Nothing was deleted.";
+}
+
 /** M5: a new private calendar feed link for my group (the previous one stops working). */
 export async function calendarLink(token: string): Promise<string> {
   const res = await fetch(`${ADAPTER_URL}/api/calendar`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });

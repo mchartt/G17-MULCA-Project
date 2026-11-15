@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from typing import Any, Protocol
 
@@ -33,6 +34,7 @@ from ..courses import DEFAULT_COURSE
 from ..muca_client import MucaConnectionLost
 from ..sessions import Scope, ScopeSession, SessionRegistry
 from .calendar import CalendarFeeds
+from .server_data import delete_conversation
 from .store import Group, Member, WebStore
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,10 @@ AGENT_NAME = "Cadence"
 ANSWER_TIMEOUT_SECONDS = 60
 MAX_MESSAGE_CHARS = 4000
 MENTION = "@coordinator"
+# "@coordinator why ..." / "@coordinator perché ..." typed in the chat: answered
+# from the decision log (command "why"), not by the lab's agent, which cannot
+# read the log. Only routes a question: it never changes any state.
+TYPED_WHY = re.compile(r"^\s*@coordinator\b[\s,:]*(?P<question>(why|perch[eé]|perche)\b.*)$", re.IGNORECASE | re.DOTALL)
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in the chat: no need to try again."
@@ -90,8 +96,11 @@ class WebHub:
         *,
         registry: SessionRegistry | None = None,
         course: str = DEFAULT_COURSE,
+        admin_token: str = "",
     ) -> None:
         self.store = store
+        # MUCA_ADMIN_TOKEN, to delete a group's data on MUCA-Server (server_data.py).
+        self._admin_token = admin_token
         self.registry = registry or SessionRegistry(muca_url)
         # Instance attribute: shadows the class-level Discord hook for this registry only.
         self.registry.on_coordinator_event = self._on_coordinator_event
@@ -179,6 +188,11 @@ class WebHub:
         stored = self.store.add_message(member.group_id, member.id, text)
         await self.broadcast(member.group_id, {"type": "message", "message": self.message_json(stored)})
 
+        typed_why = TYPED_WHY.match(text)
+        if typed_why:
+            await self._answer_typed_why(member, typed_why["question"].strip())
+            return
+
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
             await client.send_user_text(
@@ -193,6 +207,34 @@ class WebHub:
         except (ConnectionError, OSError):
             logger.exception("MUCA-Server unreachable; message kept in the web chat only")
             await self.broadcast(member.group_id, {"type": "status", "coordinator": "unavailable"})
+
+    async def _answer_typed_why(self, member: Member, question: str) -> None:
+        """The answer from the decision log, posted in the chat for the whole group."""
+        answer = await self.command(member, "why", {"question": question})
+        channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
+        await channel.send(answer.get("text") or UNAVAILABLE)
+
+    async def delete_group(self, member: Member) -> bool:
+        """
+        Delete everything about the member's group: first on MUCA-Server (the
+        session is closed, then its SQLite file removed), then the web side.
+        If the server part fails, nothing is deleted, so the group can retry.
+        """
+        group = self.store.group(member.group_id)
+        await self.registry.close(group.conversation_id, wait=5)
+        if not await delete_conversation(self.registry.url, self._admin_token, group.conversation_id):
+            return False
+        await self.broadcast(group.id, {"type": "deleted"})
+        for socket in list(self._sockets.pop(group.id, ())):
+            close = getattr(socket, "close", None)
+            if close is not None:
+                try:
+                    await close(code=4410)
+                except Exception:  # already closed
+                    pass
+        self._channels.pop(group.id, None)
+        self.store.delete_group(group.id)
+        return True
 
     async def command(self, member: Member, command: str, args: dict | None = None) -> dict:
         request_id = uuid.uuid4().hex

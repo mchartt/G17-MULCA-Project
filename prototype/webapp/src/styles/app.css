@@ -24,6 +24,12 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .btn--small { padding: .45rem .9rem; font-size: var(--t-xs); }
 .btn--link { background: none; padding: .3rem 0; color: var(--ink-soft); }
 .btn--link:hover { color: var(--ink); }
+/* Destructive actions: red text (#b3261e on white passes WCAG AA), never colour alone: the label says "Delete". */
+.btn--link.btn--danger { color: var(--danger); }
+.btn--link.btn--danger:hover { color: #8c1d18; }
+.btn.btn--danger:not(.btn--link) { background: var(--danger); color: #fff; }
+.btn.btn--danger:not(.btn--link):hover { background: #8c1d18; }
+.btn.btn--danger:disabled { opacity: .5; cursor: default; }
 .btn--round { width: 2.9rem; height: 2.9rem; padding: 0; flex: none; }
 
 .dot { display: inline-block; width: .7rem; height: .7rem; border-radius: var(--r-pill); flex: none; }
@@ -121,6 +127,7 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .card__status { font-size: var(--t-xs); font-weight: 600; }
 .card__actions { display: flex; gap: .5rem; }
 .card__notice { margin-top: .7rem; font-size: var(--t-xs); color: var(--warn); }
+.card__thanks { margin-top: .7rem; font-size: var(--t-xs); color: var(--ink-soft); }
 .card--snoozed { border-color: var(--line); opacity: .8; }
 .card__actions { flex-wrap: wrap; }
 .card__options { margin-top: .6rem; padding-left: 1.2rem; display: grid; gap: .35rem; }

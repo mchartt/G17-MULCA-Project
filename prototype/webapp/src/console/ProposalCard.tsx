@@ -1,6 +1,6 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useId, useState, type ReactNode } from "react";
-import { faBellSlash, faCheck, faCircleQuestion, faCompass, faHandshake, faXmark } from "../lib/icons";
+import { faBellSlash, faCheck, faCircleQuestion, faCompass, faHandshake, faThumbsUp, faXmark } from "../lib/icons";
 import type { Answer, Click, Proposal } from "../lib/types";
 
 // What each kind of card is called (muca_server docs/PROTOCOL.md, "Group Coordinator").
@@ -39,12 +39,14 @@ type Props = {
 /**
  * A coordinator proposal. Nothing changes in the project until a member clicks.
  * Charter cards were asked for (kickoff); task_owner, delegation and decision
- * cards are proactive (M3) and also have Why? and Not now.
+ * cards are proactive (M3) and also have Why?, Helpful (feedback only: it
+ * changes nothing, spec FR21) and Not now.
  */
 export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) => `member ${id}` }: Props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
+  const [thanks, setThanks] = useState<string | null>(null);
   const whyId = useId();
   const { payload, status, kind } = proposal;
   const title = KIND_TITLES[kind] ?? "Proposal";
@@ -57,6 +59,13 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
     const result = await onAnswer(click);
     setBusy(false);
     if (result.type === "notice" && !result.ok) setNotice(result.text);
+  }
+
+  async function helpful() {
+    setBusy(true);
+    const result = await onAnswer({ action: "helpful" });
+    setBusy(false);
+    if (result.type === "notice") (result.ok ? setThanks : setNotice)(result.text);
   }
 
   return (
@@ -91,6 +100,12 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
           <button className="link-btn" aria-expanded={whyOpen} aria-controls={whyId} onClick={() => setWhyOpen(!whyOpen)}>
             <FontAwesomeIcon icon={faCircleQuestion} /> Why?
           </button>
+          {(pending || status === "applied") && (
+            // Feedback on a card the group kept; not on one it rejected or silenced.
+            <button className="link-btn" disabled={busy || thanks !== null} onClick={() => void helpful()}>
+              <FontAwesomeIcon icon={faThumbsUp} /> {thanks ? "Marked helpful" : "Helpful"}
+            </button>
+          )}
           {pending && (
             <button className="link-btn" disabled={busy} onClick={() => answer({ action: "not_now" })}>
               <FontAwesomeIcon icon={faBellSlash} /> Not now
@@ -99,6 +114,7 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
         </div>
       )}
       {notice && <p className="card__notice" role="alert">{notice}</p>}
+      {thanks && <p className="card__thanks" role="status">{thanks}</p>}
     </article>
   );
 }

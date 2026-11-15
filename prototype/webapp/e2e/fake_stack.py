@@ -141,6 +141,7 @@ class FakePolicy(AnswerEverything):
 
 MUCA_PORT = int(os.environ.get("FAKE_MUCA_PORT", "8091"))
 WEB_PORT = int(os.environ.get("FAKE_WEB_PORT", "8090"))
+ADMIN_TOKEN = "offline-admin-token"
 
 
 async def main() -> None:
@@ -152,9 +153,12 @@ async def main() -> None:
             coordinator_factory=build_coordinator_factory(
                 CoordinatorSettings(enabled=True), client=ScriptedModel(), db_dir=str(tmp)
             ),
-        )
+        ),
+        # "Delete space" removes the group's file on the server (offline token).
+        db_dir=tmp,
+        admin_token=ADMIN_TOKEN,
     )
-    hub = WebHub(WebStore(tmp / "web.sqlite3"), f"ws://127.0.0.1:{MUCA_PORT}/")
+    hub = WebHub(WebStore(tmp / "web.sqlite3"), f"ws://127.0.0.1:{MUCA_PORT}/", admin_token=ADMIN_TOKEN)
     web = create_web_app(
         hub,
         static_dir=PROTOTYPE / "webapp" / "dist",

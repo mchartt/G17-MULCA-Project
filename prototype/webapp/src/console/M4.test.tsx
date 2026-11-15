@@ -33,14 +33,14 @@ test("a check-in card shows the findings and one button per option", async () =>
   expect(onAnswer).toHaveBeenCalledWith({ action: "choose", option: 1 });
 });
 
-test("a blocker card is proactive: Mark as blocked, Why?, Not now", () => {
+test("a blocker card is proactive: Mark as blocked, Why?, Helpful, Not now", () => {
   const blocker: Proposal = {
     proposal_id: "e3", kind: "blocker", status: "pending",
     payload: { context: { strategy_id: "cs7_blockers_dependencies", topic: "UI", evidence: [] }, title: "UI", helper_id: 2, question: "What do you need?" },
   };
   render(<ProposalCard proposal={blocker} agentName="Cadence" onAnswer={vi.fn()} memberName={names} />);
   expect(screen.getByText("Bruno")).toBeInTheDocument();
-  expect(screen.getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Mark as blocked", "Reject", "Why?", "Not now"]);
+  expect(screen.getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Mark as blocked", "Reject", "Why?", "Helpful", "Not now"]);
 });
 
 test("the panel lets a member change a task's status and ask why a decision was taken", async () => {

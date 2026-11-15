@@ -92,14 +92,24 @@ class CoordinatorBridge:
         )
 
     async def why(self, interaction: discord.Interaction, proposal_id: str) -> None:
-        """"Why?": the strategy and the messages behind the card, privately, no server call."""
+        """
+        "Why?": the strategy and the messages behind the card, privately.
+        From memory when this run saw the card; after a bot restart, the card
+        is asked to the server (command "card", no model, no state change).
+        """
         proposal = self._proposals.get(proposal_id)
-        text = (
-            why_text(proposal)
-            if proposal is not None
-            else "The details of this card are no longer here (the bot restarted); its reason is in italics on the card."
-        )
-        await interaction.response.send_message(text, ephemeral=True)
+        if proposal is not None:
+            await interaction.response.send_message(why_text(proposal), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self.send_command(interaction, "card", {"proposal_id": proposal_id})
+        proposal = (answer or {}).get("proposal")
+        if proposal is not None:
+            self._proposals[proposal_id] = proposal
+            text = why_text(proposal)
+        else:
+            text = answer_text(answer) if answer and not answer.get("ok") else NO_ANSWER
+        await interaction.followup.send(text, ephemeral=True)
 
     async def click(
         self,

@@ -32,3 +32,12 @@ File: `sito/src/styles/tokens.css` (+ `design-tokens.json` per la ricetta)
 ## Approvazioni
 | Cosa | Data | Note |
 |---|---|---|
+
+## Piano visivo dell'interfaccia (15/11, skill frontend-design)
+- Mondo: bacheca di sughero, schede di carta, puntine, nastro, bollini colorati (dal film).
+- Prima bozza scartata in revisione: bianco caldo + terracotta (è la combinazione più comune delle pagine generate).
+- Palette: carta #ffffff, inchiostro #1c2430 (15.6:1), testo secondario #545e6c (6.4:1), righe blu #a9bcd6 e margine rosso #c8464b solo decorativi, salvia #2f6b5c per le azioni (6.3:1 con il bianco), bollini dei membri salvia, ardesia, ocra, corallo.
+- Carattere: Atkinson Hyperlegible Next (pensato per la leggibilità), installato in locale: la demo funziona senza rete.
+- Una sola cosa audace: il film allo scroll. Le frasi del film stanno su schede a righe (leggibili su fotogrammi scuri e chiari).
+- Messaggi dell'agente: etichetta "Cadence" + tag "Coordinator", sfondo diverso e bordo: mai solo il colore.
+- Screenshot: `docs/screens/`.

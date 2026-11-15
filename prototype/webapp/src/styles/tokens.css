@@ -1,0 +1,38 @@
+/* Cadence design tokens. The vocabulary comes from the film's world: index
+   cards (blue rules, red margin), washi tape (sage), dot stickers (members). */
+:root {
+  /* Surfaces */
+  --paper: #ffffff;          /* page and cards */
+  --desk: #f3f4f1;           /* the quiet background behind panels */
+  --line: #dfe3e8;           /* separators */
+  /* Text */
+  --ink: #1c2430;            /* body and headings, 15.6:1 on paper */
+  --ink-soft: #545e6c;       /* secondary text, 6.4:1 on paper */
+  /* Index card */
+  --rule: #a9bcd6;           /* the blue ruled lines (decorative only) */
+  --margin: #c8464b;         /* the red margin line (decorative only) */
+  /* Action */
+  --sage: #2f6b5c;           /* Confirm and primary actions, 6.3:1 with white */
+  --sage-deep: #24554a;      /* hover */
+  --sage-wash: #e8f1ee;      /* the agent's message background */
+  --warn: #8a5a00;           /* warning text, 6.0:1 on paper */
+  --warn-wash: #fff4dc;
+  /* Member dots (the stickers) */
+  --dot-sage: #3f8a73;
+  --dot-slate: #4a6fa5;
+  --dot-ochre: #c99a2e;
+  --dot-coral: #d06a52;
+
+  --font: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  /* Type scale, ratio 1.25 from 16px */
+  --t-sm: 0.875rem;
+  --t-base: 1rem;
+  --t-md: 1.25rem;
+  --t-lg: 1.5625rem;
+  --t-xl: 1.953rem;
+  --t-xxl: clamp(2.2rem, 4.5vw, 3.6rem);
+
+  --r-small: 4px;            /* paper is barely rounded */
+  --r-pill: 999px;           /* only the dot stickers and tags are round */
+  --focus: 3px solid #1d4ed8;
+}

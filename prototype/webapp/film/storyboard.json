@@ -32,6 +32,11 @@
       "prompt": "Halfway down the room; an empty wooden-framed cork board on the far wall left of the window; cool dawn daylight, haze almost gone."
     },
     {
+      "id": "kf3b",
+      "job": "ab30c71b-d562-49cf-85e4-236f837759af",
+      "prompt": "Board at half the frame, window on its right, cards drifting to it and the first pinned, low early sun warming."
+    },
+    {
       "id": "kf4",
       "job": "3e1eead4-263c-42f9-910e-637ac64eb7ac",
       "prompt": "Close to the board, slight angle; half the cards pinned in three columns, others still hanging; warm morning sun from the window on the right."
@@ -60,19 +65,17 @@
       "prompt": "Continuing the same slow forward move toward the far wall, an empty cork board comes into view left of the window; the hanging notes line up in rows and columns in front of it; cool dawn daylight fills the room."
     },
     {
-      "id": "c3",
+      "id": "c3a",
       "duration": 5,
-      "prompt": "Continuing forward, the camera approaches the cork board until it fills most of the frame; the notes reach the board and are pinned one after another in three columns; warm morning sun enters from the window on the right."
+      "job": "34d9480a-5d8c-4791-8879-1eef980de0ec",
+      "prompt": "Continuing the same forward move at constant speed toward the cork board until it fills half of the frame; cards drift toward the board and the first are pinned; light warms."
     },
     {
-      "id": "c4",
+      "id": "c3b",
       "duration": 5,
-      "prompt": "Continuing to move closer, the camera straightens to face the board front-on while the remaining cards are pinned into tidy columns; one last yellow note still hangs on its line."
-    },
-    {
-      "id": "c5",
-      "duration": 5,
-      "prompt": "Continuing the slow push forward toward the centre column, the last yellow note is pinned and the card outlined in sage green washi tape comes into sharp focus at the centre; the motion eases to a gentle stop."
+      "prompt": "Continuing forward until the board fills most of the frame, the window edge on the right; the cards are pinned into three columns; warm morning sun from the right.",
+      "note": "generated with start frame only (end keyframe broke geometry)"
     }
-  ]
+  ],
+  "note": "Final cut: 4 clips, 20 s. kf4-kf6 kept as references only; the film ends on the last frame of c3b."
 }

@@ -7,22 +7,22 @@
 
 ## Mappa delle fasi
 - [x] 0. Setup strumenti (`setup-iniziale`), 15/11
-- [ ] 1. Idea chiarita (`intervista-idea`)
-- [ ] 2. Obiettivi (`obiettivi-sito`)
-- [ ] 3. Tipologia (`tipologia-sito`)
-- [ ] 4. Architettura e tecnologia (`architettura-sito`)
-- [ ] 5. Design (`design-sito`)
-- [ ] 6. Asset (`crea-asset`)
-- [ ] 7. Costruzione (`costruisci-sito` o `sito-film`)
-- [ ] 8. Verifica (`verifica-sito`)
-- [ ] 9. Messa online (`deploy-sito`)
+- [x] 1. Idea chiarita (`intervista-idea`), 15/11, modalità breve
+- [x] 2. Obiettivi: presi dalla specifica v3 (N1-N4, G1-G6), non rifatti
+- [x] 3. Tipologia: web app con landing (istruzioni §6 e §12)
+- [x] 4. Architettura: React + TS + Vite servita dall'adattatore `mulca_discord/web/` (istruzioni §6)
+- [x] 5. Design: concept del film, token in `src/styles/tokens.css`, piano in `design.md`
+- [x] 6. Asset: film di 436 fotogrammi (Higgsfield, gratis), `film/lavori.json`
+- [x] 7. Costruzione: landing + console + adattatore web, 15/11
+- [~] 8. Verifica: test automatici e controllo visivo fatti; axe-core e prova dal vivo con Azure da fare
+- [-] 9. Messa online: non prevista (servita in locale dall'adattatore, istruzioni §0)
 - [ ] 10. Ricetta salvata e manuale consegnato (`libreria-ricette`)
 
 ## Fase corrente
-1 Idea: si apre l'intervista (`intervista-idea`), compressa perché bisogni, obiettivi e scenari esistono già nella specifica v3.
+8 Verifica: manca solo la prova dal vivo (Azure + due browser) e il controllo axe-core.
 
 ## Prossima azione
-Matteo sceglie come usare la finestra gratuita di Higgsfield (fino al 16/11 09:49 UTC, 10:49 in Italia) e come sostituire Mobbin; poi intervista sulla landing.
+Matteo crea le distribuzioni Azure e il `.env`; poi prova dal vivo con due browser (README della webapp), costo annotato.
 
 ## Vincoli già decisi fuori da questo percorso (non si richiedono)
 - Stack: React + TypeScript + Vite, servita dall'adattatore web nel processo MULCA (istruzioni di progetto, sezione 6).
@@ -40,11 +40,12 @@ Matteo sceglie come usare la finestra gratuita di Higgsfield (fino al 16/11 09:4
 - nessuna
 
 ## Termini già spiegati
-transazione, copertura dei test, branch, commit, push, remoto, bundle, interruttore (feature flag), ambiente virtuale, keyframe, concatenazione delle clip
+transazione, copertura dei test, branch, commit, push, remoto, bundle, interruttore (feature flag), ambiente virtuale, keyframe, concatenazione delle clip, token di accesso, WebSocket
 
 ## Registro sessioni
 - 15/11/2026: creato il quaderno di cantiere, modalità guidata, nome Ctrl+Alt+Design.
+- 15/11/2026: film (4 clip, 18 s dopo il raccordo e la rimozione dei fotogrammi doppi), adattatore web, landing e console; test: pytest 14 (copertura 98 %), Vitest 15, Playwright 1 e2e; screenshot in `docs/screens/`.
 - 15/11/2026: fase 0 chiusa. Ambiente Python 3.11 ricreato, suite rieseguite (server 481 + 1 noto, MULCA 258), Playwright pronto, Higgsfield collegato in prova gratuita, Mobbin bloccato dal piano.
 
 ## Speso finora
-0 €
+0 € (Higgsfield: tutto dentro la prova gratuita)

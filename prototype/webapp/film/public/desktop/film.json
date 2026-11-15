@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "variant": "desktop",
+  "frameCount": 436,
+  "fps": 24.0,
+  "durationSeconds": 18.167,
+  "frameWidth": 1280,
+  "frameHeight": 720,
+  "framePrefix": "f_",
+  "frameIndexDigits": 4,
+  "firstFrameIndex": 1,
+  "frameExtension": "jpg",
+  "seamColor": "#96785b",
+  "trimmedStartSeconds": 0.0,
+  "totalMegabytes": 30.4,
+  "sourceClips": [
+    "c1-raccordata.mp4",
+    "c2-raccordata.mp4",
+    "c3-raccordata.mp4",
+    "c4-raccordata.mp4"
+  ],
+  "note": "45 periodic duplicate frames removed (Higgsfield repeats every 4th frame in some clips)"
+}

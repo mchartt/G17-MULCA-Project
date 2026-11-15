@@ -3,3 +3,7 @@
 film/keyframe/*.png
 film/v1-scartata/*.png
 film/clip/
+node_modules/
+dist/
+test-results/
+playwright-report/

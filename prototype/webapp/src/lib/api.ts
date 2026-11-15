@@ -54,3 +54,12 @@ async function post(path: string, body: unknown): Promise<{ token: string; invit
 
 export const createSpace = (groupName: string, displayName: string) => post("/api/groups", { groupName, displayName });
 export const joinSpace = (inviteCode: string, displayName: string) => post("/api/join", { inviteCode, displayName });
+
+/** M5: a new private calendar feed link for my group (the previous one stops working). */
+export async function calendarLink(token: string): Promise<string> {
+  const res = await fetch(`${ADAPTER_URL}/api/calendar`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new ApiError("The calendar link could not be created. Try again in a moment.");
+  const body = await res.json();
+  const base = ADAPTER_URL || window.location.origin;
+  return `${base}${body.path}`;
+}

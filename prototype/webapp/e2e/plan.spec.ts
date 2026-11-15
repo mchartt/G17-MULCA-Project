@@ -45,3 +45,29 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   await ada.getByRole("button", { name: "Ask", exact: true }).click();
   await expect(ada.locator(".askwhy__answer")).toContainText("Source: “Which usability test do we run?” → Think-aloud (decided by Ada on");
 });
+
+test("calendar: a private feed link that a calendar app can read, revocable", async ({ browser }) => {
+  const ada = await (await browser.newContext()).newPage();
+  await ada.goto("/");
+  await ada.getByRole("link", { name: "Open your space" }).click();
+  await ada.getByLabel("I have read this and I agree").check();
+  await ada.locator("#c-name").fill("Ada");
+  await ada.locator("#c-project").fill("Group calendar");
+  await ada.getByRole("button", { name: "Create the space" }).click();
+  // The charter (fake model) has the milestone "Demo" on 2 Dec 2026.
+  await ada.getByRole("button", { name: "Paste the assignment" }).first().click();
+  await ada.getByRole("textbox", { name: "Assignment" }).fill("Deliver by 2 December.");
+  await ada.getByRole("button", { name: "Send to Cadence" }).click();
+  await ada.locator(".card", { hasText: "Project charter" }).getByRole("button", { name: "Confirm" }).click();
+  await expect(ada.locator(".panel__goal")).toBeVisible();
+
+  await ada.getByRole("button", { name: "Add to my calendar" }).click();
+  const first = await ada.locator("#calendar-url").inputValue();
+  const feed = await ada.request.get(first);
+  expect(feed.headers()["content-type"]).toContain("text/calendar");
+  expect(await feed.text()).toContain("SUMMARY:Milestone: Demo");
+
+  await ada.getByRole("button", { name: "Make a new link" }).click();
+  await expect(ada.locator("#calendar-url")).not.toHaveValue(first);
+  expect((await ada.request.get(first)).status()).toBe(404);
+});

@@ -60,3 +60,11 @@ test("the panel lets a member change a task's status and ask why a decision was 
   expect(onWhy).toHaveBeenCalledWith("Why think-aloud?");
   expect(await screen.findByText(/Source: “Which test\?”/)).toBeInTheDocument();
 });
+
+test("the calendar link is created on request and can be copied", async () => {
+  const onCalendar = vi.fn().mockResolvedValue("http://127.0.0.1:8090/api/calendar/abc.ics");
+  render(<ProjectPanel state={{ milestones: [{ title: "Demo", due_date: "2026-12-02" }] }} members={[]} onKickoff={vi.fn()} onRefresh={vi.fn()} onCalendar={onCalendar} />);
+  await userEvent.click(screen.getByRole("button", { name: "Add to my calendar" }));
+  expect(await screen.findByDisplayValue("http://127.0.0.1:8090/api/calendar/abc.ics")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Make a new link" })).toBeInTheDocument();
+});

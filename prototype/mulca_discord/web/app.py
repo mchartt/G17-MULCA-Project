@@ -24,7 +24,7 @@ from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
@@ -106,6 +106,21 @@ def create_web_app(
             "group": {"id": group.id, "name": group.name, "inviteCode": group.invite_code},
             "me": {"id": member.id, "name": member.display_name},
         }
+
+    @app.post("/api/calendar")
+    async def calendar_link(authorization: str = Header(default="")) -> dict:
+        """M5: a new private feed link for the member's group (the old link stops working)."""
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        return {"path": f"/api/calendar/{hub.calendar.new_link(member.group_id)}.ics"}
+
+    @app.get("/api/calendar/{token}.ics")
+    async def calendar_feed(token: str) -> Response:
+        text = hub.calendar.feed(token)
+        if text is None:
+            raise HTTPException(404, "This calendar link does not exist or was replaced.")
+        return Response(text, media_type="text/calendar; charset=utf-8", headers={"Cache-Control": "no-store"})
 
     @app.websocket("/ws")
     async def socket(ws: WebSocket) -> None:

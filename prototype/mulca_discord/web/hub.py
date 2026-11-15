@@ -32,6 +32,7 @@ from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMess
 from ..courses import DEFAULT_COURSE
 from ..muca_client import MucaConnectionLost
 from ..sessions import Scope, ScopeSession, SessionRegistry
+from .calendar import CalendarFeeds
 from .store import Group, Member, WebStore
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,8 @@ class WebHub:
         # Instance attribute: shadows the class-level Discord hook for this registry only.
         self.registry.on_coordinator_event = self._on_coordinator_event
         self._course = course
+        # M5: the calendar feed reads the last state saved here.
+        self.calendar = CalendarFeeds(store)
         self._sockets: dict[int, set[Socket]] = {}
         self._locks: dict[int, asyncio.Lock] = {}
         self._channels: dict[int, WebChannel] = {}
@@ -270,6 +273,7 @@ class WebHub:
             await self.broadcast(group.id, {"type": "proposal", "proposal": data.get("proposal", {})})
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
+            self.calendar.save_state(group.id, data.get("state", {}))
             await self.broadcast(group.id, {"type": "state", "state": data.get("state", {})})
         future = self._waiting.get(data.get("requestId", ""))
         if future is not None and not future.done():

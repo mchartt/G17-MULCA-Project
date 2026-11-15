@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBullseye, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced } from "../lib/icons";
+import { faBullseye, faCalendarCheck, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced } from "../lib/icons";
 import { useState, type FormEvent } from "react";
 import type { Person, ProjectState } from "../lib/types";
 import { formatDate } from "./ProposalCard";
@@ -14,12 +14,14 @@ type Props = {
   onTaskStatus?: (taskId: string, status: string) => void;
   /** M4: "why did we decide X?"; resolves to the answer with its source. */
   onWhy?: (question: string) => Promise<string>;
+  /** M5: create a private calendar feed link (milestones and task dates). */
+  onCalendar?: () => Promise<string>;
 };
 
 const STATUSES = ["todo", "doing", "done", "blocked"];
 
 /** The plan as the group agreed it: always visible next to the chat (UC9). */
-export function ProjectPanel({ state, members, onKickoff, onRefresh, onTaskStatus, onWhy }: Props) {
+export function ProjectPanel({ state, members, onKickoff, onRefresh, onTaskStatus, onWhy, onCalendar }: Props) {
   const charter = state?.charter;
   const nameOf = (id?: number | null) => members.find((m) => m.id === id)?.name;
 
@@ -57,6 +59,7 @@ export function ProjectPanel({ state, members, onKickoff, onRefresh, onTaskStatu
         ) : (
           <p className="muted">No milestones yet.</p>
         )}
+        {onCalendar && <CalendarLink onCalendar={onCalendar} />}
       </section>
 
       <section className="panel__section panel-card">
@@ -132,5 +135,40 @@ function AskWhy({ onWhy }: { onWhy: (q: string) => Promise<string> }) {
       </div>
       {answer && <p className="askwhy__answer" role="status">{answer}</p>}
     </form>
+  );
+}
+
+/** N3: milestones and task dates in each member's own calendar, read-only. */
+function CalendarLink({ onCalendar }: { onCalendar: () => Promise<string> }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function make() {
+    setError(null);
+    setCopied(false);
+    try {
+      setUrl(await onCalendar());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The link could not be created.");
+    }
+  }
+
+  return (
+    <div className="calendar">
+      <button className="btn btn--soft btn--small" onClick={() => void make()}>
+        <FontAwesomeIcon icon={faCalendarCheck} /> {url ? "Make a new link" : "Add to my calendar"}
+      </button>
+      {url && (
+        <>
+          <label htmlFor="calendar-url" className="small">Subscribe to this link (Google Calendar: Other calendars, From URL; Outlook: Add calendar, Subscribe from web). Keep it private; a new link turns this one off.</label>
+          <div className="askwhy__row">
+            <input id="calendar-url" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+            <button className="btn btn--soft btn--small" onClick={() => void navigator.clipboard?.writeText(url).then(() => setCopied(true))}>{copied ? "Copied" : "Copy"}</button>
+          </div>
+        </>
+      )}
+      {error && <p className="form__error" role="alert">{error}</p>}
+    </div>
   );
 }

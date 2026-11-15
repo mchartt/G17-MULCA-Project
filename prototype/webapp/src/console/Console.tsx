@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { faClipboardCheck, faFileLines, faListOl, faTableColumns } from "../lib/icons";
-import { saveToken } from "../lib/api";
+import { calendarLink, saveToken } from "../lib/api";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer } from "../lib/types";
 import { Chat } from "./Chat";
@@ -136,6 +136,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             onRefresh={() => void ask({ type: "command", command: "state" })}
             onTaskStatus={(taskId, value) => void taskStatus(taskId, value)}
             onWhy={why}
+            onCalendar={() => calendarLink(token)}
           />
         </div>
       )}

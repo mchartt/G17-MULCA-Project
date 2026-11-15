@@ -187,6 +187,8 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .tasks li > :nth-child(n+3) { grid-column: 2; }
 .tasks__status { justify-self: start; font: inherit; font-size: var(--t-xs); padding: .15rem .5rem; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--mist); color: var(--ink); }
 .tasks__status:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.calendar { margin-top: .9rem; display: grid; gap: .45rem; }
+.calendar .askwhy__row input { font-size: var(--t-xs); }
 .askwhy { margin-top: 1rem; display: grid; gap: .4rem; }
 .askwhy__row { display: flex; gap: .5rem; }
 .askwhy__row input { flex: 1; min-width: 0; font: inherit; font-size: var(--t-sm); padding: .45rem .8rem; border-radius: var(--r-field); border: 1px solid var(--line); background: var(--paper); }

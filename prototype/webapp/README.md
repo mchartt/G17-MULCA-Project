@@ -48,8 +48,8 @@ the live proof.
 
 | What | Command | Result 15/11 (M3) |
 |---|---|---|
-| Cards of every kind, Why?, Not now, panel (status, Ask why), state reducer, film titles (Vitest) | `npm test` | 27 passed |
-| End to end (Playwright, fake stack): charter; CS2 card + Why? + I'll take it; CS3 choice; Not now; planning + status + check-in + why with source | `npm run e2e` | 5 passed |
+| Cards of every kind, Why?, Not now, panel (status, Ask why), state reducer, film titles (Vitest) | `npm test` | 28 passed |
+| End to end (Playwright, fake stack): charter; CS2 card + Why? + I'll take it; CS3 choice; Not now; planning + status + check-in + why with source; calendar link, feed and revocation | `npm run e2e` | 6 passed |
 | Accessibility WCAG 2.1 AA (axe-core, fake stack running) | `npm run axe` | 0 violations on landing, console with card, proactive card with Why? open, planning dialog, plan with status selects |
 | Web adapter (pytest) | `cd .. && python -m pytest tests/test_web.py` | 18 passed |
 

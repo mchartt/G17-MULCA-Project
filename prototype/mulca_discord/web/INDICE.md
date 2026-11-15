@@ -27,6 +27,7 @@ browser ── {command} / {click} ─────────> WebHub.command /
 |---|---|---|
 | `store.py` | ~200 | SQLite: groups (invite code, conversation id `web:<code>`), members (name, hashed token), messages. |
 | `hub.py` | ~260 | The channel: sockets per group, messages and commands to MUCA-Server, events back. |
+| `calendar.py` | ~150 | M5: the read-only iCalendar feed of a group (milestones and open task dates), private revocable link. |
 | `app.py` | ~150 | HTTP routes, the WebSocket and its frame validation, the built frontend and the film. |
 | `__main__.py` | ~60 | Standalone runner, configured by environment variables. |
 
@@ -49,6 +50,16 @@ browser ── {command} / {click} ─────────> WebHub.command /
   its hello (found by the M3 e2e; regression test in `tests/test_web.py`).
 - MUCA-Server down: the chat keeps working, the members see "coordinator
   unavailable", commands answer in words (tested).
+
+## Calendar feed (M5, `calendar.py`)
+
+- `POST /api/calendar` (member token) → a new private link; the old one stops
+  working. `GET /api/calendar/<secret>.ics` → the feed, no login (calendar
+  apps cannot send one), `Cache-Control: no-store`.
+- Built from the last `coordinator_state` the hub received (`web_state` table),
+  so a calendar app polling the feed costs no model call.
+- One all-day event per dated milestone and per task not done with a date;
+  RFC 5545 escaping and line folding (tested).
 
 ## Not done here (yet)
 

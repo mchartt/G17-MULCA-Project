@@ -111,6 +111,11 @@ class WebStore:
     def close(self) -> None:
         self._db.close()
 
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """The open database, shared with calendar.py (same file, same thread)."""
+        return self._db
+
     # -- groups ---------------------------------------------------------
 
     def create_group(self, name: str) -> Group:

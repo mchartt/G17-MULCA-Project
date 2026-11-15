@@ -33,6 +33,8 @@ ListeningStateHandler = Callable[[bool], Awaitable[None]]
 ReplyHook = Callable[["ScopeSession", bool], None]
 ServerErrorHook = Callable[["ScopeSession", str], Awaitable[None]]
 UsageHook = Callable[["ScopeSession", dict], Awaitable[None]]
+# Group Coordinator events (coordinator/presenter.py).
+CoordinatorHook = Callable[["ScopeSession", dict], Awaitable[None]]
 
 # Waits between attempts to (re)open a session.
 RECONNECT_DELAYS_SECONDS = (0.0, 0.5, 1.0, 2.0)
@@ -180,6 +182,8 @@ class SessionRegistry:
         # Set by the bot too: what each server call cost, and whether its
         # sessions answer every turn in text (set_text_replies).
         self.on_usage: UsageHook | None = None
+        # Group Coordinator: (session, event dict) for coordinator_* events.
+        self.on_coordinator_event: CoordinatorHook | None = None
         self.text_replies = False
 
     @property
@@ -236,7 +240,12 @@ class SessionRegistry:
                 if self.on_usage is not None:
                     await self.on_usage(session, usage)
 
+            async def on_coordinator_event(data: dict) -> None:
+                if self.on_coordinator_event is not None:
+                    await self.on_coordinator_event(session, data)
+
             client.on_assistant_text = on_text
+            client.on_coordinator_event = on_coordinator_event
             client.on_error = on_error
             client.on_usage = on_usage
             client.on_state_update = session.handle_state_update

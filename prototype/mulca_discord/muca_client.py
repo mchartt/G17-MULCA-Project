@@ -26,6 +26,8 @@ from websockets.exceptions import ConnectionClosed
 from muca_server.agents.options import INTERVENTION_DETECTION
 from muca_server.protocol import (
     ArmListeningMessage,
+    CoordinatorCommandMessage,
+    ProposalResponseMessage,
     Attachment,
     AudioStreamMessage,
     ConnectAgentMessage,
@@ -51,6 +53,12 @@ NO_SPEAKER = -1
 AssistantTextHandler = Callable[[str, bool, str], Awaitable[None]]
 StateUpdateHandler = Callable[[dict], Awaitable[None]]
 ClosedHandler = Callable[[], Awaitable[None]]
+CoordinatorEventHandler = Callable[[dict], Awaitable[None]]
+
+# Group Coordinator server events (muca_server/protocol/coordinator.py).
+COORDINATOR_EVENTS = frozenset(
+    {"coordinator_proposal", "coordinator_state", "coordinator_notice"}
+)
 ErrorHandler = Callable[[str], Awaitable[None]]
 ListeningStateHandler = Callable[[bool], Awaitable[None]]
 UsageHandler = Callable[[dict], Awaitable[None]]
@@ -275,6 +283,10 @@ class MucaWsClient:
         # (e.g. a typing indicator) immediately instead of waiting out its
         # own timeout.
         self.on_no_reply: NoReplyHandler | None = None
+        # Group Coordinator: the three coordinator_* server events, as raw
+        # dicts (mulca_discord/coordinator/ draws them). None = ignored, as
+        # any unknown event always was.
+        self.on_coordinator_event: CoordinatorEventHandler | None = None
 
         # Every reply in text, spoken turns included (a bot keeping its
         # spending down, runtime.py); sent with the session.update.
@@ -530,6 +542,13 @@ class MucaWsClient:
             self._open = False
             raise MucaConnectionLost(self._conversation_id) from exc
 
+    async def send_coordinator(
+        self,
+        message: ProposalResponseMessage | CoordinatorCommandMessage,
+    ) -> None:
+        """Group Coordinator: send a member's command or card click."""
+        await self._send(message)
+
     async def _send(self, message: IncomingMessage) -> None:
         if self._connection is None or not self._open:
             raise MucaConnectionLost(self._conversation_id)
@@ -601,6 +620,9 @@ class MucaWsClient:
                     await self.on_no_reply()
             elif event == "agent_guid":
                 self.agent_guids.append(data.get("guid", ""))
+            elif event in COORDINATOR_EVENTS:
+                if self.on_coordinator_event is not None:
+                    await self.on_coordinator_event(data)
             elif event == "error":
                 logger.warning(
                     "MUCA-Server reported an error for %s: %s",

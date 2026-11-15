@@ -349,3 +349,34 @@ async def test_a_frame_that_does_not_validate_still_answers_its_request(hub):
     await _handle(hub, Ws(), ada, {"type": "command", "command": "delete_everything", "requestId": "r9"})
     assert sent[0] == {"type": "reply", "requestId": "r9", "answer": {"type": "notice", "ok": False, "text": "That request was not understood."}}
     assert sent[1]["type"] == "error"
+
+
+async def test_mentions_of_the_coordinator_reach_muca_server_under_its_agent_name(hub):
+    """
+    MUCA-Server's respond_when_addressed knows the agent as "MULCA": "@coordinator"
+    and "@Cadence" are forwarded under that name, so the agent answers; the
+    web chat keeps the member's own words. Found live on Render, 15/11.
+    """
+    group, member, _ = hub.create_group("Team", "Ada")
+    sent = []
+
+    class Client:
+        async def send_participants(self, roster, modality):
+            pass
+
+        async def send_user_text(self, **kw):
+            sent.append(kw)
+
+    async def run(group_id, action):
+        await action(Client())
+
+    hub._run = run
+    await hub.post_message(member, "@Cadence what is our deadline?")
+    await hub.post_message(member, "@coordinator, ciao")
+    await hub.post_message(member, "no mention here")
+    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [
+        ("@MULCA what is our deadline?", True),
+        ("@MULCA, ciao", True),
+        ("no mention here", False),
+    ]
+    assert [m.text for m in hub.store.history(group.id)] == ["@Cadence what is our deadline?", "@coordinator, ciao", "no mention here"]

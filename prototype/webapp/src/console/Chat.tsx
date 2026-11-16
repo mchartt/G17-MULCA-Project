@@ -79,7 +79,8 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
   );
 }
 
-function Message({ space, author, text, channel, mine }: { space: Space; author: Person | null; text: string; channel: string; mine: boolean }) {
+/** One chat bubble; also used by the preview screens (src/preview/). */
+export function Message({ space, author, text, channel, mine }: { space: Space; author: Person | null; text: string; channel: string; mine: boolean }) {
   if (!author) {
     return (
       <div className="msg msg--agent">

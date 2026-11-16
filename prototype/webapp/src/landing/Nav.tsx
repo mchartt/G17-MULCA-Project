@@ -15,6 +15,7 @@ export function Nav() {
       <a className="nav__brand" href="#top">Cadence</a>
       <nav aria-label="Page">
         <a href="#how">How it works</a>
+        <a href="#next">What's next</a>
         <a href="#privacy">Privacy</a>
         <a className="nav__cta" href="#enter">Open your space</a>
       </nav>

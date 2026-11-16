@@ -79,7 +79,7 @@ export function nameOf(id: MemberId | null | undefined, space: Pick<Space, "memb
 }
 
 /** The member's colour dot, stable for a given id (the stickers on the board). */
-export const DOT_COLOURS = ["var(--dot-sage)", "var(--dot-slate)", "var(--dot-ochre)", "var(--dot-coral)"];
+export const DOT_COLOURS = ["var(--m1)", "var(--m2)", "var(--m3)", "var(--m4)", "var(--m5)"];
 export function dotFor(id: MemberId, members: Person[]): string {
   const index = members.findIndex((m) => m.id === id);
   // Not a web member (a linked channel): a stable colour from the id's last digits.

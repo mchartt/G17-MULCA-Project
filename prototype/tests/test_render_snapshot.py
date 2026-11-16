@@ -186,15 +186,19 @@ def test_a_failed_save_is_tried_again_at_the_next_round(tmp_path, blob):
     stop = threading.Event()
     watcher = threading.Thread(target=snapshot.watch, args=(blob.url, data, 0.05, stop))
     watcher.start()
-    (data / "muca" / "new.json").write_text("{}")
-    threading.Event().wait(0.3)
-    blob.fail = None
-    for _ in range(100):
-        if blob.puts:
-            break
-        threading.Event().wait(0.05)
-    stop.set()
-    watcher.join(timeout=5)
+    try:
+        threading.Event().wait(0.3)  # the watcher has taken its starting picture
+        (data / "muca" / "new.json").write_text("{}")
+        threading.Event().wait(0.3)  # at least one save was refused
+        assert blob.puts == []
+        blob.fail = None
+        for _ in range(100):
+            if blob.puts:
+                break
+            threading.Event().wait(0.05)
+    finally:
+        stop.set()
+        watcher.join(timeout=5)
     assert blob.puts
 
 

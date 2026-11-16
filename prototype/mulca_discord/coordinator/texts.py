@@ -11,8 +11,12 @@ from __future__ import annotations
 from datetime import datetime
 
 CHANNEL_NAMES = {"web": "Web", "discord": "Discord", "slack": "Slack"}
-# Web members have ids in [1e8, 1e9) (web/store.py); Discord ids are far larger.
+# Which channel a member id comes from, by its size:
+#   web      [1e8, 1e9)        (web/store.py)
+#   Discord  snowflakes, today around 1e18, below 2**62 until about 2049
+#   Slack    2**62 + the user id read as a base-36 number (slack/ids.py)
 WEB_ID_MIN, WEB_ID_MAX = 100_000_000, 999_999_999
+SLACK_ID_BASE = 1 << 62
 MAX_LINES = 12  # per channel, so the answer stays one readable message
 MAX_CHARS = 1900  # Discord's limit for one message is 2000
 
@@ -52,15 +56,25 @@ def catchup_text(answer: dict | None) -> str:
     return "\n".join(lines)[:MAX_CHARS]
 
 
+def channel_of_member(member_id: int) -> str:
+    if WEB_ID_MIN <= member_id <= WEB_ID_MAX:
+        return "web"
+    return "slack" if member_id >= SLACK_ID_BASE else "discord"
+
+
+def member_name(member_id: int, names: dict | None) -> str:
+    """The member's name from the id -> name map MUCA-Server sends with every card and state."""
+    return (names or {}).get(str(member_id)) or f"a {channel_name(channel_of_member(member_id))} member"
+
+
 def owner_text(owner_id: int | None, names: dict | None = None) -> str:
     """
     Who owns a task, written for Discord. A Discord member is mentioned as
-    usual. In a linked group the owner can be a web member: their id means
-    nothing on Discord, so their name is written instead (`names` is the
-    id -> name map MUCA-Server sends with every card and state).
+    usual. In a linked group the owner can be a web or Slack member: their id
+    means nothing on Discord, so their name is written instead.
     """
     if not owner_id:
         return ""
-    if WEB_ID_MIN <= owner_id <= WEB_ID_MAX:
-        return (names or {}).get(str(owner_id), "a web member")
-    return f"<@{owner_id}>"
+    if channel_of_member(owner_id) == "discord":
+        return f"<@{owner_id}>"
+    return member_name(owner_id, names)

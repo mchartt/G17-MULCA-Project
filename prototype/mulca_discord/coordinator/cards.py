@@ -32,6 +32,17 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from .card_content import (  # noqa: F401  (re-exported: tests and bridge.py import them from here)
+    ABOUT_THE_CARD,
+    KIND_TITLES,
+    PROACTIVE_KINDS,
+    STATUS_WORDS,
+    STRATEGY_NAMES,
+    actions_for,
+    card_fields,
+    clip,
+    why_text,
+)
 from .texts import owner_text
 
 if TYPE_CHECKING:
@@ -50,32 +61,6 @@ STATUS_COLOURS = {
     "expired": discord.Colour.dark_grey(),
     "snoozed": discord.Colour.dark_grey(),
 }
-STATUS_WORDS = {
-    "pending": "Waiting for a member to confirm",
-    "applied": "Confirmed",
-    "rejected": "Rejected",
-    "expired": "Expired",
-    "snoozed": "Not now: this suggestion is silenced for 30 minutes",
-}
-KIND_TITLES = {
-    "charter": "Project charter",
-    "task_owner": "Owner and date",
-    "delegation": "One person can do this",
-    "decision": "Close the decision",
-    "plan": "Plan: who does what",
-    "checkin": "Check-in",
-    "blocker": "Something is blocked",
-}
-# Plain names of the strategies, for "Why?" (spec S5, S2, S3).
-STRATEGY_NAMES = {
-    "cs5_owner_and_date": "Owner and date (CS5): an agreed action had no owner or no date.",
-    "cs2_delegate_simple_task": "Delegate simple tasks (CS2): several of you were discussing a task one person can do alone.",
-    "cs3_close_decision": "Close the decision (CS3): the same question had two or more options and no decision.",
-    "cs7_blockers_dependencies": "Blockers (CS7): someone is stuck or waiting on other work, and a deadline is at risk.",
-}
-PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker")
-# The "about this card" buttons, on a second row so the answers come first.
-ABOUT_THE_CARD = ("why", "helpful", "not_now")
 LABELS = {
     "confirm": ("Confirm", discord.ButtonStyle.success),
     "take": ("I'll take it", discord.ButtonStyle.success),
@@ -96,73 +81,14 @@ def proposal_embed(proposal: dict) -> discord.Embed:
         description=f"*{proposal.get('rationale') or 'Proposal from the coordinator.'}*",
         colour=STATUS_COLOURS.get(status, discord.Colour.blurple()),
     )
-    for name, value in _fields(kind, payload, proposal.get("names")):
-        embed.add_field(name=name, value=_clip(value), inline=False)
+    for name, value in card_fields(kind, payload, lambda member_id: owner_text(member_id, proposal.get("names"))):
+        embed.add_field(name=name, value=clip(value), inline=False)
     footer = STATUS_WORDS.get(status, status)
     if status == "pending" and proposal.get("expires_at"):
         expires = datetime.fromtimestamp(proposal["expires_at"], tz=timezone.utc)
         footer += f" · expires {expires:%d %b %H:%M} UTC"
     embed.set_footer(text=footer)
     return embed
-
-
-def _fields(kind: str | None, payload: dict, names: dict | None = None) -> list[tuple[str, str]]:
-    """The content of each kind of card, as (field name, text)."""
-    if kind == "charter":
-        return [
-            ("Goal", payload.get("goal", "")),
-            ("Deliverables", _bullets(payload.get("deliverables", []))),
-            (
-                "Milestones",
-                _bullets(f"{m.get('title')} — {m.get('due_date') or 'no date'}" for m in payload.get("milestones", [])),
-            ),
-        ]
-    if kind in ("task_owner", "delegation"):
-        fields = [("Task", payload.get("title", "")), ("By", payload.get("due_date") or "no date yet")]
-        if kind == "task_owner":
-            owner = payload.get("owner_id")
-            fields.append(("Suggested owner", owner_text(owner, names) if owner else "nobody suggested: anyone can take it"))
-        elif payload.get("return_to"):
-            fields.append(("Then back to", payload["return_to"]))
-        return fields
-    if kind == "decision":
-        options = payload.get("options", [])
-        return [
-            ("Question", payload.get("question", "")),
-            (
-                "Options",
-                "\n".join(
-                    f"**{n}. {o.get('label')}**" + (f" — {o['argument']}" if o.get("argument") else "")
-                    for n, o in enumerate(options, start=1)
-                ) or "—",
-            ),
-        ]
-    if kind == "plan":
-        return [
-            (
-                "Tasks",
-                "\n".join(
-                    f"• **{i.get('title')}** — "
-                    + (owner_text(i["owner_id"], names) if i.get("owner_id") else "anyone")
-                    + (f" · {i['due_date']}" if i.get("due_date") else "")
-                    + (f"\n  _{i['reason']}_" if i.get("reason") else "")
-                    for i in payload.get("items", [])
-                ) or "—",
-            )
-        ]
-    if kind == "checkin":
-        return [
-            ("What is late or at risk", _bullets(payload.get("findings", []))),
-            ("Options", "\n".join(f"**{n}.** {o.get('label')}" for n, o in enumerate(payload.get("options", []), start=1)) or "—"),
-        ]
-    if kind == "blocker":
-        fields = [("Task", payload.get("title", ""))]
-        if payload.get("question"):
-            fields.append(("Question", payload["question"]))
-        if payload.get("helper_id"):
-            fields.append(("Who could help", owner_text(payload["helper_id"], names)))
-        return fields
-    return []
 
 
 def card_view(proposal: dict) -> discord.ui.View | None:
@@ -176,34 +102,11 @@ def card_view(proposal: dict) -> discord.ui.View | None:
     if kind in ("decision", "checkin"):
         for n, option in enumerate(payload.get("options", [])[:3]):
             view.add_item(CardButton(f"choose{n}", proposal_id, label=option.get("label", f"Option {n + 1}")))
-    actions = {
-        "charter": ["confirm", "reject"],
-        "task_owner": (["confirm"] if payload.get("owner_id") else []) + ["take", "reject"],
-        "delegation": ["take", "reject"],
-        "decision": ["reject"],
-        "checkin": ["reject"],
-        "plan": ["confirm", "reject"],
-        "blocker": ["confirm", "reject"],
-    }.get(kind, ["confirm", "reject"])
-    if kind in PROACTIVE_KINDS:
-        actions += ["why", "helpful", "not_now"]
+    actions = actions_for(kind, payload)
     for action in actions:
         # Second row for the "about this card" buttons, so the answers come first.
         view.add_item(CardButton(action, proposal_id, row=1 if action in ABOUT_THE_CARD else 0))
     return view
-
-
-def why_text(proposal: dict | None) -> str:
-    """What "Why?" shows, privately: the strategy and the messages behind the card."""
-    context = (proposal or {}).get("payload", {}).get("context")
-    if not context:
-        return "This card was asked for by a member of the group."
-    lines = [STRATEGY_NAMES.get(context.get("strategy_id"), context.get("strategy_id", ""))]
-    lines.append(f"Topic: {context.get('topic', '')}")
-    lines.append("Messages that made it step in:")
-    lines += [f"> **{e.get('speaker')}**: {e.get('text')}" for e in context.get("evidence", [])]
-    lines.append("If it is not useful now, press Not now: it stays silent on this topic for 30 minutes.")
-    return _clip("\n".join(lines), 1900)
 
 
 class CardButton(discord.ui.DynamicItem[discord.ui.Button], template=CUSTOM_ID_PATTERN):
@@ -216,7 +119,7 @@ class CardButton(discord.ui.DynamicItem[discord.ui.Button], template=CUSTOM_ID_P
         default_label, style = LABELS.get(action, (label or action, discord.ButtonStyle.primary))
         super().__init__(
             discord.ui.Button(
-                label=_clip(label or default_label, 80),
+                label=clip(label or default_label, 80),
                 style=style,
                 custom_id=CUSTOM_ID.format(action=action, proposal_id=proposal_id),
                 row=row,
@@ -251,14 +154,3 @@ def split_action(action: str) -> tuple[str, int | None]:
     if action.startswith("choose"):
         return "choose", int(action[len("choose"):])
     return action, None
-
-
-def _bullets(items) -> str:
-    lines = [f"• {item}" for item in items]
-    return "\n".join(lines) if lines else "—"
-
-
-def _clip(text: str, limit: int = 1000) -> str:
-    """Discord refuses embed fields over 1024 characters."""
-    text = text or "—"
-    return text if len(text) <= limit else text[: limit - 1] + "…"

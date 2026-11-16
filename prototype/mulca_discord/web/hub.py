@@ -363,6 +363,7 @@ class WebHub:
         if group is None:
             return
         event = data.get("event")
+        data = browser_safe(data)
         if event == "coordinator_proposal":
             await self.broadcast(group.id, {"type": "proposal", "proposal": data.get("proposal", {})})
         elif event == "coordinator_state":
@@ -397,6 +398,25 @@ class WebHub:
 
     async def close(self) -> None:
         await self.registry.close_all()
+
+
+# The largest whole number a browser reads exactly (JavaScript's Number).
+BROWSER_MAX_INT = 2**53 - 1
+
+
+def browser_safe(value):
+    """
+    In a linked group a card can name a Discord or Slack member, whose id is
+    larger than a browser can read exactly (it would be rounded, and no name
+    would match). Those ids travel as text; web members' ids stay numbers.
+    """
+    if isinstance(value, dict):
+        return {key: browser_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [browser_safe(item) for item in value]
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) > BROWSER_MAX_INT:
+        return str(value)
+    return value
 
 
 def _answer(data: dict) -> dict:

@@ -135,7 +135,7 @@ async def test_one_project_across_the_web_and_discord(web, coordinator_server): 
 
         # One project: the web panel shows the charter Dario confirmed on Discord.
         state = await tab.wait_for(lambda e: e["type"] == "state" and e["state"].get("charter"))
-        assert state["state"]["charter"]["confirmed_by"] == 9002
+        assert state["state"]["charter"]["confirmed_by"] == 9002  # small ids stay numbers
         on_discord = await bridge.send_command(member(9001), "state")
         assert on_discord["state"]["charter"]["goal"] == state["state"]["charter"]["goal"]
 
@@ -158,7 +158,7 @@ def test_the_words_shared_by_discord_and_slack():
     assert mirror_text({"speakerName": "Ada", "channel": "web", "text": "hi"}) == "**Ada** · Web: hi"
     assert owner_text(9001) == "<@9001>"
     assert owner_text(100_000_001, {"100000001": "Ada"}) == "Ada"
-    assert owner_text(100_000_001) == "a web member" and owner_text(None) == ""
+    assert owner_text(100_000_001) == "a Web member" and owner_text(None) == ""
     text = catchup_text({
         "text": "Since your last catch-up: 1 decision, 2 messages on Web.",
         "catchup": {

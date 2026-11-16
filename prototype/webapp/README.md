@@ -63,6 +63,7 @@ On the Linux shell of the Claude app, Chromium needs `libXdamage.so.1`
 | `src/landing/FilmHero.tsx` | Scroll film on a canvas (436 frames, `film/public/desktop`), three beats on index cards, still version with reduced motion |
 | `src/landing/Entry.tsx` | Data notice, create a space, join with a code |
 | `src/console/` | Console, chat, proposal card (charter, task_owner, delegation, decision; Why? and Not now on proactive cards), project panel, dialogs, `space.ts` (events -> state) |
+| `src/preview/` | Preview screens under `/preview` (Connections, Plan around calendars, Catch up, Reflection): sample data from `sample.ts`, no space, no token, no server; linked from the landing ("Next") and the sidebar |
 | `src/lib/` | HTTP calls, the WebSocket with reconnection, shared types |
 | `src/styles/tokens.css` | Colours (with contrast ratios), type scale, radii |
 | `film/` | Storyboard, keyframes, clips, `raccorda.py`, frames for the page |

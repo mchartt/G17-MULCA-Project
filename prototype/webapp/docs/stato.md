@@ -48,5 +48,7 @@ transazione, copertura dei test, branch, commit, push, remoto, bundle, interrutt
 - 15/11/2026: film (4 clip, 18 s dopo il raccordo e la rimozione dei fotogrammi doppi), adattatore web, landing e console; test: pytest 14 (copertura 98 %), Vitest 15, Playwright 1 e2e; screenshot in `docs/screens/`.
 - 15/11/2026: fase 0 chiusa. Ambiente Python 3.11 ricreato, suite rieseguite (server 481 + 1 noto, MULCA 258), Playwright pronto, Higgsfield collegato in prova gratuita, Mobbin bloccato dal piano.
 
+- 16/11/2026: anteprime sotto `/preview` con dati di esempio (connessioni, pianificazione sui calendari, recupero di una decisione persa, riflessione finale) e sezione "Next" nella landing; nessuna modifica all'adattatore o al server. Test: Vitest 40; axe 0 violazioni sulle quattro anteprime e sulla landing; screenshot `docs/screens/preview-*.png`.
+
 ## Speso finora
 0 € (Higgsfield: tutto dentro la prova gratuita)

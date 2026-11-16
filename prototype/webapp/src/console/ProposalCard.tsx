@@ -26,6 +26,8 @@ const STRATEGY_WHY: Record<string, string> = {
   cs2_delegate_simple_task: "Several of you were discussing a task one person can do alone.",
   cs3_close_decision: "The same question had two or more options and no decision.",
   cs7_blockers_dependencies: "Someone is stuck or waiting on other work, and a deadline is at risk.",
+  // Preview only (src/preview/): MUCA-Server has no such strategy yet.
+  cs14_find_a_time: "The group needed a meeting before a deadline and nobody proposed a time.",
 };
 
 type Props = {
@@ -34,6 +36,8 @@ type Props = {
   onAnswer: (click: Click) => Promise<Answer>;
   /** Name of a member from their id (suggested owner). */
   memberName?: (id: number) => string;
+  /** A title other than the kind's own (the preview's "Find a time" card). */
+  title?: string;
 };
 
 /**
@@ -42,14 +46,14 @@ type Props = {
  * cards are proactive (M3) and also have Why?, Helpful (feedback only: it
  * changes nothing, spec FR21) and Not now.
  */
-export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) => `member ${id}` }: Props) {
+export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) => `member ${id}`, title: givenTitle }: Props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
   const [thanks, setThanks] = useState<string | null>(null);
   const whyId = useId();
   const { payload, status, kind } = proposal;
-  const title = KIND_TITLES[kind] ?? "Proposal";
+  const title = givenTitle ?? KIND_TITLES[kind] ?? "Proposal";
   const context = payload.context;
   const pending = status === "pending";
 

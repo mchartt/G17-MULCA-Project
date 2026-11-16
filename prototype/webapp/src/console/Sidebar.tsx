@@ -1,6 +1,6 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
-import { faCheck, faCopy, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
+import { faArrowRight, faCheck, faCopy, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
 import { initials } from "./Chat";
 import type { Space } from "./space";
 import { dotFor } from "./space";
@@ -49,6 +49,7 @@ export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
       </div>
 
       <div className="side__foot">
+        <a className="btn btn--link" href="/preview"><FontAwesomeIcon icon={faArrowRight} /> What's next (preview)</a>
         <button className="btn btn--soft" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> Edit my profile</button>
         <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Leave on this browser</button>
         <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>

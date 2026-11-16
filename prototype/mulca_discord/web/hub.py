@@ -45,7 +45,12 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "Cadence"
 ANSWER_TIMEOUT_SECONDS = 60
 MAX_MESSAGE_CHARS = 4000
-MENTION = "@coordinator"
+# How the web app calls the agent ("@coordinator", or its product name
+# "@Cadence"). MUCA-Server's respond_when_addressed strategy and persona know
+# the agent as "MULCA", so the mention is forwarded under that name: the
+# group's text and the chat history keep what the member wrote.
+WEB_MENTION = re.compile(r"@(coordinator|cadence)\b", re.IGNORECASE)
+SERVER_NAME_MENTION = "@MULCA"
 # "@coordinator why ..." / "@coordinator perché ..." typed in the chat: answered
 # from the decision log (command "why"), not by the lab's agent, which cannot
 # read the log. Only routes a question: it never changes any state.
@@ -250,8 +255,8 @@ class WebHub:
             await client.send_user_text(
                 speaker=member.id,
                 speaker_name=member.display_name,
-                text=text,
-                mentions_assistant=MENTION in text.lower(),
+                text=WEB_MENTION.sub(SERVER_NAME_MENTION, text),
+                mentions_assistant=WEB_MENTION.search(text) is not None,
             )
 
         try:

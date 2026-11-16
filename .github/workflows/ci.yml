@@ -1,0 +1,100 @@
+# Runs the web app and adapter tests on every pull request and on the
+# working branch. No provider key is needed: the tests use fakes.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [group17/coordinator]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  webapp:
+    name: Web app (Vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: prototype/webapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22   # the version deploy/render/Dockerfile builds with
+          cache: npm
+          cache-dependency-path: prototype/webapp/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+
+  # The adapter tests run against a real local MUCA-Server, which lives in a
+  # second private repository. GitHub's own token cannot read it, so this
+  # needs a repository secret MUCA_SERVER_READ_TOKEN: a fine-grained token
+  # with read-only "Contents" access to mchartt/G17-MULCA-Server.
+  # Without the secret the adapter job shows as skipped, never as passed.
+  setup:
+    name: Check access to MUCA-Server
+    runs-on: ubuntu-latest
+    outputs:
+      has_token: ${{ steps.check.outputs.has_token }}
+    steps:
+      - id: check
+        env:
+          TOKEN: ${{ secrets.MUCA_SERVER_READ_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::MUCA_SERVER_READ_TOKEN is not set: the adapter tests are skipped."
+          fi
+
+  adapter:
+    name: Adapters (pytest)
+    needs: setup
+    if: needs.setup.outputs.has_token == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SERVER_REPO: mchartt/G17-MULCA-Server
+      HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mulca
+      - name: Pick the MUCA-Server branch
+        id: server
+        env:
+          TOKEN: ${{ secrets.MUCA_SERVER_READ_TOKEN }}
+        # A change that spans both repositories uses the same branch name in
+        # each: test against that branch when it exists.
+        run: |
+          if git ls-remote --exit-code --heads "https://x-access-token:${TOKEN}@github.com/${SERVER_REPO}.git" "$HEAD_BRANCH" >/dev/null 2>&1; then
+            echo "ref=$HEAD_BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=group17/coordinator" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SERVER_REPO }}
+          ref: ${{ steps.server.outputs.ref }}
+          token: ${{ secrets.MUCA_SERVER_READ_TOKEN }}
+          # requirements.txt installs it from ../../MUCA-Server
+          path: MUCA-Server
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: mulca/prototype/requirements*.txt
+      - name: Install
+        working-directory: mulca/prototype
+        run: pip install -r requirements-dev.txt
+      - name: Tests
+        working-directory: mulca/prototype
+        run: python -m pytest -q

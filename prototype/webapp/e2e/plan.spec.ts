@@ -1,13 +1,13 @@
 // M4 end to end on the offline stack: /planning card, task status from the
 // panel, check-in (findings computed by the server), "why did we decide X?".
 import { expect, test } from "@playwright/test";
+import { signUp } from "./account.mjs";
 
 test("planning, task status, check-in and why with source", async ({ browser }) => {
   const ada = await (await browser.newContext()).newPage();
   await ada.goto("/");
   await ada.getByRole("link", { name: "Open your space" }).click();
-  await ada.getByLabel("I have read this and I agree").check();
-  await ada.locator("#c-name").fill("Ada");
+  await signUp(ada, "Ada");
   await ada.locator("#c-project").fill("Group M4");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "Group M4" })).toBeVisible();
@@ -50,8 +50,7 @@ test("calendar: a private feed link that a calendar app can read, revocable", as
   const ada = await (await browser.newContext()).newPage();
   await ada.goto("/");
   await ada.getByRole("link", { name: "Open your space" }).click();
-  await ada.getByLabel("I have read this and I agree").check();
-  await ada.locator("#c-name").fill("Ada");
+  await signUp(ada, "Ada");
   await ada.locator("#c-project").fill("Group calendar");
   await ada.getByRole("button", { name: "Create the space" }).click();
   // The charter (fake model) has the milestone "Demo" on 2 Dec 2026.

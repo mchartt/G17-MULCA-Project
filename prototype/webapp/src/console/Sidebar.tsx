@@ -36,6 +36,15 @@ export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
       </div>
 
       <div className="side__block">
+        <h2>Discord and Slack</h2>
+        <p className="muted small">
+          To share this project with your group's channel, write there:
+        </p>
+        <code className="side__command">/coordinator link {code}</code>
+        <p className="muted small">The plan, the decisions and the cards are then the same everywhere, and messages show in both places.</p>
+      </div>
+
+      <div className="side__block">
         <h2>Members</h2>
         <ul className="members">
           {space.members.map((m) => (
@@ -51,7 +60,7 @@ export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
       <div className="side__foot">
         <a className="btn btn--link" href="/preview"><FontAwesomeIcon icon={faArrowRight} /> What's next (preview)</a>
         <button className="btn btn--soft" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> Edit my profile</button>
-        <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Leave on this browser</button>
+        <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Back to my spaces</button>
         <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
       </div>
     </nav>

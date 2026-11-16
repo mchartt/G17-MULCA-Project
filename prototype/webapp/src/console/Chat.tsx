@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { faCompass, faPaperPlane } from "../lib/icons";
 import type { Answer, Click, Person } from "../lib/types";
 import { ProposalCard } from "./ProposalCard";
-import { dotFor, type Space } from "./space";
+import { dotFor, nameOf, type Space } from "./space";
 
 const CHANNEL_NAMES: Record<string, string> = { web: "Web", discord: "Discord", slack: "Slack", calendar: "Calendar" };
 
@@ -52,7 +52,7 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
                 key={`p-${item.id}`}
                 proposal={space.proposals[item.id]}
                 agentName={space.agentName}
-                memberName={(id) => space.members.find((m) => m.id === id)?.name ?? "a member"}
+                memberName={(id) => nameOf(id, space) ?? "a member"}
                 onAnswer={(click) => onAnswer(item.id, click)}
               />
             )

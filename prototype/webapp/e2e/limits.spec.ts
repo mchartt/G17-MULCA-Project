@@ -2,13 +2,13 @@
 // typed in the chat is answered from the decision log, and "Delete space"
 // removes the space for every member after typing its name.
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { signUp } from "./account.mjs";
 
 async function create(browser: Browser, project: string): Promise<Page> {
   const ada = await (await browser.newContext()).newPage();
   await ada.goto("/");
   await ada.getByRole("link", { name: "Open your space" }).click();
-  await ada.getByLabel("I have read this and I agree").check();
-  await ada.locator("#c-name").fill("Ada");
+  await signUp(ada, "Ada");
   await ada.locator("#c-project").fill(project);
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: project })).toBeVisible();
@@ -27,8 +27,7 @@ test("Delete space: only after typing the name; every member is sent back to the
   const code = (await ada.locator(".invite code").textContent())!.trim();
   const bruno = await (await browser.newContext()).newPage();
   await bruno.goto(`/?code=${code}`);
-  await bruno.getByLabel("I have read this and I agree").check();
-  await bruno.locator("#j-name").fill("Bruno");
+  await signUp(bruno, "Bruno");
   await bruno.getByRole("button", { name: "Join the space" }).click();
   await expect(bruno.locator(".members")).toContainText("Ada");
 
@@ -44,8 +43,7 @@ test("Delete space: only after typing the name; every member is sent back to the
   // The invite code no longer opens anything.
   const again = await (await browser.newContext()).newPage();
   await again.goto(`/?code=${code}`);
-  await again.getByLabel("I have read this and I agree").check();
-  await again.locator("#j-name").fill("Eve");
+  await signUp(again, "Eve");
   await again.getByRole("button", { name: "Join the space" }).click();
   await expect(again.getByRole("alert")).toContainText("No space uses this invite code");
 });

@@ -1,6 +1,6 @@
 // Everything the console shows, rebuilt from the adapter's events by one pure
 // function (easy to test, easy to explain: event in, new state out).
-import type { ChatMessage, Group, Person, ProjectState, Proposal, ServerEvent } from "../lib/types";
+import type { ChatMessage, Group, MemberId, Names, Person, ProjectState, Proposal, ServerEvent } from "../lib/types";
 
 export type TimelineItem = { kind: "message"; message: ChatMessage } | { kind: "proposal"; id: string };
 
@@ -12,6 +12,8 @@ export type Space = {
   timeline: TimelineItem[];
   proposals: Record<string, Proposal>;
   state: ProjectState | null;
+  // id -> name for members of linked channels too (Discord, Slack).
+  names: Names;
   coordinator: "available" | "unavailable";
 };
 
@@ -23,6 +25,7 @@ export const emptySpace: Space = {
   timeline: [],
   proposals: {},
   state: null,
+  names: {},
   coordinator: "available",
 };
 
@@ -56,11 +59,12 @@ export function reduce(space: Space, event: ServerEvent): Space {
       return {
         ...space,
         proposals: { ...space.proposals, [id]: event.proposal },
+        names: { ...space.names, ...event.proposal.names },
         timeline: known ? space.timeline : [...space.timeline, { kind: "proposal", id }],
       };
     }
     case "state":
-      return { ...space, state: event.state, coordinator: "available" };
+      return { ...space, state: event.state, names: { ...space.names, ...event.state.names }, coordinator: "available" };
     case "status":
       return { ...space, coordinator: event.coordinator };
     default:
@@ -68,9 +72,17 @@ export function reduce(space: Space, event: ServerEvent): Space {
   }
 }
 
+/** A member's name: from this space, or from a linked channel (Discord, Slack). */
+export function nameOf(id: MemberId | null | undefined, space: Pick<Space, "members" | "names">): string | undefined {
+  if (id === null || id === undefined) return undefined;
+  return space.members.find((m) => m.id === id)?.name ?? space.names[String(id)];
+}
+
 /** The member's colour dot, stable for a given id (the stickers on the board). */
 export const DOT_COLOURS = ["var(--dot-sage)", "var(--dot-slate)", "var(--dot-ochre)", "var(--dot-coral)"];
-export function dotFor(id: number, members: Person[]): string {
+export function dotFor(id: MemberId, members: Person[]): string {
   const index = members.findIndex((m) => m.id === id);
-  return DOT_COLOURS[(index >= 0 ? index : id) % DOT_COLOURS.length];
+  // Not a web member (a linked channel): a stable colour from the id's last digits.
+  const fallback = Number(String(id).slice(-4)) || 0;
+  return DOT_COLOURS[(index >= 0 ? index : fallback) % DOT_COLOURS.length];
 }

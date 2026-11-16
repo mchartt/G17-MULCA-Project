@@ -112,7 +112,7 @@ def create_web_app(
     async def join_group(body: JoinGroup, authorization: str = Header(default="")) -> dict:
         joined = await hub.join_group(body.invite_code, body.display_name, who(authorization, body.display_name))
         if joined is None:
-            raise HTTPException(404, "No space with this invite code.")
+            raise HTTPException(404, "No space uses this invite code. Check it with the person who shared it.")
         group, member, token = joined
         return {"token": token, "inviteCode": group.invite_code, "memberId": member.id}
 

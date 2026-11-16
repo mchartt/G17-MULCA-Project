@@ -12,6 +12,7 @@ export {
   faCircleCheck,
   faCircleQuestion,
   faClipboardCheck,
+  faClockRotateLeft,
   faCodeBranch,
   faComments,
   faCompass,

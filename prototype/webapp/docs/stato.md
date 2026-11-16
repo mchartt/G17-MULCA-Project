@@ -49,6 +49,7 @@ transazione, copertura dei test, branch, commit, push, remoto, bundle, interrutt
 - 15/11/2026: fase 0 chiusa. Ambiente Python 3.11 ricreato, suite rieseguite (server 481 + 1 noto, MULCA 258), Playwright pronto, Higgsfield collegato in prova gratuita, Mobbin bloccato dal piano.
 
 - 16/11/2026: anteprime sotto `/preview` con dati di esempio (connessioni, pianificazione sui calendari, recupero di una decisione persa, riflessione finale) e sezione "Next" nella landing; nessuna modifica all'adattatore o al server. Test: Vitest 40; axe 0 violazioni sulle quattro anteprime e sulla landing; screenshot `docs/screens/preview-*.png`.
+- 16/11/2026: account (registrazione, login, profilo, i miei spazi), blocco 'Discord and Slack' con il comando di collegamento, finestra 'Catch up' reale, nomi dei membri degli altri canali. Richiede il server con la PR 'shared-memory'. Test: Vitest 46; Playwright 8/8; axe 0 violazioni su registrazione, login, profilo, home e catch-up; screenshot `docs/screens/account-*.png` e `console-catch-up.png`. NON verificato dal vivo su Render, Discord e Slack reali.
 
 ## Speso finora
 0 € (Higgsfield: tutto dentro la prova gratuita)

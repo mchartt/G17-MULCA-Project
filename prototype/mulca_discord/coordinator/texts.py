@@ -39,6 +39,8 @@ def catchup_text(answer: dict | None) -> str:
     lines = [answer.get("text") or "Catch-up"]
     if not catchup:
         return lines[0]
+    if not catchup.get("linked"):
+        lines.append("To link this channel to your web space, run `/coordinator link` with the space's invite code.")
     for decision in catchup.get("decisions", []):
         reason = f" ({decision['reason']})" if decision.get("reason") else ""
         lines.append(f"• Decided: {decision['question']} → **{decision['choice']}**{reason}")

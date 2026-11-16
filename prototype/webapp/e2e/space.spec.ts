@@ -1,6 +1,7 @@
 // End to end on the offline stack (e2e/fake_stack.py): landing, create a space,
 // a second member joins with the code, kickoff card, confirm, plan updates for both.
 import { expect, test } from "@playwright/test";
+import { signUp } from "./account.mjs";
 
 test("two members: create, join, kickoff card, confirm, plan", async ({ browser }) => {
   const ada = await (await browser.newContext()).newPage();
@@ -8,8 +9,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   await expect(ada.getByRole("heading", { name: "Cadence", level: 1 })).toBeAttached();
   await ada.getByRole("link", { name: "Open your space" }).click();
 
-  await ada.getByLabel("I have read this and I agree").check();
-  await ada.locator("#c-name").fill("Ada");
+  await signUp(ada, "Ada");
   await ada.locator("#c-project").fill("AUI group 17");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "AUI group 17" })).toBeVisible();
@@ -18,8 +18,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
 
   const bruno = await (await browser.newContext()).newPage();
   await bruno.goto(`/?code=${code}`);
-  await bruno.getByLabel("I have read this and I agree").check();
-  await bruno.locator("#j-name").fill("Bruno");
+  await signUp(bruno, "Bruno");
   await bruno.getByRole("button", { name: "Join the space" }).click();
   await expect(bruno.locator(".members")).toContainText("Ada");
   await expect(ada.locator(".members")).toContainText("Bruno");

@@ -5,7 +5,7 @@ import { useSampleCard } from "./sampleCard";
 import { LAB_CARD, ME, MEMBERS, MISSED, THURSDAY, THURSDAY_DECISION } from "./sample";
 
 const SPACE: Space = { ...emptySpace, members: MEMBERS, me: ME };
-const memberName = (id: number) => MEMBERS.find((m) => m.id === id)?.name ?? "a member";
+const memberName = (id: number | string) => MEMBERS.find((m) => m.id === id)?.name ?? "a member";
 const noAnswer = async () => ({ type: "notice" as const, ok: true, text: "" });
 
 /**

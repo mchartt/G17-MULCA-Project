@@ -1,11 +1,14 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { faClipboardCheck, faFileLines, faListOl, faTableColumns } from "../lib/icons";
+import { ProfileForm } from "../account/ProfileForm";
+import { me, type User } from "../lib/account";
+import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faTableColumns } from "../lib/icons";
 import { calendarLink, deleteSpace, saveToken } from "../lib/api";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
-import type { Answer } from "../lib/types";
+import type { Answer, CatchUp } from "../lib/types";
+import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
-import { DeleteDialog, KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { DeleteDialog, Dialog, KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
 import { emptySpace, reduce } from "./space";
@@ -20,10 +23,17 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
+  // The logged-in person (null: a guest of this space, as before accounts).
+  const [user, setUser] = useState<User | null>(null);
+  const [caught, setCaught] = useState<{ summary: string; catchup: CatchUp | null }>({ summary: "", catchup: null });
+
+  useEffect(() => {
+    void me().then((account) => setUser(account?.user ?? null));
+  }, []);
 
   useEffect(() => {
     const s = new SpaceSocket(token, dispatch, setStatus);
@@ -77,6 +87,13 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     setNotice(answer.type === "notice" ? answer.text : null);
   };
 
+  const catchUp = async () => {
+    setCaught({ summary: "", catchup: null });
+    setDialog("catchup");
+    const answer = await ask({ type: "command", command: "catchup" });
+    setCaught(answer.type === "notice" ? { summary: answer.text, catchup: answer.catchup ?? null } : { summary: "No answer.", catchup: null });
+  };
+
   const taskStatus = async (task: string, status: string) => {
     const answer = await ask({ type: "command", command: "task", args: { task, status } });
     if (!answer.ok && answer.type === "notice") setNotice(answer.text);
@@ -120,6 +137,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             <button className="btn btn--soft btn--small" onClick={() => setDialog("kickoff")}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
             <button className="btn btn--soft btn--small" onClick={() => setDialog("planning")}><FontAwesomeIcon icon={faListOl} /> Plan tasks</button>
             <button className="btn btn--soft btn--small" onClick={() => void checkin()}><FontAwesomeIcon icon={faClipboardCheck} /> Check-in</button>
+            <button className="btn btn--soft btn--small" onClick={() => void catchUp()}><FontAwesomeIcon icon={faClockRotateLeft} /> Catch up</button>
             <button className="btn btn--soft btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
               <FontAwesomeIcon icon={faTableColumns} />{" "}
               {panelOpen ? "Hide plan" : "Show plan"}
@@ -138,6 +156,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
           <ProjectPanel
             state={space.state}
             members={space.members}
+            names={space.names}
             onKickoff={() => setDialog("kickoff")}
             onRefresh={() => void ask({ type: "command", command: "state" })}
             onTaskStatus={(taskId, value) => void taskStatus(taskId, value)}
@@ -147,7 +166,15 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         </div>
       )}
       <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} />
-      <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
+      {user ? (
+        // Logged in: the profile is the account's, saved once for every space.
+        <Dialog open={dialog === "profile"} title="Your profile" onClose={() => setDialog(null)}>
+          <ProfileForm user={user} onSaved={setUser} onCancel={() => setDialog(null)} />
+        </Dialog>
+      ) : (
+        <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
+      )}
+      <CatchUpDialog open={dialog === "catchup"} summary={caught.summary} catchup={caught.catchup} inviteCode={space.group?.inviteCode ?? ""} onClose={() => setDialog(null)} />
       <PlanningDialog open={dialog === "planning"} onClose={() => setDialog(null)} onSend={planning} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>

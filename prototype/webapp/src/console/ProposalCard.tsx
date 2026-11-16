@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useId, useState, type ReactNode } from "react";
 import { faBellSlash, faCheck, faCircleQuestion, faCompass, faHandshake, faThumbsUp, faXmark } from "../lib/icons";
-import type { Answer, Click, Proposal } from "../lib/types";
+import type { Answer, Click, Proposal, MemberId } from "../lib/types";
 
 // What each kind of card is called (muca_server docs/PROTOCOL.md, "Group Coordinator").
 const KIND_TITLES: Record<string, string> = {
@@ -35,7 +35,7 @@ type Props = {
   agentName: string;
   onAnswer: (click: Click) => Promise<Answer>;
   /** Name of a member from their id (suggested owner). */
-  memberName?: (id: number) => string;
+  memberName?: (id: MemberId) => string;
   /** A title other than the kind's own (the preview's "Find a time" card). */
   title?: string;
 };
@@ -124,7 +124,7 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
 }
 
 /** The content of each kind of card. */
-function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (id: number) => string }) {
+function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (id: MemberId) => string }) {
   const { payload, kind } = proposal;
   if (kind === "task_owner" || kind === "delegation") {
     return (

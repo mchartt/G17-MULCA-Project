@@ -17,7 +17,25 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "s
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
 export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now" | "helpful";
 export type Click = { action: CardAction; option?: number };
-export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why";
+export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "catchup";
+
+/**
+ * A member's id. Web members have small numbers. In a linked group a card can
+ * name a Discord or Slack member: their ids are too large for a JavaScript
+ * number, so the adapter sends them as text (web/hub.py browser_safe).
+ */
+export type MemberId = number | string;
+/** id -> name for the whole group, sent with every card and state. */
+export type Names = Record<string, string>;
+
+/** What a member missed in the group's other channels (command "catchup"). */
+export type CatchUp = {
+  since: number;
+  until: number;
+  linked: boolean;
+  decisions: { question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number }[];
+  elsewhere: { channel: string; total: number; messages: { speaker: string; text: string; at: number }[] }[];
+};
 
 /** Why a proactive card exists (M3): strategy, topic, and the messages behind it. */
 export type ProactiveContext = {
@@ -34,6 +52,7 @@ export type Proposal = {
   status: ProposalStatus;
   rationale?: string;
   expires_at?: number | null;
+  names?: Names;
   payload: {
     goal?: string;
     deliverables?: string[];
@@ -41,28 +60,29 @@ export type Proposal = {
     // M3 proactive cards (task_owner, delegation, decision)
     context?: ProactiveContext;
     title?: string;
-    owner_id?: number | null;
+    owner_id?: MemberId | null;
     due_date?: string | null;
     return_to?: string;
     question?: string;
     options?: { label: string; argument?: string }[];
     // M4 cards (plan, checkin, blocker)
-    items?: { title: string; owner_id?: number | null; reason?: string; due_date?: string | null }[];
+    items?: { title: string; owner_id?: MemberId | null; reason?: string; due_date?: string | null }[];
     findings?: string[];
-    helper_id?: number | null;
+    helper_id?: MemberId | null;
     [key: string]: unknown;
   };
 };
 
 export type ProjectState = {
-  charter?: { goal: string; deliverables?: string[]; confirmed_by?: number } | null;
+  charter?: { goal: string; deliverables?: string[]; confirmed_by?: MemberId } | null;
+  names?: Names;
   milestones?: Milestone[];
   members?: { member_id?: number; display_name: string; discipline?: string; skills?: string; weekly_hours?: number }[];
-  tasks?: { task_id?: string; title: string; status: string; owner_id?: number | null; due_date?: string | null }[];
+  tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null }[];
   decisions?: { question: string; choice: string; reason?: string }[];
 };
 
-export type Notice = { type: "notice"; ok: boolean; text: string };
+export type Notice = { type: "notice"; ok: boolean; text: string; catchup?: CatchUp };
 export type Answer = Notice | { type: "state"; ok: boolean; state: ProjectState };
 
 export type ServerEvent =

@@ -1,13 +1,14 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBullseye, faCalendarCheck, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced } from "../lib/icons";
 import { useState, type FormEvent } from "react";
-import type { Person, ProjectState } from "../lib/types";
+import type { Person, ProjectState, MemberId, Names } from "../lib/types";
 import { formatDate } from "./ProposalCard";
-import { dotFor } from "./space";
+import { dotFor, nameOf as spaceNameOf } from "./space";
 
 type Props = {
   state: ProjectState | null;
   members: Person[];
+  names?: Names;
   onKickoff: () => void;
   onRefresh: () => void;
   /** M4: a member updates a task's status (their own action, no card). */
@@ -21,9 +22,9 @@ type Props = {
 const STATUSES = ["todo", "doing", "done", "blocked"];
 
 /** The plan as the group agreed it: always visible next to the chat (UC9). */
-export function ProjectPanel({ state, members, onKickoff, onRefresh, onTaskStatus, onWhy, onCalendar }: Props) {
+export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh, onTaskStatus, onWhy, onCalendar }: Props) {
   const charter = state?.charter;
-  const nameOf = (id?: number | null) => members.find((m) => m.id === id)?.name;
+  const nameOf = (id?: MemberId | null) => spaceNameOf(id, { members, names });
 
   return (
     <aside className="panel" aria-labelledby="panel-title">

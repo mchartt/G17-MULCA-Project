@@ -26,7 +26,7 @@ RUN grep -v -- '-e ../../MUCA-Server' requirements.txt > /tmp/requirements.txt \
     && pip install -r /tmp/requirements.txt
 COPY prototype/mulca_discord ./mulca_discord
 # Fails the build now, not at the first request, if something is missing.
-RUN python -c "import muca_server.run_server, mulca_discord.web"
+RUN python -c "import muca_server.run_server, mulca_discord.web, mulca_discord.slack.__main__, slack_sdk.socket_mode.aiohttp"
 
 COPY deploy/render/start.sh /app/start.sh
 RUN useradd --system --no-create-home cadence && mkdir -p /data && chown cadence /data /app

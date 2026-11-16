@@ -4,6 +4,9 @@
   /coordinator profile discipline skills weekly_hours   your own profile
   /coordinator kickoff text                             assignment -> charter card
   /coordinator plan                                     the project state, only for you
+  /coordinator link code                                share the project with a web space
+  /coordinator unlink                                   back to this channel's own plan
+  /coordinator catchup                                  what you missed in the other channels
 
 Switched off by default: install_coordinator() does nothing unless
 MULCA_COORDINATOR_ENABLED is on, so without it MULCA is exactly as before.
@@ -21,6 +24,7 @@ from discord import app_commands
 
 from .bridge import CoordinatorBridge, answer_text
 from .cards import CardButton
+from .texts import catchup_text, owner_text
 
 if TYPE_CHECKING:
     from ..runtime import BotManager
@@ -119,6 +123,25 @@ class CoordinatorGroup(app_commands.Group):
         answer = await self._bridge.send_command(interaction, "why", {"question": question})
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
+    @app_commands.command(name="link", description="Share this channel's project with a web space (plan, decisions, cards).")
+    @app_commands.describe(code="The invite code of the web space (shown in the web app)")
+    async def link(self, interaction: discord.Interaction, code: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "link", {"code": code})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="unlink", description="Stop sharing the project with the web space.")
+    async def unlink(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "unlink")
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="catchup", description="What you missed in the group's other channels (only you see it).")
+    async def catchup(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "catchup")
+        await interaction.followup.send(catchup_text(answer), ephemeral=True)
+
     @app_commands.command(name="plan", description="Show the project state (only you see it).")
     async def plan(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -138,6 +161,7 @@ def state_embed(state: dict) -> discord.Embed:
         value=charter["goal"][:1000] if charter else "No charter yet: use /coordinator kickoff.",
         inline=False,
     )
+    names = state.get("names", {})  # id -> name, also for members of a linked channel
     sections = {
         "Milestones": [f"{m['title']} — {m.get('due_date') or 'no date'}" for m in state.get("milestones", [])],
         "Members": [
@@ -146,7 +170,7 @@ def state_embed(state: dict) -> discord.Embed:
         ],
         # Numbered: /coordinator task takes this number.
         "Tasks": [
-            f"{n}. {t['title']} · {t['status']}" + (f" · <@{t['owner_id']}>" if t.get("owner_id") else "")
+            f"{n}. {t['title']} · {t['status']}" + (f" · {owner_text(t['owner_id'], names)}" if t.get("owner_id") else "")
             + (f" · {t['due_date']}" if t.get("due_date") else "")
             for n, t in enumerate(state.get("tasks", []), start=1)
         ],

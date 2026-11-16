@@ -13,6 +13,8 @@ Going out (a member acts):
 Coming back (MUCA-Server answers), on_event():
     coordinator_notice / coordinator_state with a request id -> wakes step 4
     coordinator_proposal -> posts the card in the channel, or edits it in place
+    coordinator_mirror   -> a message written in a linked channel (web, Slack),
+                            posted here as one line with the author's name
 
 All Discord answers to members are ephemeral (only they see them), so the
 channel only ever gets the cards themselves (project rule: no walls of text).
@@ -30,6 +32,7 @@ from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMess
 
 from ..sessions import Scope, SessionRegistry
 from .cards import CardButton, card_view, proposal_embed, why_text
+from .texts import mirror_text
 
 if TYPE_CHECKING:
     from ..runtime import BotManager, BotRuntime
@@ -188,10 +191,24 @@ class CoordinatorBridge:
         if event == "coordinator_proposal":
             await self._show_card(session, data.get("proposal", {}))
             return
+        if event == "coordinator_mirror":
+            await self._show_mirror(session, data)
+            return
         future = self._waiting.get(data.get("requestId", ""))
         if future is not None and not future.done():
             future.set_result(data)
         # A coordinator_state nobody waits for is for the web app: ignored here.
+
+    async def _show_mirror(self, session: "ScopeSession", data: dict) -> None:
+        """Linked groups: show here what a member wrote in another channel."""
+        channel = session.replies.channel
+        if channel is None:
+            return
+        try:
+            # No mentions: a mirrored "@everyone" must not ping this server.
+            await channel.send(mirror_text(data), allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException:
+            logger.exception("Could not mirror a message into %s", session.scope.conversation_id)
 
     async def _show_card(self, session: "ScopeSession", proposal: dict) -> None:
         """Edit the card if this run posted it; otherwise post it (e.g. after a restart)."""

@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from .texts import owner_text
+
 if TYPE_CHECKING:
     from .bridge import CoordinatorBridge
 
@@ -94,7 +96,7 @@ def proposal_embed(proposal: dict) -> discord.Embed:
         description=f"*{proposal.get('rationale') or 'Proposal from the coordinator.'}*",
         colour=STATUS_COLOURS.get(status, discord.Colour.blurple()),
     )
-    for name, value in _fields(kind, payload):
+    for name, value in _fields(kind, payload, proposal.get("names")):
         embed.add_field(name=name, value=_clip(value), inline=False)
     footer = STATUS_WORDS.get(status, status)
     if status == "pending" and proposal.get("expires_at"):
@@ -104,7 +106,7 @@ def proposal_embed(proposal: dict) -> discord.Embed:
     return embed
 
 
-def _fields(kind: str | None, payload: dict) -> list[tuple[str, str]]:
+def _fields(kind: str | None, payload: dict, names: dict | None = None) -> list[tuple[str, str]]:
     """The content of each kind of card, as (field name, text)."""
     if kind == "charter":
         return [
@@ -119,7 +121,7 @@ def _fields(kind: str | None, payload: dict) -> list[tuple[str, str]]:
         fields = [("Task", payload.get("title", "")), ("By", payload.get("due_date") or "no date yet")]
         if kind == "task_owner":
             owner = payload.get("owner_id")
-            fields.append(("Suggested owner", f"<@{owner}>" if owner else "nobody suggested: anyone can take it"))
+            fields.append(("Suggested owner", owner_text(owner, names) if owner else "nobody suggested: anyone can take it"))
         elif payload.get("return_to"):
             fields.append(("Then back to", payload["return_to"]))
         return fields
@@ -141,7 +143,7 @@ def _fields(kind: str | None, payload: dict) -> list[tuple[str, str]]:
                 "Tasks",
                 "\n".join(
                     f"• **{i.get('title')}** — "
-                    + (f"<@{i['owner_id']}>" if i.get("owner_id") else "anyone")
+                    + (owner_text(i["owner_id"], names) if i.get("owner_id") else "anyone")
                     + (f" · {i['due_date']}" if i.get("due_date") else "")
                     + (f"\n  _{i['reason']}_" if i.get("reason") else "")
                     for i in payload.get("items", [])
@@ -158,7 +160,7 @@ def _fields(kind: str | None, payload: dict) -> list[tuple[str, str]]:
         if payload.get("question"):
             fields.append(("Question", payload["question"]))
         if payload.get("helper_id"):
-            fields.append(("Who could help", f"<@{payload['helper_id']}>"))
+            fields.append(("Who could help", owner_text(payload["helper_id"], names)))
         return fields
     return []
 

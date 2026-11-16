@@ -42,7 +42,7 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
         {space.timeline.length === 0 && (
           <div className="chat__empty">
             <p>This is where the group talks. Cadence reads along and steps in only when the group needs it.</p>
-            <p className="muted">Write @coordinator to ask it something directly.</p>
+            <p className="muted">Write @coordinator with a question to ask about the plan, the dates or the decisions. Type /planning or /checkin to run a command.</p>
           </div>
         )}
         {space.timeline.map((item) =>

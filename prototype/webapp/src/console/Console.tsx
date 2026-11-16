@@ -11,6 +11,7 @@ import { Chat } from "./Chat";
 import { DeleteDialog, Dialog, KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
+import { parseSlash, SLASH_HELP } from "./slash";
 import { emptySpace, reduce } from "./space";
 
 const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
@@ -87,6 +88,23 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     setNotice(answer.type === "notice" ? answer.text : null);
   };
 
+  /** The message box: a slash command runs here and is never posted; anything else goes to the group. */
+  const say = (text: string) => {
+    const slash = parseSlash(text);
+    if (!slash) {
+      socket.current?.say(text);
+    } else if (slash.kind === "checkin") {
+      void checkin();
+    } else if (slash.kind === "unknown") {
+      setNotice(`/${slash.name} is not a command here. ${SLASH_HELP}`);
+    } else if (!slash.tasks) {
+      setDialog("planning");
+    } else {
+      setNotice("Cadence is reading the tasks…");
+      void planning(slash.tasks).then(setNotice);
+    }
+  };
+
   const catchUp = async () => {
     setCaught({ summary: "", catchup: null });
     setDialog("catchup");
@@ -147,7 +165,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         <Chat
           space={space}
           disabled={status !== "open"}
-          onSay={(text) => socket.current?.say(text)}
+          onSay={say}
           onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
         />
       </main>

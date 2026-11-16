@@ -123,6 +123,13 @@ class CoordinatorGroup(app_commands.Group):
         answer = await self._bridge.send_command(interaction, "why", {"question": question})
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
+    @app_commands.command(name="ask", description="Ask about the plan, the dates or the decisions: the answer cites what is saved.")
+    @app_commands.describe(question="e.g. Who does the slides, and by when?")
+    async def ask(self, interaction: discord.Interaction, question: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "ask", {"question": question})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
     @app_commands.command(name="link", description="Share this channel's project with a web space (plan, decisions, cards).")
     @app_commands.describe(code="The invite code of the web space (shown in the web app)")
     async def link(self, interaction: discord.Interaction, code: str) -> None:

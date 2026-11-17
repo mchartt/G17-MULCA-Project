@@ -153,6 +153,8 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .card--snoozed { border: 1px dotted var(--line-x); background: var(--subtle); }
 .card__actions { flex-wrap: wrap; }
 .card__options { margin-top: .6rem; padding-left: 1.2rem; display: grid; gap: .35rem; }
+/* Option buttons can hold a whole sentence (check-in, decision): they wrap inside the card instead of running past its edge. */
+.card__actions .btn { white-space: normal; max-width: 100%; text-align: left; padding-block: .45rem; }
 .card__meta { display: flex; gap: 1.1rem; margin-top: .8rem; padding-top: .7rem; border-top: 1px solid var(--line-s); }
 /* Quorum 'Agent.Explain': a quiet violet text button. */
 .link-btn { background: none; border: 0; padding: .2rem 0; font: inherit; font-size: var(--t-xs); font-weight: 500; color: var(--ag-fg); display: inline-flex; gap: .4rem; align-items: center; cursor: pointer; border-radius: var(--r-sm); }

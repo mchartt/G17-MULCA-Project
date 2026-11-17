@@ -6,7 +6,7 @@ import { faArrowRight } from "../lib/icons";
 
 type Props = { disabled: boolean; onSignedIn: (user: User) => void };
 
-/** Create an account or log in. The privacy notice sits above, in Entry. */
+/** Create an account or log in. The privacy notice sits beside it, in LoginPage. */
 export function AuthForms({ disabled, onSignedIn }: Props) {
   const [mode, setMode] = useState<"register" | "login">("register");
   const [name, setName] = useState("");

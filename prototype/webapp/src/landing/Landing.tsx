@@ -4,7 +4,6 @@ import { ProposalCard } from "../console/ProposalCard";
 import { faArrowRight, faCalendarCheck, faFileLines, faHandPointer, faUsers } from "../lib/icons";
 import { useReveal, useScrollProgress, useSmoothScroll } from "../lib/motion";
 import type { Answer, Proposal } from "../lib/types";
-import { Entry } from "./Entry";
 import { FilmHero } from "./FilmHero";
 import { Nav } from "./Nav";
 
@@ -56,7 +55,8 @@ function LitHeadline({ text }: { text: string }) {
   );
 }
 
-export function Landing({ onEnter }: { onEnter: (token: string) => void }) {
+/** The public page: film, how it works, the one rule, what comes next, and the way to /login. */
+export function Landing() {
   useSmoothScroll(true);
   const steps = useReveal<HTMLOListElement>();
   const rule = useReveal<HTMLDivElement>();
@@ -114,7 +114,13 @@ export function Landing({ onEnter }: { onEnter: (token: string) => void }) {
         </ul>
       </section>
 
-      <Entry onEnter={onEnter} />
+      <section id="enter" className="entry entry--cta" aria-labelledby="entry-title">
+        <h2 id="entry-title">Open your group's space.</h2>
+        <p>Create an account or log in, then start a space for your group or join one with its invite code.</p>
+        <a className="btn btn--primary" href="/login">
+          Log in or create an account <FontAwesomeIcon icon={faArrowRight} />
+        </a>
+      </section>
 
       <footer className="foot">
         <p>Cadence is the Group Coordinator prototype of group 17, Advanced User Interfaces 2026–27, Politecnico di Milano.</p>

@@ -94,10 +94,25 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .foot { max-width: 68rem; margin: 7rem auto 0; padding: 2rem clamp(1.25rem, 5vw, 3rem) 3rem; color: var(--ink2); font-size: var(--t-xs); border-top: 1px solid var(--line-s); display: grid; gap: .3rem; }
 
 /* ---------- Entry ---------- */
+/* On the landing: one call to action that leads to /login. */
+.entry--cta { text-align: center; }
+.entry--cta p { margin: 1rem auto 0; max-width: 34rem; color: var(--ink2); font-size: var(--t-md); line-height: 1.45; }
+.entry--cta .btn { margin-top: 1.8rem; color: #fff; text-decoration: none; }
+/* The login page: forms (or your spaces) on the left, privacy notice on the right. */
+.login-page { min-height: 100vh; background: var(--surface); padding-bottom: 5rem; }
+.login-page .entry { max-width: 72rem; padding-top: calc(52px + clamp(2.5rem, 7vw, 5rem)); }
+.entry h1 { font-size: var(--t-xl); line-height: 1.1; }
+.entry__layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 25rem); gap: 1.5rem; align-items: start; margin-top: 1.5rem; }
+.entry__layout .notice, .entry__layout .auth { margin-top: 0; }
+.entry__layout .notice { position: sticky; top: calc(52px + 1.5rem); }
+@media (max-width: 860px) {
+  .entry__layout { grid-template-columns: 1fr; }
+  .entry__layout .notice { position: static; }
+}
 .offline { display: flex; gap: .9rem; align-items: flex-start; margin-top: 1.5rem; padding: 1.1rem 1.3rem; border-radius: var(--r-card); background: var(--wn-bg); color: var(--wn); max-width: 46rem; }
 .offline svg { margin-top: .25rem; }
 .notice { margin-top: 1.5rem; padding: 1.8rem 2rem; border-radius: var(--r-dialog); background: var(--canvas); max-width: 46rem; scroll-margin-top: 80px; }
-.notice h3 { font-size: var(--t-md); }
+.notice h2, .notice h3 { font-size: var(--t-md); }
 .notice ul { list-style: none; padding: 0; margin-top: 1rem; display: grid; gap: .75rem; }
 .notice li { display: flex; gap: .8rem; align-items: flex-start; color: var(--ink); }
 .notice__icon { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 10px; background: var(--surface); color: var(--ag-solid); font-size: .82rem; flex: none; }

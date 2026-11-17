@@ -19,7 +19,7 @@ const report = async (name, selector) => {
   if (shots) await (selector ? page.locator(selector) : page).screenshot({ path: `${shots}/${name}.png` });
 };
 
-await page.goto("http://127.0.0.1:8090/#enter");
+await page.goto("http://127.0.0.1:8090/login");
 await page.locator("#a-name").scrollIntoViewIfNeeded();
 await report("account-register", "#enter");
 await page.getByRole("tab", { name: "Log in" }).click();

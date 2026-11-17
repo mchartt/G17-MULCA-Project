@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CatchUpDialog } from "../console/CatchUpDialog";
 import { emptySpace, nameOf, reduce } from "../console/space";
-import { Entry } from "../landing/Entry";
+import { LoginPage } from "./LoginPage";
 import { savedAccount } from "../lib/account";
 import { savedToken } from "../lib/api";
 
@@ -44,7 +44,7 @@ test("create an account, then start a space as yourself", async () => {
     }
     return { status: 500, json: {} };
   };
-  render(<Entry onEnter={onEnter} />);
+  render(<LoginPage onEnter={onEnter} />);
 
   // The box must be ticked before an account is made.
   await userEvent.type(await screen.findByLabelText(/Your name/), "Ada");
@@ -78,7 +78,7 @@ test("log in shows the server's words on a wrong password, then your spaces to o
     if (path === "/api/logout") return { json: { ok: true } };
     return { status: 500, json: {} };
   };
-  render(<Entry onEnter={onEnter} />);
+  render(<LoginPage onEnter={onEnter} />);
 
   await userEvent.click(await screen.findByRole("tab", { name: "Log in" }));
   await userEvent.type(screen.getByLabelText("Email"), "ada@example.org");
@@ -104,7 +104,7 @@ test("the profile is saved once in the account", async () => {
     if (path === "/api/me" && method === "PUT") return { json: { user: { ...ADA, ...body } } };
     return { status: 500, json: {} };
   };
-  render(<Entry onEnter={vi.fn()} />);
+  render(<LoginPage onEnter={vi.fn()} />);
   await userEvent.click(await screen.findByRole("button", { name: /My profile/ }));
   await userEvent.type(screen.getByLabelText("Discipline"), "HCI");
   await userEvent.type(screen.getByLabelText(/Skills/), "figma, ux research ,");

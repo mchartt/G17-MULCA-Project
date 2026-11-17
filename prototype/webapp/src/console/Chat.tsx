@@ -2,7 +2,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { faCompass, faPaperPlane } from "../lib/icons";
 import type { Answer, Click, Person } from "../lib/types";
-import { MENTION, parseSlash, suggest } from "../lib/slash";
+import { mentionParts, parseSlash, suggest } from "../lib/slash";
 import { ProposalCard } from "./ProposalCard";
 import { dotFor, nameOf, type Space } from "./space";
 
@@ -20,8 +20,9 @@ type Props = {
 export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
   const [draft, setDraft] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
-  // Commands after "/" and the tag after "@", offered while typing.
-  const hints = suggest(draft);
+  // Commands after "/", Cadence and the teammates after "@", offered while typing.
+  const teammates = space.members.filter((m) => m.id !== space.me?.id).map((m) => m.name);
+  const hints = suggest(draft, teammates);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
         {space.timeline.length === 0 && (
           <div className="chat__empty">
             <p>This is where the group talks. Cadence reads along and steps in only when the group needs it.</p>
-            <p className="muted">Write @coordinator with a question to ask about the plan, the dates or the decisions. Type / to see the commands.</p>
+            <p className="muted">Write @coordinator with a question to ask about the plan, the dates or the decisions. Write @ and a teammate's name to address them. Type / to see the commands.</p>
           </div>
         )}
         {space.timeline.map((item) =>
@@ -100,7 +101,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
-          placeholder={disabled ? "Reconnecting…" : "Message the group, @coordinator to ask Cadence, / for commands"}
+          placeholder={disabled ? "Reconnecting…" : "Message the group, @ to address Cadence or a teammate, / for commands"}
           disabled={disabled}
         />
         <button className="btn btn--primary btn--round" type="submit" aria-label="Send" disabled={disabled || !draft.trim()}><FontAwesomeIcon icon={faPaperPlane} /></button>
@@ -130,16 +131,15 @@ export function Message({ space, author, text, channel, mine }: { space: Space; 
           {mine ? "You" : author.name}
           {channel !== "web" && <span className="tag">{CHANNEL_NAMES[channel] ?? channel}</span>}
         </p>
-        <p className="msg__text">{withMentions(text)}</p>
+        <p className="msg__text">{withMentions(text, space.members.map((m) => m.name))}</p>
       </div>
     </div>
   );
 }
 
-/** The message with every @coordinator shown as a tag, so the group sees who was asked. */
-function withMentions(text: string) {
-  const parts = text.split(new RegExp(`(${MENTION})`, "gi"));
-  return parts.map((part, n) => (part.toLowerCase() === MENTION ? <span key={n} className="mention">{part}</span> : part));
+/** The message with @coordinator and every @Teammate shown as a tag, so the group sees who was addressed. */
+function withMentions(text: string, people: string[]) {
+  return mentionParts(text, people).map((part, n) => (part.mention ? <span key={n} className="mention">{part.text}</span> : part.text));
 }
 
 export function initials(name: string): string {

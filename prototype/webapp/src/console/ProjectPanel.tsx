@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBullseye, faCalendarCheck, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced } from "../lib/icons";
+import { faBullseye, faCalendarCheck, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced, faUserPen, faUsers } from "../lib/icons";
 import { useState, type FormEvent } from "react";
 import type { Person, ProjectState, MemberId, Names } from "../lib/types";
 import { formatDate } from "./ProposalCard";
@@ -17,13 +17,21 @@ type Props = {
   onWhy?: (question: string) => Promise<string>;
   /** M5: create a private calendar feed link (milestones and task dates). */
   onCalendar?: () => Promise<string>;
+  /** The member looking at the panel: their row in Team gets "Edit". */
+  me?: MemberId | null;
+  onProfile?: () => void;
+  /** The language Cadence writes in for this group: "en", "it" or "" (it follows the chat). */
+  onLanguage?: (language: string) => void;
+  /** A member rewrites goal and deliverables; resolves to an error to show, or null (a card was posted). */
+  onCharter?: (goal: string, deliverables: string[]) => Promise<string | null>;
 };
 
 const STATUSES = ["todo", "doing", "done", "blocked"];
 
 /** The plan as the group agreed it: always visible next to the chat (UC9). */
-export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh, onTaskStatus, onWhy, onCalendar }: Props) {
+export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh, onTaskStatus, onWhy, onCalendar, me = null, onProfile, onLanguage, onCharter }: Props) {
   const charter = state?.charter;
+  const [editing, setEditing] = useState(false);
   const nameOf = (id?: MemberId | null) => spaceNameOf(id, { members, names });
 
   return (
@@ -42,10 +50,28 @@ export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh,
       ) : (
         <section className="panel__section panel-card">
           <h3><FontAwesomeIcon icon={faBullseye} /> Goal</h3>
-          <p className="panel__goal">{charter.goal}</p>
-          {charter.confirmed_by && <p className="muted small">Confirmed by {nameOf(charter.confirmed_by) ?? "a member"}</p>}
+          {editing && onCharter ? (
+            <GoalForm goal={charter.goal} deliverables={charter.deliverables ?? []} onSave={onCharter} onClose={() => setEditing(false)} />
+          ) : (
+            <>
+              <p className="panel__goal">{charter.goal}</p>
+              {!!charter.deliverables?.length && (
+                <>
+                  <p className="muted small panel__label">Deliverables</p>
+                  <ul className="panel__list">
+                    {charter.deliverables.map((d) => <li key={d}>{d}</li>)}
+                  </ul>
+                </>
+              )}
+              <p className="muted small panel__foot">
+                {charter.confirmed_by && <span>Confirmed by {nameOf(charter.confirmed_by) ?? "a member"}</span>}
+                {onCharter && <button className="link-btn" onClick={() => setEditing(true)}>Edit goal</button>}
+              </p>
+            </>
+          )}
         </section>
       )}
+      <Team state={state} members={members} me={me} onProfile={onProfile} onLanguage={onLanguage} />
       <section className="panel__section panel-card">
         <h3><FontAwesomeIcon icon={faFlag} /> Milestones</h3>
         {state?.milestones?.length ? (
@@ -110,6 +136,93 @@ export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh,
         {onWhy && !!state?.decisions?.length && <AskWhy onWhy={onWhy} />}
       </section>
     </aside>
+  );
+}
+
+/**
+ * A member rewrites the goal and the deliverables. Saving does not change the
+ * plan: it posts a charter card in the chat, saved when a member confirms it.
+ */
+function GoalForm({ goal, deliverables, onSave, onClose }: { goal: string; deliverables: string[]; onSave: (goal: string, deliverables: string[]) => Promise<string | null>; onClose: () => void }) {
+  const [text, setText] = useState(goal);
+  const [list, setList] = useState(deliverables.join("\n"));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const result = await onSave(text.trim(), list.split("\n").map((d) => d.trim()).filter(Boolean));
+    setBusy(false);
+    setError(result);
+    if (!result) onClose();
+  }
+
+  return (
+    <form className="form goalform" onSubmit={submit}>
+      <label htmlFor="goal-text">Goal</label>
+      <textarea id="goal-text" rows={5} value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} required />
+      <label htmlFor="goal-deliverables">Deliverables, one per line</label>
+      <textarea id="goal-deliverables" rows={3} value={list} onChange={(e) => setList(e.target.value)} />
+      <p className="muted small">Your change becomes a card in the chat. It is saved when a member confirms it.</p>
+      {error && <p className="form__error" role="alert">{error}</p>}
+      <div className="form__actions">
+        <button type="button" className="btn btn--soft btn--small" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary btn--small" disabled={busy || !text.trim()}>{busy ? "Sending…" : "Propose change"}</button>
+      </div>
+    </form>
+  );
+}
+
+const LANGUAGES = [
+  { value: "", label: "Follow the chat" },
+  { value: "en", label: "English" },
+  { value: "it", label: "Italiano" },
+];
+
+/**
+ * Who is in the group and what each person wrote about themselves. Cadence
+ * suggests task owners from these profiles, so an empty one is said plainly.
+ * Each person edits only their own. Below: the language Cadence writes in.
+ */
+function Team({ state, members, me, onProfile, onLanguage }: Pick<Props, "state" | "members" | "me" | "onProfile" | "onLanguage">) {
+  const profiles = state?.members ?? [];
+  // Web members first, then members known only from a linked channel's profile.
+  const rows = [
+    ...members.map((m) => ({ id: m.id as MemberId, name: m.name, profile: profiles.find((p) => String(p.member_id) === String(m.id)) })),
+    ...profiles.filter((p) => !members.some((m) => String(m.id) === String(p.member_id))).map((p) => ({ id: p.member_id ?? p.display_name, name: p.display_name, profile: p })),
+  ];
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="panel__section panel-card">
+      <h3><FontAwesomeIcon icon={faUsers} /> Team</h3>
+      <ul className="team">
+        {rows.map((row) => {
+          const p = row.profile;
+          const mine = me !== null && String(row.id) === String(me);
+          const facts = [p?.discipline?.trim(), p?.skills?.length ? p.skills.join(", ") : "", typeof p?.weekly_hours === "number" ? `${p.weekly_hours} h/week` : ""].filter(Boolean);
+          return (
+            <li key={String(row.id)}>
+              <span className="dot" style={{ background: dotFor(row.id, members) }} aria-hidden="true" />
+              <span className="team__name">{row.name}{mine && <span className="tag">You</span>}</span>
+              <span className="muted small">{facts.length ? facts.join(" · ") : "No profile yet"}</span>
+              {mine && onProfile && (
+                <button className="link-btn" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> {facts.length ? "Edit my profile" : "Fill in my profile"}</button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {onLanguage && (
+        <div className="team__language">
+          <label htmlFor="team-language" className="small">Cadence writes in</label>
+          <select id="team-language" className="tasks__status" value={state?.language ?? ""} onChange={(e) => onLanguage(e.target.value)}>
+            {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+          </select>
+        </div>
+      )}
+    </section>
   );
 }
 

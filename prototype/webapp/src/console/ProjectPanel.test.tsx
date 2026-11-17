@@ -28,7 +28,7 @@ test("the panel shows goal, who confirmed it, milestones, tasks with owners and 
   expect(screen.getByText("Ship the coordinator.")).toBeInTheDocument();
   expect(screen.getByText("Confirmed by Ada")).toBeInTheDocument();
   expect(screen.getByText("Demo")).toBeInTheDocument();
-  expect(screen.getByText("Bruno")).toBeInTheDocument();
+  expect(screen.getAllByText("Bruno")).toHaveLength(2); // the task's owner, and the Team list
   expect(screen.getByText("No owner")).toBeInTheDocument();
   expect(screen.getByText("Web and Discord")).toBeInTheDocument();
 });

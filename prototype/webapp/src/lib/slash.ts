@@ -2,6 +2,7 @@
  * Slash commands typed in the web chat, the same words as on Discord and Slack:
  *   /kickoff <assignment>   /planning <task>; <task>   /checkin   /catchup
  *   /task 2 done            /why <question>   /ask <question>   /plan   /help
+ *   /language en|it|auto
  * "/coordinator kickoff ..." works too, so a habit from Discord carries over.
  *
  * A command is one row of COMMANDS (a command table): to add one, add a row
@@ -9,7 +10,7 @@
  * group as a message.
  */
 
-export type SlashName = "kickoff" | "planning" | "checkin" | "catchup" | "task" | "why" | "ask" | "plan" | "profile" | "help";
+export type SlashName = "kickoff" | "planning" | "checkin" | "catchup" | "task" | "why" | "ask" | "plan" | "profile" | "language" | "help";
 
 export type SlashCommand = { name: SlashName; hint: string; about: string };
 
@@ -23,6 +24,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "ask", hint: "/ask <question>", about: "Answer from the plan, the dates and the decisions" },
   { name: "plan", hint: "/plan", about: "Show the project plan" },
   { name: "profile", hint: "/profile", about: "Edit your profile" },
+  { name: "language", hint: "/language <en|it|auto>", about: "The language Cadence writes in" },
   { name: "help", hint: "/help", about: "List these commands" },
 ];
 
@@ -49,6 +51,9 @@ export function parseSlash(text: string): Slash | null {
   if (command.name === "help") return { kind: "say", text: HELP };
   if (command.name === "why" && !rest) return { kind: "say", text: "Ask a question: /why did we choose React?" };
   if (command.name === "ask" && !rest) return { kind: "say", text: "Ask a question: /ask when is the demo?" };
+  if (command.name === "language" && !["en", "it", "auto"].includes(rest.toLowerCase())) {
+    return { kind: "say", text: "Choose the language Cadence writes in: /language en, /language it, or /language auto (it follows the chat)." };
+  }
   if (command.name === "task") {
     const [task = "", status = ""] = words;
     if (words.length !== 2 || !/^\d+$/.test(task) || !STATUSES.includes(status.toLowerCase())) {
@@ -59,15 +64,36 @@ export function parseSlash(text: string): Slash | null {
   return { kind: "run", name: command.name, rest };
 }
 
-/** The suggestions under the message box while the member types "/..." or "@...". */
-export function suggest(draft: string): { label: string; about: string; fill: string }[] {
+/**
+ * The suggestions under the message box while the member types "/..." or
+ * "@...". After "@": Cadence, then the teammates whose name starts with what
+ * was typed, so a name is always written exactly as the group knows it.
+ */
+export function suggest(draft: string, people: string[] = []): { label: string; about: string; fill: string }[] {
   if (/^\/\S*$/.test(draft)) {
     const typed = draft.slice(1).toLowerCase();
     return COMMANDS.filter((c) => c.name.startsWith(typed)).map((c) => ({ label: c.hint, about: c.about, fill: `/${c.name} ` }));
   }
   const at = /(^|\s)(@\w*)$/.exec(draft);
-  if (at && MENTION.startsWith(at[2]!.toLowerCase()) && at[2]!.toLowerCase() !== MENTION) {
-    return [{ label: MENTION, about: "Ask Cadence directly", fill: draft.slice(0, draft.length - at[2]!.length) + MENTION + " " }];
+  if (!at) return [];
+  const typed = at[2]!.toLowerCase();
+  const before = draft.slice(0, draft.length - typed.length);
+  const hints = [];
+  if (MENTION.startsWith(typed) && typed !== MENTION) {
+    hints.push({ label: MENTION, about: "Ask Cadence directly", fill: before + MENTION + " " });
   }
-  return [];
+  for (const name of people) {
+    if (name.toLowerCase().startsWith(typed.slice(1))) hints.push({ label: `@${name}`, about: "A teammate", fill: `${before}@${name} ` });
+  }
+  return hints;
+}
+
+/** Splits a message so that @coordinator and every @Teammate can be shown as a tag. */
+export function mentionParts(text: string, people: string[] = []): { text: string; mention: boolean }[] {
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Longest name first: "@Ada Lovelace" must win over "@Ada".
+  const names = [MENTION.slice(1), ...[...people].sort((a, b) => b.length - a.length)].map(escape);
+  const pattern = new RegExp(`(@(?:${names.join("|")}))(?![\\w])`, "gi");
+  // split() with one capturing group: the captured mentions are the odd items.
+  return text.split(pattern).map((part, n) => ({ text: part, mention: n % 2 === 1 })).filter((part) => part.text !== "");
 }

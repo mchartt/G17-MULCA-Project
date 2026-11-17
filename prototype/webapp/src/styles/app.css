@@ -398,3 +398,26 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .hints kbd { margin-left: auto; font-family: var(--mono); font-size: .6875rem; color: var(--ink3); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; }
 /* The agent's name in a message: Iris, like everything that is the agent's. */
 .mention { font-family: var(--mono); font-size: .92em; color: var(--ag-fg); background: var(--ag-bg); border: 1px solid var(--ag-ln); border-radius: var(--r-sm); padding: 0 .3rem; }
+
+/* Getting started: the three first steps of a new space, above the chat. */
+.steps { margin: 1rem 1.5rem 0; padding: 1rem 1.2rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+.steps h3 { font-family: var(--mono); font-size: .6875rem; line-height: 1rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); font-weight: 600; margin-bottom: .7rem; }
+.steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .65rem; }
+.steps__step { display: grid; grid-template-columns: auto 1fr auto; gap: .75rem; align-items: center; }
+.steps__mark { width: 1.6rem; height: 1.6rem; border-radius: var(--r-pill); display: inline-grid; place-items: center; font-family: var(--mono); font-size: var(--t-cap); font-weight: 600; background: var(--subtle); color: var(--ink2); border: 1px solid var(--line); }
+.steps__title { font-weight: 600; }
+.steps__step--next .steps__mark { background: var(--act); color: #fff; border-color: var(--act); }
+.steps__step--done .steps__mark { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-ln); }
+.steps__step--done .steps__title { color: var(--ink2); font-weight: 500; }
+@media (max-width: 640px) { .steps__step { grid-template-columns: auto 1fr; } .steps__step .btn { grid-column: 2; justify-self: start; } }
+
+/* Project panel: deliverables under the goal, the goal form, the team. */
+.panel__label { margin-top: .8rem; }
+.panel__list { margin: .2rem 0 0; padding-left: 1.1rem; display: grid; gap: .15rem; }
+.panel__foot { margin-top: .7rem; display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.goalform { display: grid; gap: .35rem; }
+.team { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
+.team li { display: grid; grid-template-columns: auto 1fr; column-gap: .55rem; align-items: center; }
+.team li > :nth-child(n+3) { grid-column: 2; justify-self: start; }
+.team__name { font-weight: 600; }
+.team__language { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line); display: flex; gap: .6rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }

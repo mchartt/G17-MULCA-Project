@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseSlash, suggest } from "./slash";
+import { mentionParts, parseSlash, suggest } from "./slash";
 
 test("an ordinary message is not a command", () => {
   expect(parseSlash("hello / world")).toBeNull();
@@ -35,4 +35,32 @@ test("/planning keeps tasks written one per line; /ask needs a question", () => 
   expect(parseSlash("/planning Server\nUI")).toEqual({ kind: "run", name: "planning", rest: "Server\nUI" });
   expect(parseSlash("/ask when is the demo?")).toEqual({ kind: "run", name: "ask", rest: "when is the demo?" });
   expect(parseSlash("/ask")).toMatchObject({ kind: "say" });
+});
+
+test("after '@' the teammates are offered too, with their exact names", () => {
+  const people = ["Matteo Cesandri", "Matias", "Gabriele"];
+  expect(suggest("@", people).map((s) => s.label)).toEqual(["@coordinator", "@Matteo Cesandri", "@Matias", "@Gabriele"]);
+  expect(suggest("ask @mat", people).map((s) => s.fill)).toEqual(["ask @Matteo Cesandri ", "ask @Matias "]);
+  expect(suggest("@c", people).map((s) => s.label)).toEqual(["@coordinator"]);
+  expect(suggest("@zed", people)).toEqual([]);
+});
+
+test("a message is split so every mention can be shown as a tag", () => {
+  const people = ["Ada", "Ada Lovelace"];
+  expect(mentionParts("hi @Ada Lovelace and @ada, ask @Coordinator", people)).toEqual([
+    { text: "hi ", mention: false },
+    { text: "@Ada Lovelace", mention: true },
+    { text: " and ", mention: false },
+    { text: "@ada", mention: true },
+    { text: ", ask ", mention: false },
+    { text: "@Coordinator", mention: true },
+  ]);
+  expect(mentionParts("@Adam is not @Ada.", people).filter((p) => p.mention).map((p) => p.text)).toEqual(["@Ada"]);
+  expect(mentionParts("a (regex) name @A.B+", ["A.B+"]).at(-1)).toEqual({ text: "@A.B+", mention: true });
+});
+
+test("/language takes en, it or auto", () => {
+  expect(parseSlash("/language it")).toEqual({ kind: "run", name: "language", rest: "it" });
+  expect(parseSlash("/language")?.kind).toBe("say");
+  expect(parseSlash("/language french")?.kind).toBe("say");
 });

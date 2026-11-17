@@ -17,7 +17,7 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "s
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
 export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now" | "helpful";
 export type Click = { action: CardAction; option?: number };
-export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "catchup";
+export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup";
 
 /**
  * A member's id. Web members have small numbers. In a linked group a card can

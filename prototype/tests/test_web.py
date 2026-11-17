@@ -356,6 +356,8 @@ async def test_mentions_of_the_coordinator_reach_muca_server_under_its_agent_nam
     MUCA-Server's respond_when_addressed knows the agent as "MULCA": "@coordinator"
     and "@Cadence" are forwarded under that name, so the agent answers; the
     web chat keeps the member's own words. Found live on Render, 15/11.
+    A mention with a question mark is not forwarded: it is answered from what
+    is saved (command "ask", tests/test_web_limits.py).
     """
     group, member, _ = hub.create_group("Team", "Ada")
     sent = []
@@ -371,12 +373,12 @@ async def test_mentions_of_the_coordinator_reach_muca_server_under_its_agent_nam
         await action(Client())
 
     hub._run = run
-    await hub.post_message(member, "@Cadence what is our deadline?")
+    await hub.post_message(member, "@Cadence say hello to the group")
     await hub.post_message(member, "@coordinator, ciao")
     await hub.post_message(member, "no mention here")
     assert [(s["text"], s["mentions_assistant"]) for s in sent] == [
-        ("@MULCA what is our deadline?", True),
+        ("@MULCA say hello to the group", True),
         ("@MULCA, ciao", True),
         ("no mention here", False),
     ]
-    assert [m.text for m in hub.store.history(group.id)] == ["@Cadence what is our deadline?", "@coordinator, ciao", "no mention here"]
+    assert [m.text for m in hub.store.history(group.id)] == ["@Cadence say hello to the group", "@coordinator, ciao", "no mention here"]

@@ -4,6 +4,7 @@ import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
 import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faTableColumns } from "../lib/icons";
 import { calendarLink, deleteSpace, saveToken } from "../lib/api";
+import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp } from "../lib/types";
 import { CatchUpDialog } from "./CatchUpDialog";
@@ -104,6 +105,39 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     return answer.type === "notice" ? answer.text : "No answer.";
   };
 
+  // A "/..." line typed in the chat (lib/slash.ts): the same actions as the buttons.
+  const runSlash = async (text: string) => {
+    const slash = parseSlash(text);
+    if (!slash) return;
+    if (slash.kind === "say") return setNotice(slash.text);
+    if (slash.kind === "task") return void taskStatus(slash.task, slash.status);
+    switch (slash.name) {
+      case "kickoff":
+        if (!slash.rest) return setDialog("kickoff");
+        setNotice("Cadence is reading the assignment…");
+        return setNotice(await kickoff(slash.rest));
+      case "planning":
+        if (!slash.rest) return setDialog("planning");
+        setNotice("Cadence is planning the tasks…");
+        return setNotice(await planning(slash.rest.split(/[\n;]/).map((t) => t.trim()).filter(Boolean).join("\n")));
+      case "checkin":
+        return void checkin();
+      case "catchup":
+        return void catchUp();
+      case "why":
+        return setNotice(await why(slash.rest));
+      case "ask": {
+        // Answered from what is saved (plan, dates, decisions), with its source.
+        const answer = await ask({ type: "command", command: "ask", args: { question: slash.rest } });
+        return setNotice(answer.type === "notice" ? answer.text : "No answer.");
+      }
+      case "plan":
+        return setPanelOpen(true);
+      case "profile":
+        return setDialog("profile");
+    }
+  };
+
   const removeSpace = async (confirm: string) => {
     const error = await deleteSpace(token, confirm);
     if (!error) leave();
@@ -147,7 +181,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         <Chat
           space={space}
           disabled={status !== "open"}
-          onSay={(text) => socket.current?.say(text)}
+          onCommand={(text) => void runSlash(text)} onSay={(text) => socket.current?.say(text)}
           onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
         />
       </main>

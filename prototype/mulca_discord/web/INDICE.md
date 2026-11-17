@@ -43,7 +43,7 @@ browser ── {command} / {click} ─────────> WebHub.command /
   (on the class, `coordinator/bridge.py`) is untouched (tested).
 - Clicks carry every M3 button: `confirm`, `reject`, `take`, `choose` (+ `option`),
   `not_now` (`ClickFrame` in `app.py`, `WebHub.click` in `hub.py`).
-- Commands carry every M4 command (`planning`, `checkin`, `task`, `why`). A frame
+- Commands carry every M4 command (`planning`, `checkin`, `task`, `why`, `ask`). A frame
   that does not validate still answers its `requestId` with a refusing notice,
   so no button waits forever (tested).
 - One lock per group (`WebHub._lock`) around "join the broadcast list + hello"
@@ -68,6 +68,11 @@ browser ── {command} / {click} ─────────> WebHub.command /
 - "@coordinator why ..." typed in the chat (`TYPED_WHY` in `hub.py`) is answered
   from the decision log and posted in the chat by Cadence; it is not sent to
   the lab's agent.
+- "@coordinator ...?" or "@Cadence ...?" typed in the chat (`typed_question` in
+  `hub.py`: a mention plus a question mark) is answered with the server's
+  command `ask`, only from the saved tasks, milestones and decisions, with the
+  source; when nothing saved answers it, Cadence says so. A mention without a
+  question mark still goes to the lab's agent.
 - Delete space: the member types the space's name; the hub closes the session,
   asks MUCA-Server to delete the conversation file, then deletes the web side
   and closes every socket of the group with code 4410. If the server part

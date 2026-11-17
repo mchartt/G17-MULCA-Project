@@ -373,3 +373,13 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 /* The "I agree" box inside a form: a small box next to its sentence, not a full-width field. */
 .form label.check { display: flex; gap: .65rem; align-items: center; margin-top: 1rem; font-size: var(--t-sm); color: var(--ink); }
 .form label.check input { width: 1.25rem; height: 1.25rem; flex: none; padding: 0; }
+
+/* ---------- Slash commands and the @coordinator tag (lib/slash.ts) ---------- */
+.banner--info { white-space: pre-line; }
+.hints { list-style: none; margin: 0 1.5rem .4rem; padding: .3rem; display: grid; gap: .1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-field); box-shadow: var(--shadow-float); max-height: 15rem; overflow-y: auto; }
+.hints button { width: 100%; display: flex; gap: .6rem; align-items: baseline; padding: .4rem .6rem; border: 0; border-radius: var(--r-sm); background: none; text-align: left; font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.hints button:hover, .hints li:first-child button { background: var(--subtle); }
+.hints code { color: var(--ag-fg); font-size: var(--t-xs); }
+.hints kbd { margin-left: auto; font-family: var(--mono); font-size: .6875rem; color: var(--ink3); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; }
+/* The agent's name in a message: Iris, like everything that is the agent's. */
+.mention { font-family: var(--mono); font-size: .92em; color: var(--ag-fg); background: var(--ag-bg); border: 1px solid var(--ag-ln); border-radius: var(--r-sm); padding: 0 .3rem; }

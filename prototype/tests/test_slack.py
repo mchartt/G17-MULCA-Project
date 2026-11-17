@@ -74,8 +74,9 @@ def test_the_text_after_the_slash_command():
     assert parse("profile HCI | figma, ux | 6") == ("profile", {"discipline": "HCI", "skills": "figma, ux", "weekly_hours": 6})
     assert parse("profile HCI") == ("profile", {"discipline": "HCI", "skills": "", "weekly_hours": None})
     assert parse("link ab12cd please") == ("link", {"code": "ab12cd"})
+    assert parse("ask who does the slides?") == ("ask", {"question": "who does the slides?"})
     assert parse(" Plan ") == ("state", {}) and parse("catchup") == ("catchup", {})
-    for bad in ("", "dance", "kickoff", "task two done", "task 2 finished", "profile a | b | many", "link"):
+    for bad in ("", "dance", "kickoff", "ask", "task two done", "task 2 finished", "profile a | b | many", "link"):
         with pytest.raises(Usage):
             parse(bad)
     with pytest.raises(Usage, match="Coordinator commands"):

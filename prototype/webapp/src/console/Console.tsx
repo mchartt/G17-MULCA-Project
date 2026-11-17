@@ -9,6 +9,7 @@ import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp } from "../lib/types";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
+import { FirstSteps } from "./FirstSteps";
 import { DeleteDialog, Dialog, KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
@@ -105,6 +106,22 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     return answer.type === "notice" ? answer.text : "No answer.";
   };
 
+  /** The language of everything Cadence writes for this group ("" = it follows the chat). */
+  const setLanguage = async (language: string) => {
+    const answer = await ask({ type: "command", command: "language", args: { language: language || "auto" } });
+    if (answer.type === "notice") setNotice(answer.text);
+  };
+
+  /** A member rewrites the goal and deliverables: it becomes a card to confirm in the chat. */
+  const editCharter = async (goal: string, deliverables: string[]) => {
+    const answer = await ask({ type: "command", command: "charter", args: { goal, deliverables } });
+    if (answer.ok) {
+      setNotice("Your change is a card in the chat: it is saved when a member confirms it.");
+      return null;
+    }
+    return answer.type === "notice" ? answer.text : "The goal was not changed.";
+  };
+
   // A "/..." line typed in the chat (lib/slash.ts): the same actions as the buttons.
   const runSlash = async (text: string) => {
     const slash = parseSlash(text);
@@ -135,6 +152,8 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         return setPanelOpen(true);
       case "profile":
         return setDialog("profile");
+      case "language":
+        return void setLanguage(slash.rest.toLowerCase());
     }
   };
 
@@ -178,6 +197,13 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             </button>
           </div>
         </header>
+        <FirstSteps
+          state={space.state}
+          me={space.me?.id ?? null}
+          onProfile={() => setDialog("profile")}
+          onKickoff={() => setDialog("kickoff")}
+          onPlanning={() => setDialog("planning")}
+        />
         <Chat
           space={space}
           disabled={status !== "open"}
@@ -191,6 +217,10 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             state={space.state}
             members={space.members}
             names={space.names}
+            me={space.me?.id ?? null}
+            onProfile={() => setDialog("profile")}
+            onLanguage={(language) => void setLanguage(language)}
+            onCharter={editCharter}
             onKickoff={() => setDialog("kickoff")}
             onRefresh={() => void ask({ type: "command", command: "state" })}
             onTaskStatus={(taskId, value) => void taskStatus(taskId, value)}

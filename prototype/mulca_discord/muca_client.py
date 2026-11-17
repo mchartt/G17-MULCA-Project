@@ -57,7 +57,7 @@ CoordinatorEventHandler = Callable[[dict], Awaitable[None]]
 
 # Group Coordinator server events (muca_server/protocol/coordinator.py).
 COORDINATOR_EVENTS = frozenset(
-    {"coordinator_proposal", "coordinator_state", "coordinator_notice"}
+    {"coordinator_proposal", "coordinator_state", "coordinator_notice", "coordinator_mirror"}
 )
 ErrorHandler = Callable[[str], Awaitable[None]]
 ListeningStateHandler = Callable[[bool], Awaitable[None]]

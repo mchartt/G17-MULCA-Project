@@ -2,20 +2,26 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { faCompass, faPaperPlane } from "../lib/icons";
 import type { Answer, Click, Person } from "../lib/types";
+import { MENTION, parseSlash, suggest } from "../lib/slash";
 import { ProposalCard } from "./ProposalCard";
-import { dotFor, type Space } from "./space";
+import { dotFor, nameOf, type Space } from "./space";
 
 const CHANNEL_NAMES: Record<string, string> = { web: "Web", discord: "Discord", slack: "Slack", calendar: "Calendar" };
 
 type Props = {
   space: Space;
   onSay: (text: string) => void;
+  /** A line that starts with "/": run it, never send it to the group. */
+  onCommand: (text: string) => void;
   onAnswer: (proposalId: string, click: Click) => Promise<Answer>;
   disabled: boolean;
 };
 
-export function Chat({ space, onSay, onAnswer, disabled }: Props) {
+export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
   const [draft, setDraft] = useState("");
+  const input = useRef<HTMLTextAreaElement>(null);
+  // Commands after "/" and the tag after "@", offered while typing.
+  const hints = suggest(draft);
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,11 +31,22 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
   function send(e?: FormEvent) {
     e?.preventDefault();
     if (!draft.trim() || disabled) return;
-    onSay(draft);
+    if (parseSlash(draft)) onCommand(draft);
+    else onSay(draft);
     setDraft("");
   }
 
+  function fill(text: string) {
+    setDraft(text);
+    input.current?.focus();
+  }
+
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Tab" && hints.length > 0) {
+      e.preventDefault();
+      fill(hints[0]!.fill);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
@@ -42,7 +59,7 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
         {space.timeline.length === 0 && (
           <div className="chat__empty">
             <p>This is where the group talks. Cadence reads along and steps in only when the group needs it.</p>
-            <p className="muted">Write @coordinator to ask it something directly.</p>
+            <p className="muted">Write @coordinator with a question to ask about the plan, the dates or the decisions. Type / to see the commands.</p>
           </div>
         )}
         {space.timeline.map((item) =>
@@ -52,7 +69,7 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
                 key={`p-${item.id}`}
                 proposal={space.proposals[item.id]}
                 agentName={space.agentName}
-                memberName={(id) => space.members.find((m) => m.id === id)?.name ?? "a member"}
+                memberName={(id) => nameOf(id, space) ?? "a member"}
                 onAnswer={(click) => onAnswer(item.id, click)}
               />
             )
@@ -62,15 +79,28 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
         )}
         <div ref={end} />
       </div>
+      {hints.length > 0 && (
+        <ul className="hints" aria-label="Suggestions">
+          {hints.map((h, n) => (
+            <li key={h.label}>
+              <button type="button" onClick={() => fill(h.fill)}>
+                <code>{h.label}</code> <span className="muted">{h.about}</span>
+                {n === 0 && <kbd>Tab</kbd>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <form className="composer" onSubmit={send}>
         <label htmlFor="composer-input" className="sr-only">Message to the group</label>
         <textarea
           id="composer-input"
+          ref={input}
           rows={2}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKey}
-          placeholder={disabled ? "Reconnecting…" : "Message the group"}
+          placeholder={disabled ? "Reconnecting…" : "Message the group, @coordinator to ask Cadence, / for commands"}
           disabled={disabled}
         />
         <button className="btn btn--primary btn--round" type="submit" aria-label="Send" disabled={disabled || !draft.trim()}><FontAwesomeIcon icon={faPaperPlane} /></button>
@@ -79,7 +109,8 @@ export function Chat({ space, onSay, onAnswer, disabled }: Props) {
   );
 }
 
-function Message({ space, author, text, channel, mine }: { space: Space; author: Person | null; text: string; channel: string; mine: boolean }) {
+/** One chat bubble; also used by the preview screens (src/preview/). */
+export function Message({ space, author, text, channel, mine }: { space: Space; author: Person | null; text: string; channel: string; mine: boolean }) {
   if (!author) {
     return (
       <div className="msg msg--agent">
@@ -99,10 +130,16 @@ function Message({ space, author, text, channel, mine }: { space: Space; author:
           {mine ? "You" : author.name}
           {channel !== "web" && <span className="tag">{CHANNEL_NAMES[channel] ?? channel}</span>}
         </p>
-        <p className="msg__text">{text}</p>
+        <p className="msg__text">{withMentions(text)}</p>
       </div>
     </div>
   );
+}
+
+/** The message with every @coordinator shown as a tag, so the group sees who was asked. */
+function withMentions(text: string) {
+  const parts = text.split(new RegExp(`(${MENTION})`, "gi"));
+  return parts.map((part, n) => (part.toLowerCase() === MENTION ? <span key={n} className="mention">{part}</span> : part));
 }
 
 export function initials(name: string): string {

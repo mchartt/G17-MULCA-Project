@@ -42,6 +42,6 @@ test("members, state and unknown events", () => {
 
 test("each member keeps the same dot colour", () => {
   const members = [{ id: 10, name: "A" }, { id: 20, name: "B" }];
-  expect(dotFor(10, members)).toBe("var(--dot-sage)");
-  expect(dotFor(20, members)).toBe("var(--dot-slate)");
+  expect(dotFor(10, members)).toBe("var(--m1)");
+  expect(dotFor(20, members)).toBe("var(--m2)");
 });

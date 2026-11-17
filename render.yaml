@@ -21,6 +21,11 @@ services:
         sync: false
       - key: MUCA_ADMIN_TOKEN
         generateValue: true
+      # Optional. The address of one blob in Azure Blob Storage, with its SAS
+      # token (read, create, write): /data is saved there and restored at
+      # every start (deploy/render/snapshot.py). A secret: set it in Render.
+      - key: CADENCE_SNAPSHOT_URL
+        sync: false
       - key: MUCA_COORDINATOR_ENABLED
         value: "true"
       - key: MUCA_COORDINATOR_CHECKIN_HOURS

@@ -1,6 +1,7 @@
 import { chromium } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
-const browser = await chromium.launch();
+import { signUp } from "./account.mjs";
+const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
 const report = async (name) => {
@@ -11,8 +12,7 @@ const report = async (name) => {
 await page.goto("http://127.0.0.1:8090/");
 await page.waitForTimeout(1500);
 await report("landing");
-await page.getByLabel("I have read this and I agree").check();
-await page.locator("#c-name").fill("Ada");
+await signUp(page, "Ada");
 await page.locator("#c-project").fill("AUI group 17");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.waitForTimeout(1200);

@@ -74,6 +74,10 @@ class AnswerEverything:
     async def close(self) -> None:
         AnswerEverything.closed.append(self._port.conversation_id)
 
+    def observer_catchup_text(self) -> str:
+        # Asked by MUCA-Server since the Catch up of linked channels; nothing to catch up here.
+        return ""
+
     async def on_utterance(self, utterance) -> bool:
         await self._port.instruct_main_agent("answer")
         return False

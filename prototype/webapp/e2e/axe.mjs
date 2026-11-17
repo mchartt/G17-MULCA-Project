@@ -1,7 +1,7 @@
 import { chromium } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 import { signUp } from "./account.mjs";
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
 const report = async (name) => {

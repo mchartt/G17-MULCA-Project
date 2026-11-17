@@ -2,7 +2,7 @@
 import { chromium } from "@playwright/test";
 import { signUp } from "./account.mjs";
 const out = process.argv[2];
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.goto("http://127.0.0.1:8090/");
 await page.waitForTimeout(2500);

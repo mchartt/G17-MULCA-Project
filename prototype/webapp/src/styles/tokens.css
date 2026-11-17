@@ -1,45 +1,71 @@
-/* Cadence design tokens, v2 (15/11): soft, premium, Apple-like.
-   Contrast ratios measured on --paper (#fff) unless noted. */
+/* Cadence design tokens, v3 (16/11): the Quorum design system by Francesco.
+   Source: quorum-design-system.html v1.0. Names and values are Quorum's.
+
+   The one rule of Quorum: "The agent proposes; the team decides."
+     - Harbor (blue)  = a person acts or commits. Solid.
+     - Iris (violet)  = the agent speaks or proposes. Dashed ("ghost") until
+                        the team confirms, then it becomes solid and neutral.
+   Contrast on --surface: --ink 17.6:1, --ink2 7.6:1, --ink3 5.0:1,
+   --act 6.6:1, --ag-fg 7.5:1, --ok 5.1:1, --wn 5.6:1, --er 5.3:1. */
 :root {
-  --paper: #ffffff;
-  --mist: #f5f5f7;            /* section and console background */
-  --line: rgba(29, 29, 31, 0.08);
-  --ink: #1d1d1f;             /* 16.8:1 */
-  --ink-soft: #636366;        /* 5.9:1, 5.4:1 on --mist */
-  --sage: #2f6f5e;            /* actions; white text on it 6.0:1 */
-  --sage-deep: #255a4c;
-  --sage-tint: #e9f2ee;       /* agent bubble, selected states */
-  --sand-tint: #f6f1ea;       /* soft warm panels */
-  --sky-tint: #eaf0f8;
-  --warn: #8a5300;            /* 6.4:1 */
-  --warn-tint: #fff3dd;
-  --danger: #b3261e;
+  /* Neutral */
+  --canvas: #F6F7F9;          /* page and console background */
+  --surface: #ffffff;         /* cards, fields, panels */
+  --subtle: #EEF0F4;          /* quiet fills: chips, code, hover */
+  --inset: #E0E4EB;           /* pressed, tracks */
+  --line-s: #E0E4EB;          /* hairlines inside a surface */
+  --line: #C9CFDA;            /* borders of cards and fields */
+  --line-x: #868FA0;          /* strong borders that carry meaning (3:1) */
+  --ink: #15181E;
+  --ink2: #4A5361;            /* secondary text */
+  --ink3: #667080;            /* meta text */
+  --off: #9AA3B2;             /* disabled */
 
-  --dot-sage: #5aa38b;
-  --dot-slate: #6b8fc7;
-  --dot-ochre: #d9a441;
-  --dot-coral: #e0876f;
+  /* Harbor: human, commit */
+  --act: #1F4FD8;
+  --act-h: #1A41B5;
+  --act-a: #173791;
+  --act-s: #EBF0FD;           /* selected */
 
-  /* SF Pro on Apple devices (system font), Geist elsewhere. */
-  --font: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Geist Variable", system-ui, sans-serif;
+  /* Iris: the agent */
+  --ag-fg: #4F31C4;
+  --ag-bg: #F3F0FE;
+  --ag-ln: #9680F4;
+  --ag-solid: #6140E8;
 
+  /* Status: text, background, border */
+  --ok: #17803D; --ok-bg: #E7F6EC; --ok-ln: #A8DDBC;
+  --wn: #9A5A00; --wn-bg: #FDF3DC; --wn-ln: #F0CE86;
+  --er: #C0322B; --er-bg: #FCEBEA; --er-ln: #F1B4B0;
+  --in: #0B6E8A; --in-bg: #E3F3F8; --in-ln: #A6D6E5;
+
+  /* Members: five colours that stay apart for colour-blind readers. */
+  --m1: #B84E00; --m2: #0072B2; --m3: #00785A; --m4: #A8477F; --m5: #7A5F00;
+
+  --font: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+
+  /* Type scale (Quorum): caption 12, body-sm 13, body 14, body-lg 16,
+     h3 20, h2 24, h1 32, display 40. The landing hero goes larger. */
+  --t-cap: 0.75rem;
   --t-xs: 0.8125rem;
-  --t-sm: 0.9375rem;
-  --t-base: 1.0625rem;
-  --t-md: 1.3125rem;
-  --t-lg: 1.75rem;
-  --t-xl: clamp(2rem, 3.6vw, 3rem);
+  --t-sm: 0.875rem;
+  --t-base: 1rem;
+  --t-md: 1.25rem;
+  --t-lg: 1.5rem;
+  --t-xl: clamp(2rem, 3.2vw, 2.5rem);
   --t-hero: clamp(2.6rem, 6.2vw, 5.2rem);
 
-  --r-card: 22px;
-  --r-field: 14px;
-  --r-pill: 999px;
+  --r-sm: 6px;                /* tags, code */
+  --r-field: 10px;            /* buttons, fields, rows */
+  --r-card: 14px;             /* cards, panels */
+  --r-dialog: 20px;
+  --r-pill: 999px;            /* chips, avatars */
 
-  --shadow-soft: 0 1px 2px rgba(29, 29, 31, 0.04), 0 12px 32px -12px rgba(29, 29, 31, 0.14);
-  --shadow-float: 0 2px 6px rgba(29, 29, 31, 0.05), 0 30px 60px -24px rgba(29, 29, 31, 0.28);
+  --shadow-soft: 0 1px 2px rgba(21, 24, 30, 0.05);
+  --shadow-float: 0 16px 40px rgba(21, 24, 30, 0.18);
 
-  /* Apple-like curve: slower than the defaults, reads as polish. */
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --slow: 700ms;
-  --focus: 3px solid #0a66d8;
+  --focus: 2px solid var(--act);
 }

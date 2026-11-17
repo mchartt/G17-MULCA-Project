@@ -23,10 +23,20 @@ services:
         sync: false
       - key: MUCA_ADMIN_TOKEN
         generateValue: true
-      # Optional. The address of one blob in Azure Blob Storage, with its SAS
-      # token (read, create, write): /data is saved there and restored at
-      # every start (deploy/render/snapshot.py). A secret: set it in Render.
+      # Keeps /data across restarts (deploy/render/snapshot.py): saved to one
+      # file in Supabase Storage and restored at every start. Off until the
+      # address is set. The values are set in Render, never written here.
+      #   CADENCE_SNAPSHOT_URL     https://<project>.storage.supabase.co/storage/v1/s3/<bucket>/data.tar.gz
+      #   CADENCE_SNAPSHOT_KEY_ID  S3 access key id (Supabase: Storage > S3)
+      #   CADENCE_SNAPSHOT_SECRET  its secret access key
+      #   CADENCE_SNAPSHOT_REGION  the region shown next to the S3 endpoint
       - key: CADENCE_SNAPSHOT_URL
+        sync: false
+      - key: CADENCE_SNAPSHOT_KEY_ID
+        sync: false
+      - key: CADENCE_SNAPSHOT_SECRET
+        sync: false
+      - key: CADENCE_SNAPSHOT_REGION
         sync: false
       - key: MUCA_COORDINATOR_ENABLED
         value: "true"

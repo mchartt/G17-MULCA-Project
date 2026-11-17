@@ -1,10 +1,14 @@
 """
 deploy/render/snapshot.py: /data saved to one blob and brought back at the
-next start. A small local HTTP server stands in for Azure Blob Storage.
+next start. A small local HTTP server stands in for the object store: Azure
+Blob Storage (a token in the address) or Supabase Storage's S3 endpoint
+(every request signed with an S3 access key).
 """
 
 from __future__ import annotations
 
+import datetime
+import hashlib
 import importlib.util
 import io
 import sqlite3
@@ -30,6 +34,10 @@ class Blob:
         self.body: bytes | None = None
         self.puts: list[dict] = []
         self.fail: int | None = None
+        # S3 mode: only requests signed by this access key id are accepted,
+        # and a body must match the hash that was signed.
+        self.key_id: str | None = None
+        self.no_bucket = False
         blob = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -42,11 +50,24 @@ class Blob:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _signed(self, body: bytes) -> bool:
+                if blob.key_id is None:
+                    return True
+                return (
+                    f"Credential={blob.key_id}/" in self.headers.get("Authorization", "")
+                    and self.headers.get("x-amz-content-sha256") == hashlib.sha256(body).hexdigest()
+                    and bool(self.headers.get("x-amz-date"))
+                )
+
             def do_GET(self):
                 if blob.fail:
                     self._answer(blob.fail)
+                elif not self._signed(b""):
+                    self._answer(403, b"<Error><Code>SignatureDoesNotMatch</Code></Error>")
+                elif blob.no_bucket:
+                    self._answer(404, b"<Error><Code>NoSuchBucket</Code><Message>Bucket not found</Message></Error>")
                 elif blob.body is None:
-                    self._answer(404)
+                    self._answer(404, b"<Error><Code>NoSuchKey</Code></Error>")
                 else:
                     self._answer(200, blob.body)
 
@@ -54,6 +75,9 @@ class Blob:
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 if blob.fail:
                     self._answer(blob.fail)
+                    return
+                if not self._signed(body):
+                    self._answer(403, b"<Error><Code>SignatureDoesNotMatch</Code></Error>")
                     return
                 blob.puts.append({k.lower(): v for k, v in self.headers.items()})
                 blob.body = body
@@ -207,3 +231,93 @@ def test_without_the_address_nothing_runs(monkeypatch):
     assert snapshot.main(["snapshot.py", "restore"]) == 0
     assert snapshot.main(["snapshot.py", "watch"]) == 0
     assert snapshot.main(["snapshot.py", "dance"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Supabase Storage (S3 endpoint): requests signed with an S3 access key
+# ---------------------------------------------------------------------------
+
+KEY = snapshot.S3Key("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", "eu-central-1")
+
+
+@pytest.mark.parametrize(
+    "method, url, body, signature",
+    [
+        ("GET", "https://abcd1234.storage.supabase.co/storage/v1/s3/cadence/data.tar.gz", b"",
+         "2280cd084ad6b754962bf5901cd52318a833d457922b8c8521d2d94af52dd5a1"),
+        ("PUT", "https://abcd1234.storage.supabase.co/storage/v1/s3/cadence/data.tar.gz", b"hello snapshot",
+         "66a784405210227b019149cef6316d13b09a154cceff847026e76b01477c329a"),
+        ("PUT", "http://127.0.0.1:9000/storage/v1/s3/bucket/dir/data-v2.tar.gz", b"x" * 5000,
+         "838728a776fa106f4d5a70dca1deac111898c3e4624864217a8e11b75158b8a6"),
+    ],
+)
+def test_the_signature_is_the_one_the_aws_sdk_computes(method, url, body, signature):
+    """
+    The expected values were produced by botocore's S3SigV4Auth for the same
+    key, time, address and body (17 Nov 2026). The SDK is not a dependency:
+    these fixed values keep our own signing honest.
+    """
+    now = datetime.datetime(2026, 11, 17, 16, 5, 9, tzinfo=datetime.timezone.utc)
+    headers = snapshot.s3_headers(KEY, method, url, body, now=now)
+    assert headers["x-amz-date"] == "20261117T160509Z"
+    assert headers["x-amz-content-sha256"] == hashlib.sha256(body).hexdigest()
+    assert headers["Authorization"] == (
+        "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261117/eu-central-1/s3/aws4_request, "
+        f"SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature={signature}"
+    )
+
+
+def s3_blob(blob):
+    blob.key_id = KEY.key_id
+    return blob.url.split("?")[0]  # no token in the address: the key signs the request
+
+
+def test_with_an_s3_key_a_save_then_a_restore_brings_every_file_back(tmp_path, blob):
+    url = s3_blob(blob)
+    data, db = make_data(tmp_path)
+    assert snapshot.restore(url, tmp_path / "first", KEY) is False  # first start: no snapshot yet
+    snapshot.save(url, data, KEY)
+    db.close()
+    assert "x-ms-blob-type" not in blob.puts[0]  # not Azure's way
+    fresh = tmp_path / "fresh"
+    assert snapshot.restore(url, fresh, KEY) is True
+    restored = sqlite3.connect(fresh / "web.sqlite3")
+    assert restored.execute("SELECT email FROM web_user").fetchall() == [("ada@example.org",)]
+    restored.close()
+
+
+def test_without_the_key_the_store_refuses_and_the_start_stops(tmp_path, blob):
+    url = s3_blob(blob)
+    data, db = make_data(tmp_path)
+    db.close()
+    with pytest.raises(snapshot.SnapshotError):
+        snapshot.save(url, data)  # unsigned
+    with pytest.raises(snapshot.SnapshotError):
+        snapshot.restore(url, tmp_path / "fresh", snapshot.S3Key("SOMEONE-ELSE", "x", "eu-central-1"))
+    assert blob.puts == []
+
+
+def test_a_bucket_that_does_not_exist_stops_the_start(tmp_path, blob):
+    """Starting anyway would hide that every save is going to fail."""
+    url = s3_blob(blob)
+    blob.no_bucket = True
+    with pytest.raises(snapshot.SnapshotError, match="bucket"):
+        snapshot.restore(url, tmp_path / "data", KEY)
+
+
+def test_the_key_comes_from_the_environment_whole_or_not_at_all(tmp_path, blob, monkeypatch, caplog):
+    url = s3_blob(blob)
+    data, db = make_data(tmp_path)
+    db.close()
+    monkeypatch.setenv("CADENCE_SNAPSHOT_URL", url)
+    monkeypatch.setenv("CADENCE_DATA_DIR", str(data))
+    monkeypatch.setenv("CADENCE_SNAPSHOT_KEY_ID", KEY.key_id)
+    assert snapshot.main(["snapshot.py", "save"]) == 1  # the secret and the region are missing
+    assert blob.puts == []
+    monkeypatch.setenv("CADENCE_SNAPSHOT_SECRET", KEY.secret)
+    monkeypatch.setenv("CADENCE_SNAPSHOT_REGION", KEY.region)
+    with caplog.at_level("INFO", logger="snapshot"):
+        assert snapshot.main(["snapshot.py", "save"]) == 0
+        assert snapshot.main(["snapshot.py", "restore"]) == 0
+    assert len(blob.puts) == 1
+    assert KEY.secret not in caplog.text

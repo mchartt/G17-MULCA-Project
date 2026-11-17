@@ -4,8 +4,9 @@ Keeps /data across restarts on a host without a disk (Render free plan).
 Everything Cadence remembers is SQLite files under /data: accounts and spaces
 (web.sqlite3), each group's chat memory and project state (muca/*.db), the
 Discord bot's links (mulca.db). Render's free plan empties /data at every
-restart, redeploy and sleep. This script copies /data to ONE blob in Azure
-Blob Storage and brings it back at the next start:
+restart, redeploy and sleep. This script copies /data to ONE file in an object
+store (Supabase Storage, or Azure Blob Storage) and brings it back at the
+next start:
 
     python snapshot.py restore   at start, before the servers open the files
     python snapshot.py watch     while running: save every few minutes when
@@ -15,10 +16,21 @@ Blob Storage and brings it back at the next start:
 Off unless CADENCE_SNAPSHOT_URL is set: then nothing here runs and the
 container behaves as before.
 
-    CADENCE_SNAPSHOT_URL      the blob's full address with its SAS token, e.g.
-                              https://<account>.blob.core.windows.net/cadence/data.tar.gz?sv=...
-                              The token needs read, create and write. It is a
-                              secret: it is never logged.
+Two stores, chosen by which variables are set:
+
+  Supabase Storage (or any S3-compatible store), signed with an S3 access key:
+    CADENCE_SNAPSHOT_URL      the file's address on the S3 endpoint, e.g.
+                              https://<project>.storage.supabase.co/storage/v1/s3/cadence/data.tar.gz
+                              (.../s3/<bucket>/<file name>)
+    CADENCE_SNAPSHOT_KEY_ID   the S3 access key id (Supabase: Storage > S3 > access keys)
+    CADENCE_SNAPSHOT_SECRET   its secret access key. A secret: never logged.
+    CADENCE_SNAPSHOT_REGION   the region shown next to the endpoint, e.g. eu-central-1
+
+  Azure Blob Storage, with a SAS token in the address (no key variables):
+    CADENCE_SNAPSHOT_URL      https://<account>.blob.core.windows.net/cadence/data.tar.gz?sv=...
+                              The token needs read, create and write. The whole
+                              address is then a secret: it is never logged.
+
     CADENCE_SNAPSHOT_SECONDS  seconds between saves, default 120
     CADENCE_DATA_DIR          default /data
 
@@ -31,6 +43,9 @@ Only the standard library, so the image needs nothing new.
 
 from __future__ import annotations
 
+import datetime
+import hashlib
+import hmac
 import io
 import logging
 import os
@@ -43,7 +58,8 @@ import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlsplit
+from typing import NamedTuple
+from urllib.parse import quote, urlsplit
 
 logger = logging.getLogger("snapshot")
 
@@ -57,6 +73,53 @@ AZURE_API_VERSION = "2021-08-06"
 
 class SnapshotError(RuntimeError):
     """A snapshot that exists could not be read, or a save was refused."""
+
+
+class S3Key(NamedTuple):
+    """An S3 access key: every request is signed with it (AWS Signature Version 4)."""
+
+    key_id: str
+    secret: str
+    region: str
+
+
+def s3_headers(key: S3Key, method: str, url: str, body: bytes, *, now: datetime.datetime | None = None) -> dict[str, str]:
+    """
+    The headers that sign one S3 request (AWS Signature Version 4, service
+    "s3"). Written here with the standard library so the image needs no SDK.
+    Only the host, the date and the body's hash are signed: any other header
+    the caller adds travels unsigned, which S3 allows.
+    """
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    stamp = now.strftime("%Y%m%dT%H%M%SZ")
+    day = stamp[:8]
+    parts = urlsplit(url)
+    body_hash = hashlib.sha256(body).hexdigest()
+    signed = "host;x-amz-content-sha256;x-amz-date"
+    canonical = "\n".join([
+        method,
+        quote(parts.path or "/", safe="/-_.~"),
+        "",  # no query string
+        f"host:{parts.netloc}",
+        f"x-amz-content-sha256:{body_hash}",
+        f"x-amz-date:{stamp}",
+        "",
+        signed,
+        body_hash,
+    ])
+    scope = f"{day}/{key.region}/s3/aws4_request"
+    to_sign = "\n".join(["AWS4-HMAC-SHA256", stamp, scope, hashlib.sha256(canonical.encode()).hexdigest()])
+
+    def mac(secret: bytes, text: str) -> bytes:
+        return hmac.new(secret, text.encode(), hashlib.sha256).digest()
+
+    signing_key = mac(mac(mac(mac(("AWS4" + key.secret).encode(), day), key.region), "s3"), "aws4_request")
+    signature = hmac.new(signing_key, to_sign.encode(), hashlib.sha256).hexdigest()
+    return {
+        "x-amz-date": stamp,
+        "x-amz-content-sha256": body_hash,
+        "Authorization": f"AWS4-HMAC-SHA256 Credential={key.key_id}/{scope}, SignedHeaders={signed}, Signature={signature}",
+    }
 
 
 def where(url: str) -> str:
@@ -114,16 +177,21 @@ def unpack(archive: bytes, data_dir: Path) -> int:
     return len(members)
 
 
-def restore(url: str, data_dir: Path) -> bool:
+def restore(url: str, data_dir: Path, key: S3Key | None = None) -> bool:
     """
     Bring the last snapshot back. False when there is none yet (first start).
     Raises SnapshotError when a snapshot may exist but cannot be read: the
     caller must then NOT start, or the next save would replace it with nothing.
+    A bucket that does not exist is an error too: every save would fail, and
+    starting anyway would hide that nothing is being kept.
     """
+    headers = s3_headers(key, "GET", url, b"") if key else {}
     try:
-        with urllib.request.urlopen(urllib.request.Request(url), timeout=TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=TIMEOUT_SECONDS) as response:
             archive = response.read()
     except urllib.error.HTTPError as exc:
+        if exc.code == 404 and b"NoSuchBucket" in exc.read(2000):
+            raise SnapshotError(f"the bucket of {where(url)} does not exist: create it, or fix the address") from None
         if exc.code == 404:
             logger.info("no snapshot yet at %s: starting empty", where(url))
             return False
@@ -138,19 +206,15 @@ def restore(url: str, data_dir: Path) -> bool:
     return True
 
 
-def save(url: str, data_dir: Path) -> int:
-    """Upload /data as it is now. Returns the size sent, in bytes."""
+def save(url: str, data_dir: Path, key: S3Key | None = None) -> int:
+    """Upload /data as it is now, replacing the last snapshot. Returns the size sent, in bytes."""
     archive = pack(data_dir)
-    request = urllib.request.Request(
-        url,
-        data=archive,
-        method="PUT",
-        headers={
-            "x-ms-blob-type": "BlockBlob",
-            "x-ms-version": AZURE_API_VERSION,
-            "Content-Type": "application/gzip",
-        },
-    )
+    headers = {"Content-Type": "application/gzip"}
+    if key:
+        headers.update(s3_headers(key, "PUT", url, archive))
+    else:  # Azure Blob Storage: the SAS token in the address is the permission
+        headers.update({"x-ms-blob-type": "BlockBlob", "x-ms-version": AZURE_API_VERSION})
+    request = urllib.request.Request(url, data=archive, method="PUT", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS):
             pass
@@ -162,7 +226,7 @@ def save(url: str, data_dir: Path) -> int:
     return len(archive)
 
 
-def watch(url: str, data_dir: Path, every: float, stop: threading.Event) -> None:
+def watch(url: str, data_dir: Path, every: float, stop: threading.Event, key: S3Key | None = None) -> None:
     """Save when something changed, every `every` seconds, and once more when asked to stop."""
     last = fingerprint(data_dir)  # what restore just wrote: nothing new to save yet
     while True:
@@ -170,7 +234,7 @@ def watch(url: str, data_dir: Path, every: float, stop: threading.Event) -> None
         now = fingerprint(data_dir)
         if now != last:
             try:
-                save(url, data_dir)
+                save(url, data_dir, key)
                 last = now
             except SnapshotError as exc:  # keep running: the next round tries again
                 logger.error("%s", exc)
@@ -194,16 +258,25 @@ def main(argv: list[str]) -> int:
     if not url:
         logger.info("CADENCE_SNAPSHOT_URL is not set: nothing to do")
         return 0
+    key_id = os.environ.get("CADENCE_SNAPSHOT_KEY_ID", "").strip()
+    secret = os.environ.get("CADENCE_SNAPSHOT_SECRET", "").strip()
+    region = os.environ.get("CADENCE_SNAPSHOT_REGION", "").strip()
+    key = None
+    if key_id or secret or region:
+        if not (key_id and secret and region):
+            logger.error("set CADENCE_SNAPSHOT_KEY_ID, CADENCE_SNAPSHOT_SECRET and CADENCE_SNAPSHOT_REGION together")
+            return 1
+        key = S3Key(key_id, secret, region)
     try:
         if command == "restore":
-            restore(url, data_dir)
+            restore(url, data_dir, key)
         elif command == "save":
-            save(url, data_dir)
+            save(url, data_dir, key)
         else:
             stop = threading.Event()
             for signum in (signal.SIGTERM, signal.SIGINT):
                 signal.signal(signum, lambda *_: stop.set())
-            watch(url, data_dir, float(os.environ.get("CADENCE_SNAPSHOT_SECONDS", "120")), stop)
+            watch(url, data_dir, float(os.environ.get("CADENCE_SNAPSHOT_SECONDS", "120")), stop, key)
     except SnapshotError as exc:
         logger.error("%s", exc)
         return 1

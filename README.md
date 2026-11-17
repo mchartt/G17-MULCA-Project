@@ -1,4 +1,4 @@
-# MULCA — Multi-User LLM-based Conversational Agent
+# MULCA — Multi-User LLM-based Conversational Agent Ctrl+Alt+Design
 
 A Discord bot instantiable with different personas/strategies/tasks to
 mediate a multi-user conversation, in text channels, DMs and voice channels.

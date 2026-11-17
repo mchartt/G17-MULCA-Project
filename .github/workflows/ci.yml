@@ -108,7 +108,11 @@ jobs:
           cache-dependency-path: mulca/prototype/requirements*.txt
       - name: Install
         working-directory: mulca/prototype
-        run: pip install -r requirements-dev.txt
+        # The tests start a real MUCA-Server: it needs its optional parts
+        # (storage, HTTP test client), as in prototype/README.md.
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e "../../MUCA-Server[server,openai,storage,dev]"
       - name: Tests
         working-directory: mulca/prototype
         run: python -m pytest -q

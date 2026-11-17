@@ -29,7 +29,8 @@ await page.waitForTimeout(800);
 await report("console with proactive card and Why? open");
 // M4: planning dialog, plan card confirmed (status selects), decision + Ask why.
 await page.getByRole("button", { name: "Plan tasks" }).click();
-await page.getByLabel("Tasks").fill("Server API\nUI screens");
+await page.getByLabel("Task 1", { exact: true }).fill("Server API");
+await page.getByLabel("Task 2", { exact: true }).fill("UI screens");
 await page.waitForTimeout(800); // let the dialog finish fading in
 await report("planning dialog open");
 await page.getByRole("button", { name: "Suggest owners" }).click();

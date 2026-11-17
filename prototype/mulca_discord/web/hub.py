@@ -82,6 +82,10 @@ class WebReply:
         await self._channel.update(self)
 
 
+class SpaceFull(Exception):
+    """The space already has as many members as a group may have."""
+
+
 class WebChannel:
     """The group's chat as a reply target: every send/edit becomes a 'message' event."""
 
@@ -110,8 +114,12 @@ class WebHub:
         registry: SessionRegistry | None = None,
         course: str = DEFAULT_COURSE,
         admin_token: str = "",
+        max_members: int = 8,
     ) -> None:
         self.store = store
+        # A group of students, not a community: a space stops accepting new
+        # members here (MULCA_WEB_MAX_MEMBERS). Members already in stay in.
+        self.max_members = max(1, max_members)
         # MUCA_ADMIN_TOKEN, to delete a group's data on MUCA-Server (server_data.py).
         self._admin_token = admin_token
         self.registry = registry or SessionRegistry(muca_url)
@@ -148,6 +156,8 @@ class WebHub:
         known = self.accounts.member_in(user.id, group.id) if user else None
         if known is not None:
             return group, self.store.member(known), self.accounts.new_access(known)
+        if len(self.store.members(group.id)) >= self.max_members:
+            raise SpaceFull(f"This space is full: a group has at most {self.max_members} members.")
         member, token = self._add_member(group, display_name, user)
         await self._announce_members(group.id)
         return group, member, token

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { saveProfile, type User } from "../lib/account";
 import { ApiError } from "../lib/api";
+import { TagInput, withPending } from "../console/TagInput";
 
 type Props = { user: User; onSaved: (user: User) => void; onCancel?: () => void };
 
@@ -12,7 +13,9 @@ type Props = { user: User; onSaved: (user: User) => void; onCancel?: () => void 
 export function ProfileForm({ user, onSaved, onCancel }: Props) {
   const [name, setName] = useState(user.displayName);
   const [discipline, setDiscipline] = useState(user.discipline);
-  const [skills, setSkills] = useState(user.skills.join(", "));
+  const [skills, setSkills] = useState(user.skills);
+  const [pending, setPending] = useState("");
+  const [background, setBackground] = useState(user.background ?? "");
   const [hours, setHours] = useState(user.weeklyHours === null ? "" : String(user.weeklyHours));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -25,8 +28,9 @@ export function ProfileForm({ user, onSaved, onCancel }: Props) {
       const saved = await saveProfile({
         displayName: name,
         discipline,
-        skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+        skills: withPending(skills, pending),
         weeklyHours: hours === "" ? null : Number(hours),
+        background,
       });
       setMessage({ ok: true, text: "Profile saved. Your spaces see the new one." });
       onSaved(saved);
@@ -44,8 +48,10 @@ export function ProfileForm({ user, onSaved, onCancel }: Props) {
       <input id="p-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required />
       <label htmlFor="p-discipline">Discipline</label>
       <input id="p-discipline" value={discipline} onChange={(e) => setDiscipline(e.target.value)} maxLength={100} placeholder="Interaction design" />
-      <label htmlFor="p-skills">Skills, separated by commas</label>
-      <input id="p-skills" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="User research, prototyping" />
+      <label htmlFor="p-skills">Skills (press Enter after each)</label>
+      <TagInput id="p-skills" tags={skills} onChange={setSkills} onPending={setPending} placeholder="User research, prototyping" />
+      <label htmlFor="p-background">Background, in your own words</label>
+      <textarea id="p-background" rows={3} maxLength={600} value={background} onChange={(e) => setBackground(e.target.value)} placeholder="What you study, what you have done before, what you would like to work on." />
       <label htmlFor="p-hours">Hours per week for group projects</label>
       <input id="p-hours" type="number" min={0} max={80} value={hours} onChange={(e) => setHours(e.target.value)} />
       {message && <p className={message.ok ? "form__ok" : "form__error"} role={message.ok ? "status" : "alert"}>{message.text}</p>}

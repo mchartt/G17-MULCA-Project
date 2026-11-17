@@ -61,7 +61,8 @@ test("first steps, team, language and an edited goal", async ({ browser }) => {
 
   // Step 3: the tasks. With the three done, the list goes away.
   await steps.getByRole("button", { name: "Add the tasks" }).click();
-  await ada.getByLabel("Tasks").fill("Server API\nUI screens");
+  await ada.getByLabel("Task 1", { exact: true }).fill("Server API");
+  await ada.getByLabel("Task 2", { exact: true }).fill("UI screens");
   await ada.getByRole("button", { name: "Suggest owners" }).click();
   await ada.locator(".card", { hasText: "Plan: who does what" }).getByRole("button", { name: "Confirm" }).click();
   await expect(steps).toHaveCount(0);

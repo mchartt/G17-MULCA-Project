@@ -17,7 +17,7 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "s
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
 export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now" | "helpful";
 export type Click = { action: CardAction; option?: number };
-export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup" | "language" | "charter";
+export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup" | "language" | "charter" | "milestone";
 
 /**
  * A member's id. Web members have small numbers. In a linked group a card can
@@ -44,7 +44,7 @@ export type ProactiveContext = {
   evidence: { speaker: string; text: string; at_ms: number }[];
 };
 
-export type Milestone = { title: string; due_date?: string | null; status?: string };
+export type Milestone = { milestone_id?: string; title: string; due_date?: string | null; status?: string };
 
 export type Proposal = {
   proposal_id: string;
@@ -77,7 +77,7 @@ export type ProjectState = {
   charter?: { goal: string; deliverables?: string[]; confirmed_by?: MemberId } | null;
   names?: Names;
   milestones?: Milestone[];
-  members?: { member_id?: MemberId; display_name: string; discipline?: string; skills?: string[]; weekly_hours?: number | null }[];
+  members?: { member_id?: MemberId; display_name: string; discipline?: string; skills?: string[]; weekly_hours?: number | null; background?: string }[];
   /** The language the group chose for Cadence's texts: "en", "it", or "" (it follows the chat). */
   language?: string;
   tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null }[];

@@ -56,3 +56,16 @@ test("@coordinator in a message is shown as a tag", () => {
   open(space);
   expect(screen.getByText("@Coordinator")).toHaveClass("mention");
 });
+
+test("suggestions are chosen with the arrow keys; Enter completes a half-typed command and does not send it", async () => {
+  const { onSay, onCommand, box } = open();
+  await userEvent.type(box, "/c{ArrowDown}{Enter}"); // /checkin is first, /catchup second
+  expect(box).toHaveValue("/catchup ");
+  expect(onCommand).not.toHaveBeenCalled();
+  await userEvent.type(box, "{Enter}");
+  expect(onCommand).toHaveBeenCalledWith("/catchup ");
+  await userEvent.type(box, "/pla{Tab}");
+  expect((box as HTMLTextAreaElement).value.startsWith("/plan")).toBe(true);
+  await userEvent.type(box, "{Escape}");
+  expect(onSay).not.toHaveBeenCalled();
+});

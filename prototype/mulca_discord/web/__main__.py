@@ -41,6 +41,7 @@ def main() -> None:
         WebStore(db),
         os.environ.get("MUCA_SERVER_URL", "ws://localhost:8000/"),
         admin_token=os.environ.get("MUCA_ADMIN_TOKEN", ""),
+        max_members=int(os.environ.get("MULCA_WEB_MAX_MEMBERS") or "8"),
     )
     app = create_web_app(
         hub,

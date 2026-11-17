@@ -23,6 +23,9 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
   // Commands after "/", Cadence and the teammates after "@", offered while typing.
   const teammates = space.members.filter((m) => m.id !== space.me?.id).map((m) => m.name);
   const hints = suggest(draft, teammates);
+  // Which suggestion Enter or Tab takes: moved with the arrow keys.
+  const [picked, setPicked] = useState(0);
+  const pick = hints[Math.min(picked, hints.length - 1)];
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,13 +42,25 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
 
   function fill(text: string) {
     setDraft(text);
+    setPicked(0);
     input.current?.focus();
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Tab" && hints.length > 0) {
+    if (pick && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
-      fill(hints[0]!.fill);
+      setPicked((Math.min(picked, hints.length - 1) + (e.key === "ArrowDown" ? 1 : hints.length - 1)) % hints.length);
+      return;
+    }
+    // Tab always completes. Enter completes only a word still being typed
+    // ("/che", "@mat"); a finished command ("/checkin") is sent as it is.
+    if (pick && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey && pick.fill.trim() !== draft.trim()))) {
+      e.preventDefault();
+      fill(pick.fill);
+      return;
+    }
+    if (e.key === "Escape" && pick) {
+      setDraft("");
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -82,11 +97,11 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
       </div>
       {hints.length > 0 && (
         <ul className="hints" aria-label="Suggestions">
-          {hints.map((h, n) => (
-            <li key={h.label}>
+          {hints.map((h) => (
+            <li key={h.label} className={h === pick ? "hints__picked" : undefined}>
               <button type="button" onClick={() => fill(h.fill)}>
                 <code>{h.label}</code> <span className="muted">{h.about}</span>
-                {n === 0 && <kbd>Tab</kbd>}
+                {h === pick && <kbd>Enter</kbd>}
               </button>
             </li>
           ))}
@@ -99,7 +114,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
           ref={input}
           rows={2}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); setPicked(0); }}
           onKeyDown={onKey}
           placeholder={disabled ? "Reconnecting…" : "Message the group, @ to address Cadence or a teammate, / for commands"}
           disabled={disabled}

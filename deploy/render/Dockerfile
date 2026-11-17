@@ -6,8 +6,8 @@
 #      same address: one link for the whole app, no CORS, the socket on the
 #      same host. The Vercel site stays as a landing-only preview.
 #
-# Built from the "render" branch, which is group17/coordinator plus a copy
-# of muca-server in vendor/muca-server (deploy/render/update-branch.sh).
+# Built from the branch gitlab-dev, which holds this project plus a copy
+# of muca-server in vendor/muca-server (deploy/render/update-vendor.sh).
 FROM node:22-slim AS webapp
 WORKDIR /webapp
 COPY prototype/webapp/package.json prototype/webapp/package-lock.json ./

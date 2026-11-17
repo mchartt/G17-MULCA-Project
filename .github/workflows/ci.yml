@@ -1,11 +1,11 @@
 # Runs the web app and adapter tests on every pull request and on the
-# working branch. No provider key is needed: the tests use fakes.
+# two long-lived branches. No provider key is needed: the tests use fakes.
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [group17/coordinator]
+    branches: [group17/coordinator, gitlab-dev]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -33,32 +33,41 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  # The adapter tests run against a real local MUCA-Server, which lives in a
-  # second private repository. GitHub's own token cannot read it, so this
-  # needs a repository secret MUCA_SERVER_READ_TOKEN: a fine-grained token
-  # with read-only "Contents" access to mchartt/G17-MULCA-Server.
-  # Without the secret the adapter job shows as skipped, never as passed.
+  # The adapter tests run against a real local MUCA-Server. Where it comes from:
+  #   - vendor/muca-server, when the branch has it (gitlab-dev and branches
+  #     made from it): the same copy Render builds with, no secret needed;
+  #   - otherwise the second private repository. GitHub's own token cannot
+  #     read it, so this needs a repository secret MUCA_SERVER_READ_TOKEN: a
+  #     fine-grained token with read-only "Contents" access to
+  #     mchartt/G17-MULCA-Server.
+  # With neither, the adapter job shows as skipped, never as passed.
   setup:
-    name: Check access to MUCA-Server
+    name: Find MUCA-Server
     runs-on: ubuntu-latest
     outputs:
-      has_token: ${{ steps.check.outputs.has_token }}
+      server: ${{ steps.check.outputs.server }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: vendor/muca-server/pyproject.toml
+          sparse-checkout-cone-mode: false
       - id: check
         env:
           TOKEN: ${{ secrets.MUCA_SERVER_READ_TOKEN }}
         run: |
-          if [ -n "$TOKEN" ]; then
-            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          if [ -f vendor/muca-server/pyproject.toml ]; then
+            echo "server=vendor" >> "$GITHUB_OUTPUT"
+          elif [ -n "$TOKEN" ]; then
+            echo "server=repository" >> "$GITHUB_OUTPUT"
           else
-            echo "has_token=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::MUCA_SERVER_READ_TOKEN is not set: the adapter tests are skipped."
+            echo "server=none" >> "$GITHUB_OUTPUT"
+            echo "::warning::No vendor/muca-server on this branch and MUCA_SERVER_READ_TOKEN is not set: the adapter tests are skipped."
           fi
 
   adapter:
     name: Adapters (pytest)
     needs: setup
-    if: needs.setup.outputs.has_token == 'true'
+    if: needs.setup.outputs.server != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -68,8 +77,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: mulca
+      # requirements.txt installs the server from ../../MUCA-Server.
+      - name: MUCA-Server from vendor/
+        if: needs.setup.outputs.server == 'vendor'
+        run: cp -R mulca/vendor/muca-server MUCA-Server
       - name: Pick the MUCA-Server branch
         id: server
+        if: needs.setup.outputs.server == 'repository'
         env:
           TOKEN: ${{ secrets.MUCA_SERVER_READ_TOKEN }}
         # A change that spans both repositories uses the same branch name in
@@ -81,11 +95,11 @@ jobs:
             echo "ref=group17/coordinator" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v4
+        if: needs.setup.outputs.server == 'repository'
         with:
           repository: ${{ env.SERVER_REPO }}
           ref: ${{ steps.server.outputs.ref }}
           token: ${{ secrets.MUCA_SERVER_READ_TOKEN }}
-          # requirements.txt installs it from ../../MUCA-Server
           path: MUCA-Server
       - uses: actions/setup-python@v5
         with:

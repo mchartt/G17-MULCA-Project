@@ -1,6 +1,8 @@
-# Render Blueprint for Cadence online (free plan). Render reads this file from
-# the "render" branch (deploy/render/update-branch.sh) when you create a
-# Blueprint: Dashboard > New > Blueprint > repository G17-MULCA-Project.
+# Render Blueprint for Cadence online (free plan). Render deploys the branch
+# gitlab-dev: this project plus a copy of muca-server in vendor/muca-server
+# (deploy/render/update-vendor.sh refreshes the copy). Every merge into
+# gitlab-dev is built and deployed by Render (autoDeploy).
+# To create the service: Dashboard > New > Blueprint > repository G17-MULCA-Project.
 # Secrets are never written here: Render asks for AZURE_OPENAI_API_KEY at
 # creation (sync: false) and generates MUCA_ADMIN_TOKEN itself.
 services:
@@ -9,7 +11,7 @@ services:
     runtime: docker
     plan: free
     region: frankfurt
-    branch: render
+    branch: gitlab-dev
     dockerfilePath: ./deploy/render/Dockerfile
     dockerContext: .
     healthCheckPath: /api/health

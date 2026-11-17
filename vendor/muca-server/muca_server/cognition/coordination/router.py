@@ -108,6 +108,7 @@ class CoordinatorRouter:
                 store=self._store_now,
                 service=self._service,
                 send_proposal=self._send_proposal,
+                members=self._roster,
                 today=today,
             )
             if proactive_writer is not None
@@ -208,7 +209,7 @@ class CoordinatorRouter:
                 await self._on_profile(message)
             elif message.command == "kickoff":
                 await self._start_kickoff(message)
-            elif message.command in ("planning", "checkin", "task", "why"):
+            elif message.command in ("planning", "checkin", "task", "why", "ask"):
                 await self._plan.handle(message)
             elif message.command == "link":
                 await self._on_link(message)

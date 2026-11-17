@@ -15,9 +15,11 @@ What it reuses instead of rewriting (project rule: build on what exists):
 The coordinator hook is set on THIS registry instance, so Discord's hook (set on
 the SessionRegistry class by coordinator/bridge.py) is untouched.
 
-A group's conversation id is "web:<invite code>": web groups are their own MUCA
-conversations. Joining a Discord group to the same conversation is the next
-step of the multichannel plan (needs A5/A6 verified live), not done here.
+A group's conversation id is "web:<invite code>": a web space is its own MUCA
+conversation. A Discord or Slack channel can be *linked* to it with the invite
+code (/coordinator link): then the project is shared, cards reach every
+channel, and what is written there arrives here as "coordinator_mirror" and
+is shown in the chat with the channel's name.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMess
 from ..courses import DEFAULT_COURSE
 from ..muca_client import MucaConnectionLost
 from ..sessions import Scope, ScopeSession, SessionRegistry
+from .accounts import Accounts, User
 from .calendar import CalendarFeeds
 from .server_data import delete_conversation
 from .store import Group, Member, WebStore
@@ -51,7 +54,12 @@ SERVER_NAME_MENTION = "@MULCA"
 # "@coordinator why ..." / "@coordinator perché ..." typed in the chat: answered
 # from the decision log (command "why"), not by the lab's agent, which cannot
 # read the log. Only routes a question: it never changes any state.
-TYPED_WHY = re.compile(r"^\s*@coordinator\b[\s,:]*(?P<question>(why|perch[eé]|perche)\b.*)$", re.IGNORECASE | re.DOTALL)
+TYPED_WHY = re.compile(r"^\s*@(coordinator|cadence)\b[\s,:]*(?P<question>(why|perch[eé]|perche)\b.*)$", re.IGNORECASE | re.DOTALL)
+# Spec 2.6, "@coordinator": a question to the coordinator is answered only
+# from the saved tasks, milestones and decisions, with the source (command
+# "ask"). A question is a message that mentions the coordinator and has a
+# question mark; any other mention still goes to the lab's agent, as above.
+MAX_QUESTION_CHARS = 500
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in the chat: no need to try again."
@@ -110,6 +118,8 @@ class WebHub:
         # Instance attribute: shadows the class-level Discord hook for this registry only.
         self.registry.on_coordinator_event = self._on_coordinator_event
         self._course = course
+        # Register / log in / profile (accounts.py), in the same database file.
+        self.accounts = Accounts(store.connection)
         # M5: the calendar feed reads the last state saved here.
         self.calendar = CalendarFeeds(store)
         self._sockets: dict[int, set[Socket]] = {}
@@ -121,18 +131,53 @@ class WebHub:
     # Groups and members
     # ------------------------------------------------------------------
 
-    def create_group(self, name: str, display_name: str) -> tuple[Group, Member, str]:
+    def create_group(self, name: str, display_name: str, user: User | None = None) -> tuple[Group, Member, str]:
+        """A new space. With `user` (a logged-in person) the member is theirs."""
         group = self.store.create_group(_clean(name, 80) or "Our project")
-        member, token = self.store.add_member(group.id, _clean(display_name, 40))
+        member, token = self._add_member(group, display_name, user)
         return group, member, token
 
-    async def join_group(self, invite_code: str, display_name: str) -> tuple[Group, Member, str] | None:
+    async def join_group(
+        self, invite_code: str, display_name: str, user: User | None = None
+    ) -> tuple[Group, Member, str] | None:
         group = self.store.group_by_code(invite_code)
         if group is None:
             return None
-        member, token = self.store.add_member(group.id, _clean(display_name, 40))
+        # A logged-in person who is already a member gets back in as themselves
+        # (a second browser), not as a second member with the same name.
+        known = self.accounts.member_in(user.id, group.id) if user else None
+        if known is not None:
+            return group, self.store.member(known), self.accounts.new_access(known)
+        member, token = self._add_member(group, display_name, user)
         await self._announce_members(group.id)
         return group, member, token
+
+    def _add_member(self, group: Group, display_name: str, user: User | None) -> tuple[Member, str]:
+        name = user.display_name if user else _clean(display_name, 40)
+        member, token = self.store.add_member(group.id, name)
+        if user is not None:
+            self.accounts.claim_member(member.id, user.id)
+            # Their profile (discipline, skills, hours) goes to the coordinator.
+            asyncio.create_task(self.share_profile(user, only_member=member.id))
+        return member, token
+
+    async def share_profile(self, user: User, *, only_member: int | None = None) -> None:
+        """
+        Send the person's profile to the coordinator of their spaces, so they
+        fill it in once and every group sees it. Best effort: if MUCA-Server
+        is off, the account still has the profile and the next save sends it.
+        """
+        for member_id, group_id in self.accounts.member_ids(user.id):
+            if only_member is not None and member_id != only_member:
+                continue
+            member = self.store.member(member_id)
+            if member is None:
+                continue
+            try:
+                await self.command(member, "profile", user.profile_args())
+                await self._announce_members(group_id)
+            except Exception:
+                logger.exception("Could not share the profile of member %s", member_id)
 
     def roster(self, group_id: int) -> dict[int, str]:
         return {m.id: m.display_name for m in self.store.members(group_id)}
@@ -157,6 +202,18 @@ class WebHub:
         async with self._lock(member.group_id):
             self._sockets.setdefault(member.group_id, set()).add(socket)
             await self._hello(socket, member)
+        # Open the group's session now, not at the first message: a linked
+        # channel's messages and cards only reach an open session.
+        asyncio.create_task(self._warm_up(member.group_id))
+
+    async def _warm_up(self, group_id: int) -> None:
+        async def action(client) -> None:
+            await client.send_participants(self.roster(group_id), modality="text")
+
+        try:
+            await self._run(group_id, action)
+        except Exception:  # MUCA-Server down: the chat still opens
+            logger.info("Could not open the session of web group %s yet", group_id)
 
     async def _hello(self, socket: Socket, member: Member) -> None:
         group = self.store.group(member.group_id)
@@ -195,7 +252,12 @@ class WebHub:
 
         typed_why = TYPED_WHY.match(text)
         if typed_why:
-            await self._answer_typed_why(member, typed_why["question"].strip())
+            await self._answer_in_chat(member, "why", typed_why["question"].strip())
+            return
+
+        question = typed_question(text)
+        if question:
+            await self._answer_in_chat(member, "ask", question)
             return
 
         async def action(client) -> None:
@@ -213,9 +275,9 @@ class WebHub:
             logger.exception("MUCA-Server unreachable; message kept in the web chat only")
             await self.broadcast(member.group_id, {"type": "status", "coordinator": "unavailable"})
 
-    async def _answer_typed_why(self, member: Member, question: str) -> None:
-        """The answer from the decision log, posted in the chat for the whole group."""
-        answer = await self.command(member, "why", {"question": question})
+    async def _answer_in_chat(self, member: Member, command: str, question: str) -> None:
+        """The answer to "why" or "ask", posted in the chat for the whole group."""
+        answer = await self.command(member, command, {"question": question})
         channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
         await channel.send(answer.get("text") or UNAVAILABLE)
 
@@ -316,15 +378,32 @@ class WebHub:
         if group is None:
             return
         event = data.get("event")
+        data = browser_safe(data)
         if event == "coordinator_proposal":
             await self.broadcast(group.id, {"type": "proposal", "proposal": data.get("proposal", {})})
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
             self.calendar.save_state(group.id, data.get("state", {}))
             await self.broadcast(group.id, {"type": "state", "state": data.get("state", {})})
+        elif event == "coordinator_mirror":
+            await self._show_mirror(group.id, data)
         future = self._waiting.get(data.get("requestId", ""))
         if future is not None and not future.done():
             future.set_result(_answer(data))
+
+    async def _show_mirror(self, group_id: int, data: dict) -> None:
+        """A message written on Discord or Slack: kept in the history, shown to everyone."""
+        text = str(data.get("text", ""))[:MAX_MESSAGE_CHARS]
+        if not text:
+            return
+        stored = self.store.add_message(
+            group_id,
+            None,
+            text,
+            channel=str(data.get("channel", "discord"))[:20],
+            author_name=_clean(str(data.get("speakerName", "")), 40) or "A member",
+        )
+        await self.broadcast(group_id, {"type": "message", "message": self.message_json(stored)})
 
     async def _announce_members(self, group_id: int) -> None:
         await self.broadcast(group_id, {"type": "members", "members": self._members_json(group_id)})
@@ -336,10 +415,39 @@ class WebHub:
         await self.registry.close_all()
 
 
+# The largest whole number a browser reads exactly (JavaScript's Number).
+BROWSER_MAX_INT = 2**53 - 1
+
+
+def browser_safe(value):
+    """
+    In a linked group a card can name a Discord or Slack member, whose id is
+    larger than a browser can read exactly (it would be rounded, and no name
+    would match). Those ids travel as text; web members' ids stay numbers.
+    """
+    if isinstance(value, dict):
+        return {key: browser_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [browser_safe(item) for item in value]
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) > BROWSER_MAX_INT:
+        return str(value)
+    return value
+
+
 def _answer(data: dict) -> dict:
     if data.get("event") == "coordinator_state":
         return {"type": "state", "state": data.get("state", {}), "ok": True}
-    return {"type": "notice", "ok": bool(data.get("ok")), "text": data.get("text", "")}
+    answer = {"type": "notice", "ok": bool(data.get("ok")), "text": data.get("text", "")}
+    if data.get("catchup") is not None:
+        answer["catchup"] = data["catchup"]  # the "catchup" command's payload
+    return answer
+
+
+def typed_question(text: str) -> str:
+    """ "@coordinator who does the slides?" -> "who does the slides?"; "" when it is not a question to the coordinator."""
+    if "?" not in text or WEB_MENTION.search(text) is None:
+        return ""
+    return " ".join(WEB_MENTION.sub(" ", text).split()).lstrip(",: ")[:MAX_QUESTION_CHARS]
 
 
 def _clean(text: str, limit: int) -> str:

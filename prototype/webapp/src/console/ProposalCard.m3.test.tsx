@@ -26,7 +26,7 @@ const decision: Proposal = {
     options: [{ label: "Think-aloud", argument: "Shows why users get stuck." }, { label: "SUS", argument: "Fast." }],
   },
 };
-const names = (id: number) => ({ 2: "Bruno" })[id] ?? "?";
+const names = (id: number | string) => ({ 2: "Bruno" })[id] ?? "?";
 
 test("a delegation card never names an owner: I'll take it, Reject, Why?, Helpful, Not now", () => {
   render(<ProposalCard proposal={delegation} agentName="Cadence" onAnswer={vi.fn()} memberName={names} />);

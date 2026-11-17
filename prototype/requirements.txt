@@ -14,3 +14,6 @@ pypdf>=4,<7
 python-docx>=1.1,<2
 python-pptx>=1.0,<2
 -e ../../MUCA-Server
+# The Slack channel (mulca_discord/slack/): Web API and Socket Mode, over aiohttp
+# (which discord.py already installs).
+slack_sdk>=3.27,<4

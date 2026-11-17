@@ -2,8 +2,12 @@ import { useCallback, useState } from "react";
 import { Console } from "./console/Console";
 import { savedToken } from "./lib/api";
 import { Landing } from "./landing/Landing";
+import { Preview } from "./preview/Preview";
 
-/** Two places only: the landing (film, entry) and the console of your space. */
+/**
+ * Two places, the landing (film, entry) and the console of your space, plus
+ * the preview screens under /preview (sample data, no space needed).
+ */
 export function App() {
   const [token, setToken] = useState<string | null>(() => savedToken());
 
@@ -18,5 +22,6 @@ export function App() {
     setToken(null);
   }, []);
 
+  if (location.pathname.startsWith("/preview")) return <Preview />;
   return token ? <Console token={token} onLeave={leave} /> : <Landing onEnter={enter} />;
 }

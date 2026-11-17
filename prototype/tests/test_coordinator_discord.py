@@ -138,7 +138,7 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     assert added_items == [CardButton] and CardButton.bridge is bridge
     (group,) = groups
     assert isinstance(group, CoordinatorGroup) and group.name == "coordinator"
-    assert sorted(c.name for c in group.commands) == ["checkin", "kickoff", "plan", "planning", "profile", "task", "why"]
+    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "kickoff", "link", "plan", "planning", "profile", "task", "unlink", "why"]
     CardButton.bridge = None
     SessionRegistry.on_coordinator_event = None
 

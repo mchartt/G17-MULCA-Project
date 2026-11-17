@@ -1,7 +1,8 @@
 // Screenshots for the visual review (not a test).
 import { chromium } from "@playwright/test";
+import { signUp } from "./account.mjs";
 const out = process.argv[2];
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await page.goto("http://127.0.0.1:8090/");
 await page.waitForTimeout(2500);
@@ -20,8 +21,7 @@ await page.evaluate(() => document.querySelector(".rule").scrollIntoView());
 await page.screenshot({ path: `${out}/rule.png` });
 await page.evaluate(() => document.querySelector("#enter").scrollIntoView());
 await page.screenshot({ path: `${out}/entry.png` });
-await page.getByLabel("I have read this and I agree").check();
-await page.locator("#c-name").fill("Ada");
+await signUp(page, "Ada");
 await page.locator("#c-project").fill("AUI group 17");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.waitForTimeout(1200);

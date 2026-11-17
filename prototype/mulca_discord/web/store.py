@@ -52,8 +52,9 @@ CREATE TABLE IF NOT EXISTS web_member (
 CREATE TABLE IF NOT EXISTS web_message (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     group_id INTEGER NOT NULL REFERENCES web_group(id) ON DELETE CASCADE,
-    member_id INTEGER,          -- NULL: written by the coordinator
-    channel TEXT NOT NULL,      -- 'web' (later also 'discord', 'slack')
+    member_id INTEGER,          -- NULL: written by the coordinator, or mirrored
+    channel TEXT NOT NULL,      -- 'web', or 'discord' / 'slack' for a mirrored message
+    author_name TEXT,           -- only for a mirrored message: who wrote it there
     text TEXT NOT NULL,
     created_at REAL NOT NULL
 );
@@ -83,13 +84,19 @@ class Message:
     channel: str
     text: str
     created_at: float
+    # A message mirrored from Discord or Slack: its author is not a web member.
+    author_name: str | None = None
 
     def to_json(self, names: dict[int, str]) -> dict:
+        if self.author_name is not None:
+            author = {"id": 0, "name": self.author_name}
+        elif self.member_id is None:
+            author = None  # the coordinator
+        else:
+            author = {"id": self.member_id, "name": names.get(self.member_id, "Former member")}
         return {
             "id": self.id,
-            "author": None
-            if self.member_id is None
-            else {"id": self.member_id, "name": names.get(self.member_id, "Former member")},
+            "author": author,
             "channel": self.channel,
             "text": self.text,
             "ts": self.created_at,
@@ -107,6 +114,9 @@ class WebStore:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         self._db.executescript(SCHEMA)
+        # Databases made before mirrored messages existed.
+        if "author_name" not in {row[1] for row in self._db.execute("PRAGMA table_info(web_message)")}:
+            self._db.execute("ALTER TABLE web_message ADD COLUMN author_name TEXT")
 
     def close(self) -> None:
         self._db.close()
@@ -155,11 +165,29 @@ class WebStore:
         return Member(member_id, group_id, display_name), token
 
     def member_by_token(self, token: str) -> Member | None:
+        hashed = hash_token(token)
         row = self._db.execute(
-            "SELECT id, group_id, display_name FROM web_member WHERE token_hash = ?",
-            (hash_token(token),),
+            "SELECT id, group_id, display_name FROM web_member WHERE token_hash = ?", (hashed,)
+        ).fetchone()
+        if row is None and self._has_table("web_access"):
+            # A token made for a logged-in person's other browser (accounts.py).
+            row = self._db.execute(
+                "SELECT m.id, m.group_id, m.display_name FROM web_access a "
+                "JOIN web_member m ON m.id = a.member_id WHERE a.token_hash = ?",
+                (hashed,),
+            ).fetchone()
+        return Member(row["id"], row["group_id"], row["display_name"]) if row else None
+
+    def member(self, member_id: int) -> Member | None:
+        row = self._db.execute(
+            "SELECT id, group_id, display_name FROM web_member WHERE id = ?", (member_id,)
         ).fetchone()
         return Member(row["id"], row["group_id"], row["display_name"]) if row else None
+
+    def _has_table(self, name: str) -> bool:
+        return self._db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+        ).fetchone() is not None
 
     def members(self, group_id: int) -> list[Member]:
         rows = self._db.execute(
@@ -170,30 +198,36 @@ class WebStore:
 
     # -- messages -------------------------------------------------------
 
-    def add_message(self, group_id: int, member_id: int | None, text: str, channel: str = "web") -> Message:
-        now = time.time()
+    def add_message(
+        self,
+        group_id: int,
+        member_id: int | None,
+        text: str,
+        channel: str = "web",
+        *,
+        author_name: str | None = None,
+        at: float | None = None,
+    ) -> Message:
+        now = at or time.time()
         with self._db:
             cur = self._db.execute(
-                "INSERT INTO web_message (group_id, member_id, channel, text, created_at) VALUES (?, ?, ?, ?, ?)",
-                (group_id, member_id, channel, text, now),
+                "INSERT INTO web_message (group_id, member_id, channel, text, created_at, author_name) VALUES (?, ?, ?, ?, ?, ?)",
+                (group_id, member_id, channel, text, now, author_name),
             )
-        return Message(cur.lastrowid, group_id, member_id, channel, text, now)
+        return Message(cur.lastrowid, group_id, member_id, channel, text, now, author_name)
 
     def update_message(self, message_id: int, text: str) -> Message:
         """A streamed agent reply grows: same row, longer text."""
         with self._db:
             self._db.execute("UPDATE web_message SET text = ? WHERE id = ?", (text, message_id))
         r = self._db.execute("SELECT * FROM web_message WHERE id = ?", (message_id,)).fetchone()
-        return Message(r["id"], r["group_id"], r["member_id"], r["channel"], r["text"], r["created_at"])
+        return _message(r)
 
     def history(self, group_id: int, limit: int = HISTORY_LIMIT) -> list[Message]:
         rows = self._db.execute(
             "SELECT * FROM web_message WHERE group_id = ? ORDER BY id DESC LIMIT ?", (group_id, limit)
         ).fetchall()
-        return [
-            Message(r["id"], r["group_id"], r["member_id"], r["channel"], r["text"], r["created_at"])
-            for r in reversed(rows)
-        ]
+        return [_message(r) for r in reversed(rows)]
 
     def delete_group(self, group_id: int) -> None:
         """Every web-side row of the group (members and messages cascade)."""
@@ -213,3 +247,7 @@ def _group(row) -> Group | None:
     if row is None:
         return None
     return Group(row["id"], row["name"], row["invite_code"], row["conversation_id"])
+
+
+def _message(r) -> Message:
+    return Message(r["id"], r["group_id"], r["member_id"], r["channel"], r["text"], r["created_at"], r["author_name"])

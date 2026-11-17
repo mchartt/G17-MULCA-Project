@@ -4,7 +4,7 @@ import type { Proposal } from "../lib/types";
 import { ProjectPanel } from "./ProjectPanel";
 import { ProposalCard } from "./ProposalCard";
 
-const names = (id: number) => ({ 1: "Ada", 2: "Bruno" })[id] ?? "?";
+const names = (id: number | string) => ({ 1: "Ada", 2: "Bruno" })[id] ?? "?";
 
 test("a plan card lists every task with the suggested owner and reason, confirmed with one click", async () => {
   const plan: Proposal = {

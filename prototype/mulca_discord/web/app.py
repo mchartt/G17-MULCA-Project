@@ -1,14 +1,18 @@
 """
 The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
 
-    POST /api/groups   {groupName, displayName}   -> {token, inviteCode}   create a space
-    POST /api/join     {inviteCode, displayName}  -> {token}               join with a code
+    POST /api/groups   {groupName, displayName?}  -> {token, inviteCode}   create a space
+    POST /api/join     {inviteCode, displayName?} -> {token}               join with a code
+                       With "Authorization: Bearer <account token>" the member is the
+                       logged-in person (name and profile from the account); without
+                       it displayName is required (a guest, as before accounts).
+    Accounts (register, log in, profile, my spaces): account_routes.py.
     GET  /api/session  Authorization: Bearer <t>  -> {group, me}           who am I
     GET  /api/health                              -> {ok: true}            is the adapter there
     POST /api/groups/delete {confirm: group name} + Bearer -> {deleted: true}  delete everything (rule 10)
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
-         -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why", args, requestId}
+         -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why"|"catchup", args, requestId}
          -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now"|"helpful", option?, requestId}
          <- hello, message, members, proposal, state, status, reply{requestId, answer}, deleted
 
@@ -29,6 +33,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
+from .account_routes import add_account_routes, bearer
 from .hub import WebHub
 
 logger = logging.getLogger(__name__)
@@ -38,12 +43,12 @@ AUTH_TIMEOUT_SECONDS = 10
 
 class CreateGroup(BaseModel):
     group_name: str = Field(alias="groupName", min_length=1, max_length=80)
-    display_name: str = Field(alias="displayName", min_length=1, max_length=40)
+    display_name: str = Field(default="", alias="displayName", max_length=40)
 
 
 class JoinGroup(BaseModel):
     invite_code: str = Field(alias="inviteCode", min_length=4, max_length=20)
-    display_name: str = Field(alias="displayName", min_length=1, max_length=40)
+    display_name: str = Field(default="", alias="displayName", max_length=40)
 
 
 class DeleteGroup(BaseModel):
@@ -58,7 +63,7 @@ class ChatFrame(BaseModel):
 
 class CommandFrame(BaseModel):
     type: Literal["command"]
-    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup"]
     args: dict = Field(default_factory=dict)
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
@@ -82,23 +87,32 @@ def create_web_app(
     if allowed_origins:
         # Only when the frontend is hosted elsewhere (e.g. the Vercel preview):
         # the listed origins may call the API. Tokens travel in headers, no cookies.
-        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
+        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type"])
 
     @app.get("/api/health")
     async def health() -> dict:
         """The frontend asks this before showing the forms (the static preview has no adapter)."""
         return {"ok": True}
 
+    add_account_routes(app, hub)
+
+    def who(authorization: str, display_name: str):
+        """The logged-in person, or None for a guest (who must give a name)."""
+        user = hub.accounts.user_by_token(bearer(authorization)) if authorization else None
+        if user is None and not display_name.strip():
+            raise HTTPException(422, "Log in, or write the name your group will see.")
+        return user
+
     @app.post("/api/groups")
-    async def create_group(body: CreateGroup) -> dict:
-        group, member, token = hub.create_group(body.group_name, body.display_name)
+    async def create_group(body: CreateGroup, authorization: str = Header(default="")) -> dict:
+        group, member, token = hub.create_group(body.group_name, body.display_name, who(authorization, body.display_name))
         return {"token": token, "inviteCode": group.invite_code, "memberId": member.id}
 
     @app.post("/api/join")
-    async def join_group(body: JoinGroup) -> dict:
-        joined = await hub.join_group(body.invite_code, body.display_name)
+    async def join_group(body: JoinGroup, authorization: str = Header(default="")) -> dict:
+        joined = await hub.join_group(body.invite_code, body.display_name, who(authorization, body.display_name))
         if joined is None:
-            raise HTTPException(404, "No space with this invite code.")
+            raise HTTPException(404, "No space uses this invite code. Check it with the person who shared it.")
         group, member, token = joined
         return {"token": token, "inviteCode": group.invite_code, "memberId": member.id}
 

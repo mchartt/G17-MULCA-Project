@@ -43,7 +43,7 @@ browser ── {command} / {click} ─────────> WebHub.command /
   (on the class, `coordinator/bridge.py`) is untouched (tested).
 - Clicks carry every M3 button: `confirm`, `reject`, `take`, `choose` (+ `option`),
   `not_now` (`ClickFrame` in `app.py`, `WebHub.click` in `hub.py`).
-- Commands carry every M4 command (`planning`, `checkin`, `task`, `why`). A frame
+- Commands carry every M4 command (`planning`, `checkin`, `task`, `why`, `ask`). A frame
   that does not validate still answers its `requestId` with a refusing notice,
   so no button waits forever (tested).
 - One lock per group (`WebHub._lock`) around "join the broadcast list + hello"
@@ -68,12 +68,37 @@ browser ── {command} / {click} ─────────> WebHub.command /
 - "@coordinator why ..." typed in the chat (`TYPED_WHY` in `hub.py`) is answered
   from the decision log and posted in the chat by Cadence; it is not sent to
   the lab's agent.
+- "@coordinator ...?" or "@Cadence ...?" typed in the chat (`typed_question` in
+  `hub.py`: a mention plus a question mark) is answered with the server's
+  command `ask`, only from the saved tasks, milestones and decisions, with the
+  source; when nothing saved answers it, Cadence says so. A mention without a
+  question mark still goes to the lab's agent.
 - Delete space: the member types the space's name; the hub closes the session,
   asks MUCA-Server to delete the conversation file, then deletes the web side
   and closes every socket of the group with code 4410. If the server part
   fails, nothing is deleted.
 
-## Not done here
+## Accounts, linked channels, catch-up (16/11)
 
-- Same conversation for a Discord channel and a web group: dropped by decision
-  (web and Discord stay separate groups, DECISIONS.md).
+- Accounts (`accounts.py`, `account_routes.py`): register, login, logout,
+  profile, delete. Passwords are scrypt hashes, tokens are stored hashed, a
+  login lasts 30 days, five wrong passwords lock the email for five minutes.
+  The account token says who you are; the space token is still one member of
+  one space. The profile is saved once and pushed to every space of the user.
+- Linked channels: a Discord or Slack channel joins this space with
+  `/coordinator link <invite code>`. Plan, decisions and cards are shared;
+  each channel keeps its own chat. A message written in another channel
+  arrives as `coordinator_mirror` and is shown in the chat with its channel.
+- Catch up: the `catchup` command returns the decisions and the other
+  channels' messages since the member's last catch-up, read from disk by
+  MUCA-Server with no model call.
+- Member ids above 2**53-1 (Discord, Slack) go to the browser as strings
+  (`browser_safe` in `hub.py`), with a `names` map to show who they are.
+
+## Not verified live
+
+- Everything above is tested offline against a real local MUCA-Server
+  (`tests/test_web_accounts.py`, `tests/test_cross_channel.py`). It was not
+  run on Render with Azure, the real Discord or the real Slack.
+- Linked channels reach each other only when they run against the same
+  MUCA-Server process (as `deploy/render/start.sh` does).

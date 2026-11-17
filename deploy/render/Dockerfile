@@ -36,14 +36,16 @@ RUN grep -v -- '-e ../../MUCA-Server' requirements.txt > /tmp/requirements.txt \
     && pip install -r /tmp/requirements.txt
 COPY prototype/mulca_discord ./mulca_discord
 # Fails the build now, not at the first request, if something is missing.
-RUN python -c "import muca_server.run_server, mulca_discord.web"
+RUN python -c "import muca_server.run_server, mulca_discord.web, mulca_discord.slack.__main__, slack_sdk.socket_mode.aiohttp"
 
 COPY --from=webapp /webapp/dist /app/webapp/dist
-COPY deploy/render/start.sh /app/start.sh
+COPY deploy/render/start.sh deploy/render/snapshot.py /app/
 RUN useradd --system --no-create-home cadence && mkdir -p /data && chown cadence /data /app
 
 # The free plan has no persistent disk: /data is emptied at every restart
-# or redeploy (spaces, memory, project state). Known limit, PROGRESS.md.
+# or redeploy (accounts, spaces, memory, project state). With
+# CADENCE_SNAPSHOT_URL set in Render, snapshot.py keeps a copy in Azure Blob
+# Storage and brings it back at the start; without it, the limit stays.
 ENV MUCA_DB_DIR=/data/muca \
     MUCA_SERVER_HOST=127.0.0.1 \
     MUCA_SERVER_PORT=8000 \

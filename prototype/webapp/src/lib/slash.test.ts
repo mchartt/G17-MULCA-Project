@@ -30,3 +30,9 @@ test("suggestions: commands after '/', the tag after '@'", () => {
   expect(suggest("mail me@x")).toEqual([]);
   expect(suggest("/kickoff text")).toEqual([]);
 });
+
+test("/planning keeps tasks written one per line; /ask needs a question", () => {
+  expect(parseSlash("/planning Server\nUI")).toEqual({ kind: "run", name: "planning", rest: "Server\nUI" });
+  expect(parseSlash("/ask when is the demo?")).toEqual({ kind: "run", name: "ask", rest: "when is the demo?" });
+  expect(parseSlash("/ask")).toMatchObject({ kind: "say" });
+});

@@ -119,13 +119,18 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       case "planning":
         if (!slash.rest) return setDialog("planning");
         setNotice("Cadence is planning the tasks…");
-        return setNotice(await planning(slash.rest.split(";").map((t) => t.trim()).filter(Boolean).join("\n")));
+        return setNotice(await planning(slash.rest.split(/[\n;]/).map((t) => t.trim()).filter(Boolean).join("\n")));
       case "checkin":
         return void checkin();
       case "catchup":
         return void catchUp();
       case "why":
         return setNotice(await why(slash.rest));
+      case "ask": {
+        // Answered from what is saved (plan, dates, decisions), with its source.
+        const answer = await ask({ type: "command", command: "ask", args: { question: slash.rest } });
+        return setNotice(answer.type === "notice" ? answer.text : "No answer.");
+      }
       case "plan":
         return setPanelOpen(true);
       case "profile":

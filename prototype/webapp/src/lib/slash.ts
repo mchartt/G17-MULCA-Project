@@ -1,7 +1,7 @@
 /**
  * Slash commands typed in the web chat, the same words as on Discord and Slack:
  *   /kickoff <assignment>   /planning <task>; <task>   /checkin   /catchup
- *   /task 2 done            /why <question>            /plan      /help
+ *   /task 2 done            /why <question>   /ask <question>   /plan   /help
  * "/coordinator kickoff ..." works too, so a habit from Discord carries over.
  *
  * A command is one row of COMMANDS (a command table): to add one, add a row
@@ -9,7 +9,7 @@
  * group as a message.
  */
 
-export type SlashName = "kickoff" | "planning" | "checkin" | "catchup" | "task" | "why" | "plan" | "profile" | "help";
+export type SlashName = "kickoff" | "planning" | "checkin" | "catchup" | "task" | "why" | "ask" | "plan" | "profile" | "help";
 
 export type SlashCommand = { name: SlashName; hint: string; about: string };
 
@@ -20,6 +20,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "catchup", hint: "/catchup", about: "What you missed in the other channels" },
   { name: "task", hint: "/task <number> <todo|doing|done|blocked>", about: "Update a task" },
   { name: "why", hint: "/why <question>", about: "Answer from the decision log" },
+  { name: "ask", hint: "/ask <question>", about: "Answer from the plan, the dates and the decisions" },
   { name: "plan", hint: "/plan", about: "Show the project plan" },
   { name: "profile", hint: "/profile", about: "Edit your profile" },
   { name: "help", hint: "/help", about: "List these commands" },
@@ -47,6 +48,7 @@ export function parseSlash(text: string): Slash | null {
   if (!command) return { kind: "say", text: `Unknown command "/${name}".\n${HELP}` };
   if (command.name === "help") return { kind: "say", text: HELP };
   if (command.name === "why" && !rest) return { kind: "say", text: "Ask a question: /why did we choose React?" };
+  if (command.name === "ask" && !rest) return { kind: "say", text: "Ask a question: /ask when is the demo?" };
   if (command.name === "task") {
     const [task = "", status = ""] = words;
     if (words.length !== 2 || !/^\d+$/.test(task) || !STATUSES.includes(status.toLowerCase())) {

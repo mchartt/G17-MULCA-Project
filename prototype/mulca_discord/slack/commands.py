@@ -9,6 +9,7 @@ command and the rest its argument:
     /coordinator checkin
     /coordinator task 2 done
     /coordinator why did we drop the notifications?
+    /coordinator ask who does the slides?
     /coordinator plan
     /coordinator profile HCI | figma, ux | 6
     /coordinator link AB12CD      /coordinator unlink      /coordinator catchup
@@ -32,6 +33,7 @@ HELP = (
     "• `/coordinator checkin`: compare the plan with reality\n"
     "• `/coordinator task <number> <todo|doing|done|blocked>`: update a task\n"
     "• `/coordinator why <question>`: answer from the decision log\n"
+    "• `/coordinator ask <question>`: answer from the saved plan, dates and decisions\n"
     "• `/coordinator plan`: show the project (only you see it)\n"
     "• `/coordinator profile <discipline> | <skills, comma separated> | <weekly hours>`\n"
     "• `/coordinator link <invite code>`: share the project with a web space\n"
@@ -71,6 +73,12 @@ def _why(rest: str) -> tuple[str, dict]:
     return "why", {"question": rest}
 
 
+def _ask(rest: str) -> tuple[str, dict]:
+    if not rest:
+        raise Usage("Ask a question: `/coordinator ask who does the slides?`.")
+    return "ask", {"question": rest}
+
+
 def _profile(rest: str) -> tuple[str, dict]:
     parts = [part.strip() for part in rest.split("|")]
     parts += [""] * (3 - len(parts))
@@ -91,6 +99,7 @@ PARSERS: dict[str, Callable[[str], tuple[str, dict]]] = {
     "planning": _planning,
     "task": _task,
     "why": _why,
+    "ask": _ask,
     "profile": _profile,
     "link": _link,
     "checkin": lambda rest: ("checkin", {}),

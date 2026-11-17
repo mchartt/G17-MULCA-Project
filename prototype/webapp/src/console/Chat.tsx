@@ -59,7 +59,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
         {space.timeline.length === 0 && (
           <div className="chat__empty">
             <p>This is where the group talks. Cadence reads along and steps in only when the group needs it.</p>
-            <p className="muted">Write @coordinator to ask it something directly, or / to see the commands.</p>
+            <p className="muted">Write @coordinator with a question to ask about the plan, the dates or the decisions. Type / to see the commands.</p>
           </div>
         )}
         {space.timeline.map((item) =>

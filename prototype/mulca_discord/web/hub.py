@@ -54,7 +54,12 @@ SERVER_NAME_MENTION = "@MULCA"
 # "@coordinator why ..." / "@coordinator perché ..." typed in the chat: answered
 # from the decision log (command "why"), not by the lab's agent, which cannot
 # read the log. Only routes a question: it never changes any state.
-TYPED_WHY = re.compile(r"^\s*@coordinator\b[\s,:]*(?P<question>(why|perch[eé]|perche)\b.*)$", re.IGNORECASE | re.DOTALL)
+TYPED_WHY = re.compile(r"^\s*@(coordinator|cadence)\b[\s,:]*(?P<question>(why|perch[eé]|perche)\b.*)$", re.IGNORECASE | re.DOTALL)
+# Spec 2.6, "@coordinator": a question to the coordinator is answered only
+# from the saved tasks, milestones and decisions, with the source (command
+# "ask"). A question is a message that mentions the coordinator and has a
+# question mark; any other mention still goes to the lab's agent, as above.
+MAX_QUESTION_CHARS = 500
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in the chat: no need to try again."
@@ -247,7 +252,12 @@ class WebHub:
 
         typed_why = TYPED_WHY.match(text)
         if typed_why:
-            await self._answer_typed_why(member, typed_why["question"].strip())
+            await self._answer_in_chat(member, "why", typed_why["question"].strip())
+            return
+
+        question = typed_question(text)
+        if question:
+            await self._answer_in_chat(member, "ask", question)
             return
 
         async def action(client) -> None:
@@ -265,9 +275,9 @@ class WebHub:
             logger.exception("MUCA-Server unreachable; message kept in the web chat only")
             await self.broadcast(member.group_id, {"type": "status", "coordinator": "unavailable"})
 
-    async def _answer_typed_why(self, member: Member, question: str) -> None:
-        """The answer from the decision log, posted in the chat for the whole group."""
-        answer = await self.command(member, "why", {"question": question})
+    async def _answer_in_chat(self, member: Member, command: str, question: str) -> None:
+        """The answer to "why" or "ask", posted in the chat for the whole group."""
+        answer = await self.command(member, command, {"question": question})
         channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
         await channel.send(answer.get("text") or UNAVAILABLE)
 
@@ -431,6 +441,13 @@ def _answer(data: dict) -> dict:
     if data.get("catchup") is not None:
         answer["catchup"] = data["catchup"]  # the "catchup" command's payload
     return answer
+
+
+def typed_question(text: str) -> str:
+    """ "@coordinator who does the slides?" -> "who does the slides?"; "" when it is not a question to the coordinator."""
+    if "?" not in text or WEB_MENTION.search(text) is None:
+        return ""
+    return " ".join(WEB_MENTION.sub(" ", text).split()).lstrip(",: ")[:MAX_QUESTION_CHARS]
 
 
 def _clean(text: str, limit: int) -> str:

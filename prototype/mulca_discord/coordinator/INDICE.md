@@ -50,6 +50,7 @@ member: clicks Confirm        ──> cards.py CardButton.callback
 | `checkin()` | M4: "on track" privately, or a check-in card in the channel. |
 | `task(task, status)` | M4: the task's number in `/coordinator plan` and its new status (todo, doing, done, blocked). |
 | `why(question)` | M4: the answer from the decision log with its source, privately. |
+| `ask(question)` | The answer from the saved tasks, milestones and decisions with its sources, privately; "nothing saved" when none answers. |
 | `plan()` | Shows the project state, only to you; tasks are numbered for `/coordinator task`. |
 | `state_embed(state)` | Draws the state: goal, milestones, members, tasks, decisions. |
 

@@ -19,7 +19,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "planning", hint: "/planning <task>; <task>; …", about: "Suggest who takes each task" },
   { name: "checkin", hint: "/checkin", about: "Compare the plan with reality" },
   { name: "catchup", hint: "/catchup", about: "What you missed in the other channels" },
-  { name: "task", hint: "/task <number> <todo|doing|done|blocked>", about: "Update a task" },
+  { name: "task", hint: "/task <number> <todo|doing|done|blocked>", about: "Update a task, or /task add <title>" },
   { name: "why", hint: "/why <question>", about: "Answer from the decision log" },
   { name: "ask", hint: "/ask <question>", about: "Answer from the plan, the dates and the decisions" },
   { name: "plan", hint: "/plan", about: "Show the project plan" },
@@ -35,6 +35,7 @@ const STATUSES = ["todo", "doing", "done", "blocked"];
 export type Slash =
   | { kind: "run"; name: SlashName; rest: string }
   | { kind: "task"; task: string; status: string }
+  | { kind: "addtask"; title: string }
   | { kind: "say"; text: string };
 
 export const HELP = COMMANDS.map((c) => `${c.hint}: ${c.about}`).join("\n");
@@ -54,10 +55,13 @@ export function parseSlash(text: string): Slash | null {
   if (command.name === "language" && !["en", "it", "auto"].includes(rest.toLowerCase())) {
     return { kind: "say", text: "Choose the language Cadence writes in: /language en, /language it, or /language auto (it follows the chat)." };
   }
+  if (command.name === "task" && words[0]?.toLowerCase() === "add" && words.length > 1) {
+    return { kind: "addtask", title: words.slice(1).join(" ") };
+  }
   if (command.name === "task") {
     const [task = "", status = ""] = words;
     if (words.length !== 2 || !/^\d+$/.test(task) || !STATUSES.includes(status.toLowerCase())) {
-      return { kind: "say", text: "Write the task's number in the plan and its new status: /task 2 done" };
+      return { kind: "say", text: "Write the task's number in the plan and its new status: /task 2 done. To add one: /task add Write the report" };
     }
     return { kind: "task", task, status: status.toLowerCase() };
   }

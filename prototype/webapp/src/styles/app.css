@@ -178,7 +178,7 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .members li { display: flex; align-items: center; gap: .6rem; }
 .side__foot { margin-top: auto; display: grid; gap: .4rem; justify-items: start; }
 .console__main { display: flex; flex-direction: column; min-height: 0; }
-.console__bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3.5rem; padding: .5rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--line-s); }
+.console__bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; min-height: 3.5rem; padding: .5rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--line-s); }
 .console__title { font-size: var(--t-md); }
 .console__tools { display: flex; gap: .5rem; flex-wrap: wrap; }
 .banner { font-size: var(--t-xs); margin-top: .3rem; color: var(--ink2); }
@@ -393,7 +393,7 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .banner--info { white-space: pre-line; }
 .hints { list-style: none; margin: 0 1.5rem .4rem; padding: .3rem; display: grid; gap: .1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-field); box-shadow: var(--shadow-float); max-height: 15rem; overflow-y: auto; }
 .hints button { width: 100%; display: flex; gap: .6rem; align-items: baseline; padding: .4rem .6rem; border: 0; border-radius: var(--r-sm); background: none; text-align: left; font: inherit; font-size: var(--t-xs); cursor: pointer; }
-.hints button:hover, .hints li:first-child button { background: var(--subtle); }
+.hints button:hover, .hints .hints__picked button { background: var(--subtle); }
 .hints code { color: var(--ag-fg); font-size: var(--t-xs); }
 .hints kbd { margin-left: auto; font-family: var(--mono); font-size: .6875rem; color: var(--ink3); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3rem; }
 /* The agent's name in a message: Iris, like everything that is the agent's. */
@@ -421,3 +421,84 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .team li > :nth-child(n+3) { grid-column: 2; justify-self: start; }
 .team__name { font-weight: 600; }
 .team__language { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line); display: flex; gap: .6rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+/* Review of 17 Nov: notices on their own row, long words never push a column wider. */
+.console__notices { flex-basis: 100%; display: grid; gap: .3rem; justify-items: start; min-width: 0; }
+.console__notices .banner { margin-top: 0; max-width: 100%; }
+.console__title { white-space: nowrap; }
+.console__tools { justify-content: flex-end; }
+.msg__text, .bubble, .panel__goal, .tasks__title, .decisions p, .timeline li, .card, .side__group, .members li, .team li, .banner { overflow-wrap: anywhere; min-width: 0; }
+.bubble { min-width: 0; max-width: 100%; }
+.panel-card, .panel__section { min-width: 0; }
+
+/* Up next: a done box, the task, then who and when on one wrapping line. */
+.tasks li { align-items: start; }
+.tasks__meta { display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: center; }
+.tasks__meta .tag, .agenda .tag { margin-left: 0; }
+.tag--warn { background: var(--wn-bg); color: var(--wn); border: 1px solid var(--wn-ln); }
+.dot--small { width: .5rem; height: .5rem; vertical-align: 1px; }
+.donebox { width: 1.15rem; height: 1.15rem; margin-top: .1rem; flex: none; display: inline-grid; place-items: center; border: 1.5px solid var(--line-x, var(--line)); border-radius: 6px; background: var(--surface); color: #fff; font-size: .65rem; cursor: pointer; padding: 0; }
+.donebox:hover { border-color: var(--act); }
+.donebox--on { background: var(--ok); border-color: var(--ok); }
+.donebox:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.donebox:disabled { cursor: default; opacity: .5; }
+.panel__links { display: inline-flex; gap: .9rem; flex-wrap: wrap; }
+.team__background { white-space: pre-line; }
+
+/* The plan's own pages (dialogs): planning rows, the task register, day by day, milestones. */
+.field-select, .rows input, .addrow input, .register input[type="date"] { font: inherit; font-size: var(--t-xs); min-height: 2rem; padding: 0 .55rem; border: 1px solid var(--line); border-radius: var(--r-field); background: var(--surface); color: var(--ink); min-width: 0; }
+.field-select:focus-visible, .rows input:focus, .addrow input:focus, .register input:focus { outline: none; border-color: var(--act); box-shadow: 0 0 0 3px rgba(31, 79, 216, .18); }
+.rows { list-style: none; margin: .4rem 0 .2rem; padding: 0; display: grid; gap: .45rem; }
+.rows li { display: grid; grid-template-columns: minmax(0, 1fr) 10.5rem 9rem auto; gap: .4rem; align-items: center; }
+.form .rows input { width: 100%; padding: 0 .55rem; }
+.addrow { display: grid; grid-template-columns: minmax(0, 1fr) 10.5rem 9rem auto; gap: .4rem; align-items: center; margin-top: .6rem; }
+.addrow:has(> :nth-child(3):last-child) { grid-template-columns: minmax(0, 1fr) 9rem auto; }
+.icon-btn { width: 2rem; height: 2rem; display: inline-grid; place-items: center; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink3); cursor: pointer; }
+.icon-btn:hover:not(:disabled) { background: var(--subtle); color: var(--er); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-btn:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.link-btn--danger { color: var(--er); }
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .9rem 0 .5rem; }
+.chip { font: inherit; font-size: var(--t-xs); font-weight: 500; height: 1.75rem; padding: 0 .7rem; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface); color: var(--ink2); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--act-s); border-color: var(--act); color: var(--act); }
+.chip:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.register { list-style: none; margin: 0; padding: 0; display: grid; max-height: min(24rem, 50vh); overflow-y: auto; border-top: 1px solid var(--line-s); }
+.register__row { display: grid; grid-template-columns: auto minmax(0, 1fr) 9.5rem 8.5rem 6rem 2rem; gap: .4rem; align-items: center; padding: .45rem 0; border-bottom: 1px solid var(--line-s); }
+.register__row:has(.register__flag) { grid-template-columns: auto minmax(0, 1fr) 9rem 2rem; }
+.register__row--done .register__title { color: var(--ink3); text-decoration: line-through; }
+.register__title { overflow-wrap: anywhere; }
+.register__flag { color: var(--act); width: 1.15rem; text-align: center; }
+.register__confirm { grid-column: span 1; display: inline-flex; gap: .5rem; white-space: nowrap; justify-self: end; }
+.register__empty { padding: 1rem 0; }
+.dialog:has(.register), .dialog:has(.rows), .dialog:has(.agenda) { width: min(52rem, 94vw); }
+.agenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; max-height: min(30rem, 60vh); overflow-y: auto; }
+.agenda__day { font-family: var(--mono); font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); font-weight: 600; margin-bottom: .35rem; }
+.agenda__day--late { color: var(--er); }
+.agenda ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; }
+.agenda__task { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .55rem; align-items: start; }
+.agenda__milestone { font-weight: 600; display: flex; gap: .5rem; align-items: center; }
+.agenda__milestone svg { color: var(--act); }
+@media (max-width: 640px) {
+  .rows li, .addrow, .addrow:has(> :nth-child(3):last-child) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .rows li > :first-child, .addrow > :first-child { grid-column: 1 / -1; }
+  .register__row, .register__row:has(.register__flag) { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .register__row > select, .register__row > input[type="date"] { grid-column: 2; }
+}
+
+/* Skills as tags; the assignment box stays a readable size; the upload row. */
+.tags { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; padding: .35rem .5rem; border: 1px solid var(--line); border-radius: var(--r-field); background: var(--surface); }
+.tags:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px rgba(31, 79, 216, .18); }
+.form .tags input { flex: 1; min-width: 8rem; width: auto; border: 0; padding: .2rem .25rem; box-shadow: none; }
+.form .tags input:focus { box-shadow: none; }
+.tags__tag { display: inline-flex; align-items: center; gap: .3rem; height: 1.6rem; padding: 0 .3rem 0 .6rem; border-radius: var(--r-pill); background: var(--act-s); color: var(--act); font-size: var(--t-xs); font-weight: 500; }
+.tags__tag button { border: 0; background: none; color: inherit; font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 .2rem; border-radius: var(--r-pill); }
+.tags__tag button:hover { background: var(--surface); }
+.kickoff__text { font-size: var(--t-xs); line-height: 1.35; max-height: 16rem; }
+.upload { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; }
+.upload label.btn { margin-top: 0; color: var(--ink); cursor: pointer; }
+.upload:focus-within label.btn { outline: var(--focus); outline-offset: 2px; }
+
+/* Sidebar: the channel instructions are folded away until someone wants them. */
+.side__more summary { font-size: var(--t-xs); color: var(--ink2); font-weight: 500; cursor: pointer; }
+.side__more[open] summary { margin-bottom: .5rem; }
+.side__more summary:focus-visible { outline: var(--focus); outline-offset: 2px; }

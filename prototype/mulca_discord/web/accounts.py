@@ -11,7 +11,8 @@ Before this file a member was only "a name and a token in one browser". Now:
                 the same space from a second browser
 
 What is kept is only what the project rules allow: email (to log in), display
-name, discipline, skills, weekly hours. No scores, no activity statistics.
+name, discipline, skills, weekly hours, and a few lines of background the
+person writes themselves. No scores, no activity statistics.
 
 Passwords are never stored: only a salted scrypt hash (hashlib, standard
 library). Tokens are stored hashed too (store.hash_token), so a leaked
@@ -75,6 +76,7 @@ class User:
     discipline: str = ""
     skills: list[str] = field(default_factory=list)
     weekly_hours: int | None = None
+    background: str = ""
 
     def to_json(self) -> dict:
         return {
@@ -84,6 +86,7 @@ class User:
             "discipline": self.discipline,
             "skills": self.skills,
             "weeklyHours": self.weekly_hours,
+            "background": self.background,
         }
 
     def profile_args(self) -> dict:
@@ -93,6 +96,7 @@ class User:
             "discipline": self.discipline,
             "skills": self.skills,
             "weekly_hours": self.weekly_hours,
+            "background": self.background,
         }
 
 
@@ -120,6 +124,9 @@ class Accounts:
         columns = {row[1] for row in self._db.execute("PRAGMA table_info(web_member)")}
         if "user_id" not in columns:
             self._db.execute("ALTER TABLE web_member ADD COLUMN user_id INTEGER REFERENCES web_user(id) ON DELETE SET NULL")
+        # Older databases: people had no background text.
+        if "background" not in {row[1] for row in self._db.execute("PRAGMA table_info(web_user)")}:
+            self._db.execute("ALTER TABLE web_user ADD COLUMN background TEXT NOT NULL DEFAULT ''")
         # email -> (wrong passwords in a row, time of the last one); memory only.
         self._failures: dict[str, tuple[int, float]] = {}
 
@@ -185,7 +192,7 @@ class Accounts:
         r = self._db.execute("SELECT * FROM web_user WHERE id = ?", (user_id,)).fetchone()
         if r is None:
             return None
-        return User(r["id"], r["email"], r["display_name"], r["discipline"], json.loads(r["skills_json"]), r["weekly_hours"])
+        return User(r["id"], r["email"], r["display_name"], r["discipline"], json.loads(r["skills_json"]), r["weekly_hours"], r["background"])
 
     def update_profile(
         self,
@@ -195,6 +202,7 @@ class Accounts:
         discipline: str = "",
         skills: list[str] | None = None,
         weekly_hours: int | None = None,
+        background: str = "",
     ) -> User:
         display_name = " ".join(display_name.split())[:40]
         if not display_name:
@@ -202,8 +210,8 @@ class Accounts:
         clean_skills = [s.strip()[:40] for s in (skills or []) if s.strip()][:20]
         with self._db:
             self._db.execute(
-                "UPDATE web_user SET display_name = ?, discipline = ?, skills_json = ?, weekly_hours = ? WHERE id = ?",
-                (display_name, discipline.strip()[:100], json.dumps(clean_skills), weekly_hours, user_id),
+                "UPDATE web_user SET display_name = ?, discipline = ?, skills_json = ?, weekly_hours = ?, background = ? WHERE id = ?",
+                (display_name, discipline.strip()[:100], json.dumps(clean_skills), weekly_hours, background.strip()[:600], user_id),
             )
             # The new name shows in every space of this person.
             self._db.execute("UPDATE web_member SET display_name = ? WHERE user_id = ?", (display_name, user_id))

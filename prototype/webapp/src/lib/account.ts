@@ -14,9 +14,11 @@ export type User = {
   discipline: string;
   skills: string[];
   weeklyHours: number | null;
+  /** A few lines the person writes about what they studied and did before. */
+  background?: string;
 };
 export type SpaceRef = { id: number; name: string; inviteCode: string };
-export type ProfileInput = Pick<User, "displayName" | "discipline" | "skills" | "weeklyHours">;
+export type ProfileInput = Pick<User, "displayName" | "discipline" | "skills" | "weeklyHours" | "background">;
 type Session = { accountToken: string; user: User };
 type SpaceAccess = { token: string; inviteCode: string; memberId: number };
 

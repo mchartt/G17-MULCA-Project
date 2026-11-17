@@ -18,7 +18,8 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
 
   // /planning: one card with owners and reasons; nothing in the plan before Confirm.
   await ada.getByRole("button", { name: "Plan tasks" }).click();
-  await ada.getByLabel("Tasks").fill("Server API\nUI screens");
+  await ada.getByLabel("Task 1", { exact: true }).fill("Server API");
+  await ada.getByLabel("Task 2", { exact: true }).fill("UI screens");
   await ada.getByRole("button", { name: "Suggest owners" }).click();
   const card = ada.locator(".card", { hasText: "Plan: who does what" });
   await expect(card).toContainText("Free hours this week.");
@@ -27,8 +28,11 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   await expect(ada.locator(".panel")).toContainText("Server API");
 
   // A member updates a status from the panel.
+  await ada.getByRole("button", { name: "All tasks" }).click();
   await ada.getByRole("combobox", { name: "Status of UI screens" }).selectOption("blocked");
   await expect(ada.getByRole("combobox", { name: "Status of UI screens" })).toHaveValue("blocked");
+  await ada.locator("dialog[open]").getByRole("button", { name: "Close" }).click();
+  await expect(ada.locator(".panel")).toContainText("blocked");
 
   // Check-in now finds the blocked task and offers options computed from it.
   await ada.getByRole("button", { name: "Check-in" }).click();

@@ -1,8 +1,10 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBullseye, faCalendarCheck, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced, faUserPen, faUsers } from "../lib/icons";
+import { faBullseye, faCalendarCheck, faCalendarDays, faFileLines, faFlag, faListCheck, faRotate, faScaleBalanced, faUserPen, faUsers } from "../lib/icons";
 import { useState, type FormEvent } from "react";
 import type { Person, ProjectState, MemberId, Names } from "../lib/types";
 import { formatDate } from "./ProposalCard";
+import { DoneBox } from "./PlanDialogs";
+import { nextMilestones, todayIso, upNext, type TaskEdit } from "./plan";
 import { dotFor, nameOf as spaceNameOf } from "./space";
 
 type Props = {
@@ -11,8 +13,10 @@ type Props = {
   names?: Names;
   onKickoff: () => void;
   onRefresh: () => void;
-  /** M4: a member updates a task's status (their own action, no card). */
-  onTaskStatus?: (taskId: string, status: string) => void;
+  /** A member changes a task by hand: done or not, its owner (their own action, no card). */
+  onTask?: (taskId: string, edit: TaskEdit) => void;
+  /** Open one of the plan's own pages: every task, the plan day by day, the milestones. */
+  onOpen?: (page: "tasks" | "agenda" | "milestones") => void;
   /** M4: "why did we decide X?"; resolves to the answer with its source. */
   onWhy?: (question: string) => Promise<string>;
   /** M5: create a private calendar feed link (milestones and task dates). */
@@ -26,12 +30,24 @@ type Props = {
   onCharter?: (goal: string, deliverables: string[]) => Promise<string | null>;
 };
 
-const STATUSES = ["todo", "doing", "done", "blocked"];
+// The panel is the quick view next to the chat: what comes next, not the archive.
+const TASKS_SHOWN = 5;
+const MILESTONES_SHOWN = 3;
+const DECISIONS_SHOWN = 2;
+const TEAM_SHOWN = 4;
 
 /** The plan as the group agreed it: always visible next to the chat (UC9). */
-export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh, onTaskStatus, onWhy, onCalendar, me = null, onProfile, onLanguage, onCharter }: Props) {
+export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh, onTask, onOpen, onWhy, onCalendar, me = null, onProfile, onLanguage, onCharter }: Props) {
   const charter = state?.charter;
   const [editing, setEditing] = useState(false);
+  const [allDecisions, setAllDecisions] = useState(false);
+  const tasks = state?.tasks ?? [];
+  const next = upNext(tasks, TASKS_SHOWN);
+  const done = tasks.length - next.open;
+  const milestones = state?.milestones ?? [];
+  const ahead = nextMilestones(milestones, todayIso(), MILESTONES_SHOWN);
+  const decisions = state?.decisions ?? [];
+  const shownDecisions = allDecisions ? decisions : decisions.slice(-DECISIONS_SHOWN);
   const nameOf = (id?: MemberId | null) => spaceNameOf(id, { members, names });
 
   return (
@@ -71,58 +87,74 @@ export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh,
           )}
         </section>
       )}
-      <Team state={state} members={members} me={me} onProfile={onProfile} onLanguage={onLanguage} />
+      <section className="panel__section panel-card">
+        <h3><FontAwesomeIcon icon={faListCheck} /> Up next</h3>
+        {next.shown.length ? (
+          <ul className="tasks">
+            {next.shown.map((t) => {
+              const mine = me !== null && String(t.owner_id) === String(me);
+              return (
+                <li key={t.task_id ?? t.title}>
+                  {onTask ? <DoneBox task={t} onTask={onTask} /> : <span className="dot" style={{ background: t.owner_id ? dotFor(t.owner_id, members) : "var(--line)" }} aria-hidden="true" />}
+                  <span className="tasks__title">{t.title}</span>
+                  <span className="tasks__meta">
+                    {t.owner_id ? (
+                      <span className="muted small"><span className="dot dot--small" style={{ background: dotFor(t.owner_id, members) }} aria-hidden="true" /> {mine ? "You" : nameOf(t.owner_id) ?? "member"}</span>
+                    ) : (
+                      <span className="tag tag--warn">No owner</span>
+                    )}
+                    {t.due_date && <span className="muted small">{formatDate(t.due_date)}</span>}
+                    {t.status !== "todo" && <span className="tag">{t.status}</span>}
+                    {!t.owner_id && onTask && t.task_id && me !== null && (
+                      <button className="link-btn" onClick={() => onTask(t.task_id!, { owner: me })}>I'll take it</button>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="muted">{tasks.length ? "Every task is done." : "No tasks yet. Plan the work together, or add a task by hand."}</p>
+        )}
+        <p className="panel__foot muted small">
+          <span>{next.open > next.shown.length ? `${next.open - next.shown.length} more open` : `${next.open} open`}{done ? ` · ${done} done` : ""}</span>
+          {onOpen && (
+            <span className="panel__links">
+              <button className="link-btn" onClick={() => onOpen("agenda")}><FontAwesomeIcon icon={faCalendarDays} /> Day by day</button>
+              <button className="link-btn" onClick={() => onOpen("tasks")}>All tasks</button>
+            </span>
+          )}
+        </p>
+      </section>
+
       <section className="panel__section panel-card">
         <h3><FontAwesomeIcon icon={faFlag} /> Milestones</h3>
-        {state?.milestones?.length ? (
+        {ahead.length ? (
           <ol className="timeline">
-            {state.milestones.map((m) => (
-              <li key={m.title}>
+            {ahead.map((m) => (
+              <li key={m.milestone_id ?? m.title}>
                 <span className="timeline__date">{m.due_date ? formatDate(m.due_date) : "no date"}</span>
                 <span>{m.title}</span>
               </li>
             ))}
           </ol>
         ) : (
-          <p className="muted">No milestones yet.</p>
+          <p className="muted">{milestones.length ? "No milestone ahead." : "No milestones yet."}</p>
         )}
+        <p className="panel__foot muted small">
+          <span>{milestones.length > ahead.length ? `${milestones.length} in all` : ""}</span>
+          {onOpen && <button className="link-btn" onClick={() => onOpen("milestones")}>{milestones.length ? "Edit milestones" : "Add a milestone"}</button>}
+        </p>
         {onCalendar && <CalendarLink onCalendar={onCalendar} />}
       </section>
 
-      <section className="panel__section panel-card">
-        <h3><FontAwesomeIcon icon={faListCheck} /> Tasks</h3>
-        {state?.tasks?.length ? (
-          <ul className="tasks">
-            {state.tasks.map((t) => (
-              <li key={t.title}>
-                <span className="dot" style={{ background: t.owner_id ? dotFor(t.owner_id, members) : "var(--line)" }} aria-hidden="true" />
-                <span className="tasks__title">{t.title}</span>
-                <span className="muted small">{t.owner_id ? nameOf(t.owner_id) ?? "member" : "No owner"}</span>
-                {onTaskStatus && t.task_id ? (
-                  <select
-                    className="tasks__status"
-                    aria-label={`Status of ${t.title}`}
-                    value={t.status}
-                    onChange={(e) => onTaskStatus(t.task_id!, e.target.value)}
-                  >
-                    {STATUSES.map((v) => <option key={v} value={v}>{v}</option>)}
-                  </select>
-                ) : (
-                  <span className="tag">{t.status}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">No tasks yet. They arrive when a member takes a card or the group plans together.</p>
-        )}
-      </section>
+      <Team state={state} members={members} me={me} onProfile={onProfile} onLanguage={onLanguage} />
 
       <section className="panel__section panel-card">
         <h3><FontAwesomeIcon icon={faScaleBalanced} /> Decisions</h3>
-        {state?.decisions?.length ? (
+        {decisions.length ? (
           <ul className="decisions">
-            {state.decisions.map((d) => (
+            {shownDecisions.map((d) => (
               <li key={d.question}>
                 <p>{d.question}</p>
                 <p className="decisions__choice">{d.choice}</p>
@@ -133,7 +165,10 @@ export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh,
         ) : (
           <p className="muted">No decisions recorded yet.</p>
         )}
-        {onWhy && !!state?.decisions?.length && <AskWhy onWhy={onWhy} />}
+        {decisions.length > DECISIONS_SHOWN && (
+          <button className="link-btn" onClick={() => setAllDecisions(!allDecisions)}>{allDecisions ? "Show the latest only" : `Show all ${decisions.length}`}</button>
+        )}
+        {onWhy && !!decisions.length && <AskWhy onWhy={onWhy} />}
       </section>
     </aside>
   );
@@ -192,13 +227,17 @@ function Team({ state, members, me, onProfile, onLanguage }: Pick<Props, "state"
     ...members.map((m) => ({ id: m.id as MemberId, name: m.name, profile: profiles.find((p) => String(p.member_id) === String(m.id)) })),
     ...profiles.filter((p) => !members.some((m) => String(m.id) === String(p.member_id))).map((p) => ({ id: p.member_id ?? p.display_name, name: p.display_name, profile: p })),
   ];
+  const [all, setAll] = useState(false);
   if (rows.length === 0) return null;
+  // The viewer first, so "Edit my profile" is never hidden behind "Show all".
+  const ordered = [...rows].sort((a, b) => Number(String(b.id) === String(me)) - Number(String(a.id) === String(me)));
+  const shown = all ? ordered : ordered.slice(0, TEAM_SHOWN);
 
   return (
     <section className="panel__section panel-card">
       <h3><FontAwesomeIcon icon={faUsers} /> Team</h3>
       <ul className="team">
-        {rows.map((row) => {
+        {shown.map((row) => {
           const p = row.profile;
           const mine = me !== null && String(row.id) === String(me);
           const facts = [p?.discipline?.trim(), p?.skills?.length ? p.skills.join(", ") : "", typeof p?.weekly_hours === "number" ? `${p.weekly_hours} h/week` : ""].filter(Boolean);
@@ -207,6 +246,7 @@ function Team({ state, members, me, onProfile, onLanguage }: Pick<Props, "state"
               <span className="dot" style={{ background: dotFor(row.id, members) }} aria-hidden="true" />
               <span className="team__name">{row.name}{mine && <span className="tag">You</span>}</span>
               <span className="muted small">{facts.length ? facts.join(" · ") : "No profile yet"}</span>
+              {p?.background?.trim() && <span className="muted small team__background">{p.background}</span>}
               {mine && onProfile && (
                 <button className="link-btn" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> {facts.length ? "Edit my profile" : "Fill in my profile"}</button>
               )}
@@ -214,6 +254,9 @@ function Team({ state, members, me, onProfile, onLanguage }: Pick<Props, "state"
           );
         })}
       </ul>
+      {rows.length > TEAM_SHOWN && (
+        <button className="link-btn" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show all ${rows.length} members`}</button>
+      )}
       {onLanguage && (
         <div className="team__language">
           <label htmlFor="team-language" className="small">Cadence writes in</label>

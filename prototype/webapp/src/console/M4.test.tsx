@@ -44,17 +44,17 @@ test("a blocker card is proactive: Mark as blocked, Why?, Helpful, Not now", () 
 });
 
 test("the panel lets a member change a task's status and ask why a decision was taken", async () => {
-  const onTaskStatus = vi.fn();
+  const onTask = vi.fn();
   const onWhy = vi.fn().mockResolvedValue("You chose think-aloud.\nSource: “Which test?” → Think-aloud (decided by Bruno on 20 Nov).");
   render(
     <ProjectPanel
       state={{ tasks: [{ task_id: "a", title: "Server", status: "todo", owner_id: 1 }], decisions: [{ question: "Which test?", choice: "Think-aloud" }] }}
       members={[{ id: 1, name: "Ada" }]}
-      onKickoff={vi.fn()} onRefresh={vi.fn()} onTaskStatus={onTaskStatus} onWhy={onWhy}
+      onKickoff={vi.fn()} onRefresh={vi.fn()} onTask={onTask} onWhy={onWhy}
     />,
   );
-  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Status of Server" }), "done");
-  expect(onTaskStatus).toHaveBeenCalledWith("a", "done");
+  await userEvent.click(screen.getByRole("checkbox", { name: "Server: done" }));
+  expect(onTask).toHaveBeenCalledWith("a", { status: "done" });
   await userEvent.type(screen.getByLabelText("Ask why the group decided something"), "Why think-aloud?");
   await userEvent.click(screen.getByRole("button", { name: "Ask" }));
   expect(onWhy).toHaveBeenCalledWith("Why think-aloud?");

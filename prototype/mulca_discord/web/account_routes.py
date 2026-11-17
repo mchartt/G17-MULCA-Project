@@ -42,6 +42,7 @@ class Profile(BaseModel):
     discipline: str = Field(default="", max_length=100)
     skills: list[str] = Field(default_factory=list, max_length=20)
     weekly_hours: int | None = Field(default=None, alias="weeklyHours", ge=0, le=80)
+    background: str = Field(default="", max_length=600)
 
 
 class DeleteAccount(BaseModel):
@@ -104,6 +105,7 @@ def add_account_routes(app: FastAPI, hub: WebHub) -> None:
                 discipline=body.discipline,
                 skills=body.skills,
                 weekly_hours=body.weekly_hours,
+                background=body.background,
             )
         except AccountError as error:
             raise HTTPException(400, str(error)) from None

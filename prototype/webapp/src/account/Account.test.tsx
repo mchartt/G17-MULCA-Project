@@ -111,7 +111,7 @@ test("the profile is saved once in the account", async () => {
   await userEvent.type(screen.getByLabelText(/Hours per week/), "6");
   await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
   expect(await screen.findByRole("status")).toHaveTextContent("Profile saved");
-  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ displayName: "Ada", discipline: "HCI", skills: ["figma", "ux research"], weeklyHours: 6 });
+  expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ displayName: "Ada", discipline: "HCI", skills: ["figma", "ux research"], weeklyHours: 6, background: "" });
 });
 
 test("catch up lists what was decided and said in the other channel", () => {

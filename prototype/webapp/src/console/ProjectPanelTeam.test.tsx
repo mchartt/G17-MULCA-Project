@@ -16,7 +16,7 @@ test("the team lists every member with what they wrote, and says when a profile 
     />,
   );
   const team = screen.getByRole("heading", { name: "Team" }).closest("section")!;
-  const [ada, bruno] = within(team).getAllByRole("listitem");
+  const [bruno, ada] = within(team).getAllByRole("listitem"); // the viewer comes first
   expect(ada).toHaveTextContent("Design · Figma, Research · 6 h/week");
   expect(within(ada!).queryByRole("button")).toBeNull(); // nobody edits someone else's profile
   expect(bruno).toHaveTextContent("No profile yet");

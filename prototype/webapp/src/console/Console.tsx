@@ -3,17 +3,20 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
 import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faTableColumns } from "../lib/icons";
-import { calendarLink, deleteSpace, saveToken } from "../lib/api";
+import { ADAPTER_URL, calendarLink, deleteSpace, saveToken } from "../lib/api";
+import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp } from "../lib/types";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
-import { DeleteDialog, Dialog, KickoffDialog, PlanningDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
+import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
-import { emptySpace, reduce } from "./space";
+import { emptySpace, nameOf, reduce } from "./space";
 
 const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
   connecting: "Connecting to your space…",
@@ -25,7 +28,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
@@ -52,6 +55,17 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   useEffect(() => {
     if (status === "open") void ask({ type: "command", command: "state" });
   }, [status, ask]);
+
+  // Render's free plan stops a server that gets no request for 15 minutes,
+  // and an open chat sends none by itself. A small request every few minutes
+  // while someone has the space open keeps it awake.
+  useEffect(() => {
+    const ping = () => {
+      if (document.visibilityState === "visible") void fetch(`${ADAPTER_URL}/api/health`, { cache: "no-store" }).catch(() => undefined);
+    };
+    const timer = window.setInterval(ping, 4 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (status === "unauthorized") {
@@ -81,6 +95,48 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       return null;
     }
     return answer.type === "notice" ? answer.text : "Cadence could not read the tasks.";
+  };
+
+  /** The planning list: owners the group chose are kept, Cadence suggests the others. */
+  const planningList = async (items: NewTask[]) => {
+    const answer = await ask({
+      type: "command",
+      command: "planning",
+      args: { items: items.map((i) => ({ title: i.title, owner_id: i.owner, due_date: i.due })) },
+    });
+    if (answer.ok) {
+      setDialog(null);
+      return null;
+    }
+    return answer.type === "notice" ? answer.text : "Cadence could not read the tasks.";
+  };
+
+  /** A member changes a task by hand (done, owner, date, removal). A refusal is shown above the chat. */
+  const editTask = async (task: string, edit: TaskEdit) => {
+    const args: Record<string, unknown> = { task };
+    if (edit.status !== undefined) args.status = edit.status;
+    if (edit.owner !== undefined) args.owner = edit.owner ?? "";
+    if (edit.due !== undefined) args.due = edit.due ?? "";
+    if (edit.title !== undefined) args.title = edit.title;
+    if (edit.remove) args.remove = true;
+    const answer = await ask({ type: "command", command: "task", args });
+    if (!answer.ok && answer.type === "notice") setNotice(answer.text);
+  };
+
+  const addTask = async (task: NewTask) => {
+    const answer = await ask({ type: "command", command: "task", args: { add: task.title, owner: task.owner ?? "", due: task.due ?? "" } });
+    return answer.ok ? null : answer.type === "notice" ? answer.text : "The task was not added.";
+  };
+
+  const editMilestone = async (edit: MilestoneEdit) => {
+    const args: Record<string, unknown> = "add" in edit ? { add: edit.add, due: edit.due ?? "" } : { milestone: edit.milestone };
+    if (!("add" in edit)) {
+      if (edit.title !== undefined) args.title = edit.title;
+      if (edit.due !== undefined) args.due = edit.due ?? "";
+      if (edit.remove) args.remove = true;
+    }
+    const answer = await ask({ type: "command", command: "milestone", args });
+    return answer.ok ? null : answer.type === "notice" ? answer.text : "The milestone was not changed.";
   };
 
   const checkin = async () => {
@@ -128,6 +184,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     if (!slash) return;
     if (slash.kind === "say") return setNotice(slash.text);
     if (slash.kind === "task") return void taskStatus(slash.task, slash.status);
+    if (slash.kind === "addtask") return setNotice((await addTask({ title: slash.title, owner: null, due: null })) ?? `Task added: “${slash.title}”.`);
     switch (slash.name) {
       case "kickoff":
         if (!slash.rest) return setDialog("kickoff");
@@ -174,18 +231,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} />
       <main className="console__main">
         <header className="console__bar">
-          <div>
-            <h2 className="console__title">Group chat</h2>
-            {space.coordinator === "unavailable" && (
-              <p className="banner banner--warn" role="status">Cadence is not available right now. The chat still works.</p>
-            )}
-            {STATUS_TEXT[status] && <p className="banner" role="status">{STATUS_TEXT[status]}</p>}
-            {notice && (
-              <p className="banner banner--info" role="status">
-                {notice} <button className="link-btn" onClick={() => setNotice(null)}>Dismiss</button>
-              </p>
-            )}
-          </div>
+          <h2 className="console__title">Group chat</h2>
           <div className="console__tools">
             <button className="btn btn--soft btn--small" onClick={() => setDialog("kickoff")}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
             <button className="btn btn--soft btn--small" onClick={() => setDialog("planning")}><FontAwesomeIcon icon={faListOl} /> Plan tasks</button>
@@ -196,6 +242,19 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
               {panelOpen ? "Hide plan" : "Show plan"}
             </button>
           </div>
+          {(space.coordinator === "unavailable" || STATUS_TEXT[status] || notice) && (
+            <div className="console__notices">
+              {space.coordinator === "unavailable" && (
+                <p className="banner banner--warn" role="status">Cadence is not available right now. The chat still works.</p>
+              )}
+              {STATUS_TEXT[status] && <p className="banner" role="status">{STATUS_TEXT[status]}</p>}
+              {notice && (
+                <p className="banner banner--info" role="status">
+                  <span>{notice}</span> <button className="link-btn" onClick={() => setNotice(null)}>Dismiss</button>
+                </p>
+              )}
+            </div>
+          )}
         </header>
         <FirstSteps
           state={space.state}
@@ -223,13 +282,14 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             onCharter={editCharter}
             onKickoff={() => setDialog("kickoff")}
             onRefresh={() => void ask({ type: "command", command: "state" })}
-            onTaskStatus={(taskId, value) => void taskStatus(taskId, value)}
+            onTask={(taskId, edit) => void editTask(taskId, edit)}
+            onOpen={setDialog}
             onWhy={why}
             onCalendar={() => calendarLink(token)}
           />
         </div>
       )}
-      <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} />
+      <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} onRead={(file) => readDocument(token, file)} />
       {user ? (
         // Logged in: the profile is the account's, saved once for every space.
         <Dialog open={dialog === "profile"} title="Your profile" onClose={() => setDialog(null)}>
@@ -239,7 +299,27 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
       )}
       <CatchUpDialog open={dialog === "catchup"} summary={caught.summary} catchup={caught.catchup} inviteCode={space.group?.inviteCode ?? ""} onClose={() => setDialog(null)} />
-      <PlanningDialog open={dialog === "planning"} onClose={() => setDialog(null)} onSend={planning} />
+      <PlanningDialog open={dialog === "planning"} members={space.members} onClose={() => setDialog(null)} onSend={planningList} />
+      <TaskRegisterDialog
+        open={dialog === "tasks"}
+        tasks={space.state?.tasks ?? []}
+        members={space.members}
+        me={space.me?.id ?? null}
+        nameOf={(id) => nameOf(id, space)}
+        onTask={(taskId, edit) => void editTask(taskId, edit)}
+        onAdd={addTask}
+        onClose={() => setDialog(null)}
+      />
+      <AgendaDialog
+        open={dialog === "agenda"}
+        tasks={space.state?.tasks ?? []}
+        milestones={space.state?.milestones ?? []}
+        members={space.members}
+        nameOf={(id) => nameOf(id, space)}
+        onTask={(taskId, edit) => void editTask(taskId, edit)}
+        onClose={() => setDialog(null)}
+      />
+      <MilestonesDialog open={dialog === "milestones"} milestones={space.state?.milestones ?? []} onMilestone={editMilestone} onClose={() => setDialog(null)} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>
   );

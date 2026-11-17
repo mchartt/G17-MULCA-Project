@@ -26,15 +26,17 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Literal
+from urllib.parse import unquote
 
-from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
+from ..attachments import MAX_BYTES, MAX_CHARS, extract_text
 from .account_routes import add_account_routes, bearer
-from .hub import WebHub
+from .hub import SpaceFull, WebHub
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,7 @@ class ChatFrame(BaseModel):
 
 class CommandFrame(BaseModel):
     type: Literal["command"]
-    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone"]
     args: dict = Field(default_factory=dict)
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
@@ -87,7 +89,7 @@ def create_web_app(
     if allowed_origins:
         # Only when the frontend is hosted elsewhere (e.g. the Vercel preview):
         # the listed origins may call the API. Tokens travel in headers, no cookies.
-        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type"])
+        app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "X-File-Name"])
 
     @app.get("/api/health")
     async def health() -> dict:
@@ -110,11 +112,38 @@ def create_web_app(
 
     @app.post("/api/join")
     async def join_group(body: JoinGroup, authorization: str = Header(default="")) -> dict:
-        joined = await hub.join_group(body.invite_code, body.display_name, who(authorization, body.display_name))
+        try:
+            joined = await hub.join_group(body.invite_code, body.display_name, who(authorization, body.display_name))
+        except SpaceFull as full:
+            raise HTTPException(409, str(full)) from None
         if joined is None:
             raise HTTPException(404, "No space uses this invite code. Check it with the person who shared it.")
         group, member, token = joined
         return {"token": token, "inviteCode": group.invite_code, "memberId": member.id}
+
+    @app.post("/api/extract")
+    async def extract(request: Request, authorization: str = Header(default=""), x_file_name: str = Header(default="")) -> dict:
+        """
+        The text of a document a member uploads (PDF, Word, PowerPoint, plain
+        text), so the assignment does not have to be pasted by hand. The file
+        is read in memory and not kept: only its text goes back to the browser,
+        where the member can edit it before sending it to Cadence.
+        The body is the file itself; its name travels in X-File-Name.
+        """
+        if hub.store.member_by_token(authorization.removeprefix("Bearer ").strip()) is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_BYTES:
+            raise HTTPException(413, "The file is larger than 10 MB.")
+        data = await request.body()
+        if len(data) > MAX_BYTES:
+            raise HTTPException(413, "The file is larger than 10 MB.")
+        name = unquote(x_file_name)[:200] or "document"
+        text = await asyncio.to_thread(extract_text, name, data, request.headers.get("content-type"))
+        text = "\n".join(line.rstrip() for line in (text or "").splitlines()).strip()
+        if not text:
+            raise HTTPException(422, "No text could be read from this file. Use a PDF with real text (not a scan), Word, PowerPoint or a text file.")
+        return {"name": name, "text": text[:MAX_CHARS], "truncated": len(text) > MAX_CHARS}
 
     @app.get("/api/session")
     async def session(authorization: str = Header(default="")) -> dict:

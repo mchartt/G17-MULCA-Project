@@ -64,3 +64,9 @@ test("/language takes en, it or auto", () => {
   expect(parseSlash("/language")?.kind).toBe("say");
   expect(parseSlash("/language french")?.kind).toBe("say");
 });
+
+test("/task add makes a new task from the rest of the line", () => {
+  expect(parseSlash("/task add Write the report")).toEqual({ kind: "addtask", title: "Write the report" });
+  expect(parseSlash("/task add")?.kind).toBe("say");
+  expect(parseSlash("/task 2 done")).toEqual({ kind: "task", task: "2", status: "done" });
+});

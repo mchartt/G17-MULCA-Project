@@ -52,6 +52,8 @@ export type Proposal = {
   status: ProposalStatus;
   rationale?: string;
   expires_at?: number | null;
+  /** Who answered the card (applied, rejected, snoozed), so the outcome says who. */
+  resolved_by?: MemberId | null;
   names?: Names;
   payload: {
     goal?: string;
@@ -69,6 +71,13 @@ export type Proposal = {
     items?: { title: string; owner_id?: MemberId | null; reason?: string; due_date?: string | null }[];
     findings?: string[];
     helper_id?: MemberId | null;
+    // CS7 v2 (blocker) and K3 (revisit)
+    certainty?: "blocked" | "possible";
+    depends_on_title?: string;
+    ways_forward?: string[];
+    choice?: string;
+    reason?: string;
+    new_point?: string;
     [key: string]: unknown;
   };
 };
@@ -80,7 +89,7 @@ export type ProjectState = {
   members?: { member_id?: MemberId; display_name: string; discipline?: string; skills?: string[]; weekly_hours?: number | null; background?: string }[];
   /** The language the group chose for Cadence's texts: "en", "it", or "" (it follows the chat). */
   language?: string;
-  tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null }[];
+  tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null; description?: string; depends_on?: string[] }[];
   decisions?: { question: string; choice: string; reason?: string }[];
 };
 

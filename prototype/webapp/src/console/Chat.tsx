@@ -74,8 +74,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
       <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions">
         {space.timeline.length === 0 && (
           <div className="chat__empty">
-            <p>This is where the group talks. Cadence reads along and steps in only when the group needs it.</p>
-            <p className="muted">Write @coordinator with a question to ask about the plan, the dates or the decisions. Write @ and a teammate's name to address them. Type / to see the commands.</p>
+            <p>Talk normally. Cadence reads along and steps in only when it notices a coordination gap: no owner, a blocker, a decision going in circles. Nothing changes until one of you clicks.</p>
           </div>
         )}
         {space.timeline.map((item) =>
@@ -116,7 +115,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
           value={draft}
           onChange={(e) => { setDraft(e.target.value); setPicked(0); }}
           onKeyDown={onKey}
-          placeholder={disabled ? "Reconnecting…" : "Message the group, @ to address Cadence or a teammate, / for commands"}
+          placeholder={disabled ? "Reconnecting…" : "Message the group"}
           disabled={disabled}
         />
         <button className="btn btn--primary btn--round" type="submit" aria-label="Send" disabled={disabled || !draft.trim()}><FontAwesomeIcon icon={faPaperPlane} /></button>

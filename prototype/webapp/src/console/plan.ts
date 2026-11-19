@@ -5,8 +5,9 @@ import type { MemberId, Milestone, ProjectState } from "../lib/types";
 export type Task = NonNullable<ProjectState["tasks"]>[number];
 
 /** What a member changes on a task by hand. `owner: null` = nobody, `due: null` = no date. */
-export type TaskEdit = { status?: string; owner?: MemberId | null; due?: string | null; title?: string; remove?: true };
-export type NewTask = { title: string; owner: MemberId | null; due: string | null };
+export type TaskEdit = { status?: string; owner?: MemberId | null; due?: string | null; title?: string; description?: string; waitsOn?: string[]; remove?: true };
+/** `waitsOn` holds task ids; `description` and `waitsOn` are optional (the "New task" popup). */
+export type NewTask = { title: string; owner: MemberId | null; due: string | null; description?: string; waitsOn?: string[] };
 export type MilestoneEdit = { add: string; due: string | null } | { milestone: string; title?: string; due?: string | null; remove?: true };
 
 export const STATUSES = ["todo", "doing", "done", "blocked"];
@@ -69,4 +70,58 @@ export function dayLabel(iso: string): string {
 /** Today as YYYY-MM-DD in the member's own time zone. */
 export function todayIso(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+/** What needs a member's eyes today: open tasks already late, and open tasks due today. */
+export function todayView(tasks: Task[], today: string): { late: Task[]; today: Task[] } {
+  const dated = tasks.filter((t) => t.status !== "done" && t.due_date);
+  return {
+    late: dated.filter((t) => t.due_date! < today).sort(byDate),
+    today: dated.filter((t) => t.due_date === today),
+  };
+}
+
+/** The milestones as the group thinks of them: a date still ahead, a date already passed, no date yet. */
+export function milestoneGroups(milestones: Milestone[], today: string): { toComplete: Milestone[]; passed: Milestone[]; toSchedule: Milestone[] } {
+  return {
+    toComplete: milestones.filter((m) => m.due_date && m.due_date >= today).sort(byDate),
+    passed: milestones.filter((m) => m.due_date && m.due_date < today).sort(byDate),
+    toSchedule: milestones.filter((m) => !m.due_date),
+  };
+}
+
+export type Waiting = { task: Task; needs: { task: Task; done: boolean }[]; waiting: boolean };
+
+/**
+ * Who waits on whom: one row per task that waits on something. `waiting` is
+ * true while the task is open and at least one task it needs is not done.
+ * A task that waits on something no longer in the plan simply drops that link.
+ */
+export function waitingOn(tasks: Task[]): Waiting[] {
+  const byId = new Map(tasks.filter((t) => t.task_id).map((t) => [t.task_id!, t]));
+  return tasks
+    .map((task) => {
+      const needs = (task.depends_on ?? []).flatMap((id) => {
+        const found = byId.get(id);
+        return found ? [{ task: found, done: found.status === "done" }] : [];
+      });
+      return { task, needs, waiting: task.status !== "done" && needs.some((n) => !n.done) };
+    })
+    .filter((row) => row.needs.length > 0);
+}
+
+/** A few honest numbers about the plan as it stands (the Reflection page). No judgement of people. */
+export function planFacts(tasks: Task[], milestones: Milestone[], today: string) {
+  const open = tasks.filter((t) => t.status !== "done");
+  const groups = milestoneGroups(milestones, today);
+  return {
+    tasks: tasks.length,
+    done: tasks.length - open.length,
+    late: open.filter((t) => t.due_date && t.due_date < today).length,
+    noOwner: open.filter((t) => !t.owner_id).length,
+    noDate: open.filter((t) => !t.due_date).length,
+    milestones: milestones.length,
+    milestonesPassed: groups.passed.length,
+    milestonesToSchedule: groups.toSchedule.length,
+  };
 }

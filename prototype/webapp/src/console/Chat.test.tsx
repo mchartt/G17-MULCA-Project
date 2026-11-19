@@ -69,3 +69,10 @@ test("suggestions are chosen with the arrow keys; Enter completes a half-typed c
   await userEvent.type(box, "{Escape}");
   expect(onSay).not.toHaveBeenCalled();
 });
+
+test("the empty chat says what Cadence does in plain words, without teaching @ or /", () => {
+  open();
+  expect(screen.getByText(/Talk normally\. Cadence reads along and steps in only when it notices a coordination gap/)).toBeInTheDocument();
+  expect(screen.getByText(/Nothing changes until one of you clicks/)).toBeInTheDocument();
+  expect(screen.queryByText(/Type \/ to see the commands/)).toBeNull();
+});

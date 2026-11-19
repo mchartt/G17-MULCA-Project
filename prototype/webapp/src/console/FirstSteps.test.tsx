@@ -1,37 +1,32 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FirstSteps, firstSteps } from "./FirstSteps";
 
-const run = { onProfile: vi.fn(), onKickoff: vi.fn(), onPlanning: vi.fn() };
+const onProfile = vi.fn();
+const base = { me: 1, inviteCode: "K7Q2M9XA", onProfile };
 
-test("a new space shows the three steps and highlights the first", async () => {
-  render(<FirstSteps state={{}} me={1} {...run} />);
-  const steps = screen.getAllByRole("listitem");
-  expect(steps.map((s) => within(s).getByRole("button").textContent?.trim())).toEqual(["Add my profile", "Add the assignment", "Add the tasks"]);
-  expect(steps[0]).toHaveAttribute("aria-current", "step");
-  await userEvent.click(screen.getByRole("button", { name: "Add the assignment" }));
-  expect(run.onKickoff).toHaveBeenCalled();
+test("alone in a new space: one hint to bring the teammates in, the profile is optional", async () => {
+  render(<FirstSteps state={{}} memberCount={1} {...base} />);
+  expect(screen.getByRole("heading", { name: "Bring your teammates in" })).toBeInTheDocument();
+  expect(screen.getByText(/K7Q2M9XA/)).toBeInTheDocument();
+  // No planning steps any more: the assignment and the tasks are in "Ask Cadence".
+  expect(screen.queryByRole("button", { name: "Add the assignment" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add the tasks" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Add my profile" }));
+  expect(onProfile).toHaveBeenCalled();
 });
 
-test("a done step loses its button and the next one becomes the current step", () => {
-  render(<FirstSteps state={{ members: [{ member_id: 1, display_name: "Ada", skills: ["React"] }], charter: { goal: "G" } }} me={1} {...run} />);
-  const [profile, charter, plan] = screen.getAllByRole("listitem");
-  expect(within(profile!).queryByRole("button")).toBeNull();
-  expect(within(charter!).queryByRole("button")).toBeNull();
-  expect(plan).toHaveAttribute("aria-current", "step");
-  expect(within(plan!).getByRole("button", { name: "Add the tasks" })).toBeInTheDocument();
+test("with teammates and an empty profile, the hint only offers the profile; it can be hidden", async () => {
+  render(<FirstSteps state={{ members: [{ member_id: 1, display_name: "Ada" }] }} memberCount={3} {...base} />);
+  expect(screen.getByRole("heading", { name: "Help Cadence suggest owners" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Hide this hint" }));
+  expect(screen.queryByRole("heading")).toBeNull();
 });
 
-test("nothing is shown before the state arrives, or once the three steps are done", () => {
-  const { container, rerender } = render(<FirstSteps state={null} me={1} {...run} />);
+test("nothing is shown before the state arrives, or with teammates and a profile", () => {
+  const { container, rerender } = render(<FirstSteps state={null} memberCount={1} {...base} />);
   expect(container).toBeEmptyDOMElement();
-  rerender(
-    <FirstSteps
-      state={{ members: [{ member_id: 1, display_name: "Ada", discipline: "Design" }], charter: { goal: "G" }, tasks: [{ title: "T", status: "todo" }] }}
-      me={1}
-      {...run}
-    />,
-  );
+  rerender(<FirstSteps state={{ members: [{ member_id: 1, display_name: "Ada", discipline: "Design" }] }} memberCount={2} {...base} />);
   expect(container).toBeEmptyDOMElement();
 });
 

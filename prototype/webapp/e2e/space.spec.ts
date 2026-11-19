@@ -2,6 +2,7 @@
 // a second member joins with the code, kickoff card, confirm, plan updates for both.
 import { expect, test } from "@playwright/test";
 import { signUp } from "./account.mjs";
+import { askCadence, openPlan } from "./console.mjs";
 
 test("two members: create, join, kickoff card, confirm, plan", async ({ browser }) => {
   const ada = await (await browser.newContext()).newPage();
@@ -32,7 +33,9 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   await expect(bruno.locator(".msg--agent").first()).toContainText("Cadence");
 
   // Kickoff from the panel: the card appears for both.
-  await bruno.getByRole("button", { name: "Paste the assignment" }).first().click();
+  await openPlan(ada);
+  await openPlan(bruno);
+  await askCadence(bruno, "Paste the assignment");
   await bruno.getByRole("textbox", { name: "Assignment" }).fill("Deliver the prototype by 2 December.");
   await bruno.getByRole("button", { name: "Send to Cadence" }).click();
   const card = ada.locator(".card", { hasText: "Project charter" });
@@ -42,7 +45,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   // Nothing changed yet; the first click applies it everywhere.
   await expect(ada.locator(".panel")).toContainText("No goal yet");
   await card.getByRole("button", { name: "Confirm" }).click();
-  await expect(bruno.locator(".card", { hasText: "Project charter" }).getByRole("status")).toHaveText("Confirmed");
+  await expect(bruno.locator(".card", { hasText: "Project charter" }).getByRole("status")).toHaveText(/^Confirmed by /);
   await expect(bruno.locator(".panel__goal")).toHaveText("Ship the coordinator.");
   await expect(bruno.locator(".panel")).toContainText("Confirmed by Ada");
 });

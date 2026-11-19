@@ -8,27 +8,43 @@ import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp } from "../lib/types";
+import { AskMenu } from "./AskMenu";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
 import { DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
+import { todayIso, todayView } from "./plan";
+import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
 import { ProjectPanel } from "./ProjectPanel";
-import { Sidebar } from "./Sidebar";
+import { DependenciesPage, MilestonesPage, ReflectionPage } from "./Pages";
+import { Sidebar, type View } from "./Sidebar";
 import { emptySpace, nameOf, reduce } from "./space";
+
+const PAGE_TITLES: Record<View, string> = { chat: "Group chat", dependencies: "Dependencies", milestones: "Milestones", reflection: "Reflection" };
 
 const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
   connecting: "Connecting to your space…",
   closed: "Connection lost. Reconnecting…",
 };
 
-/** The three-column console: space on the left, chat in the middle, plan on the right. */
+/**
+ * The console, chat first: the space on the left, the group chat in the
+ * middle. The plan is memory, not the reason to open Cadence, so it starts
+ * closed and opens beside the chat on request ("Plan"). The on-demand
+ * actions live behind one "Ask Cadence" menu (tutor feedback, 18 Nov:
+ * "you can start without showing the plan"; "so much happening at once").
+ */
 export function Console({ token, onLeave }: { token: string; onLeave: () => void }) {
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
-  const [panelOpen, setPanelOpen] = useState(true);
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  // The page beside the chat: the chat is where a space opens.
+  const [view, setView] = useState<View>("chat");
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | null>(null);
+  // The task the "Link tasks" popup opens on (null: the member chooses).
+  const [linkTask, setLinkTask] = useState<string | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
@@ -118,14 +134,38 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     if (edit.owner !== undefined) args.owner = edit.owner ?? "";
     if (edit.due !== undefined) args.due = edit.due ?? "";
     if (edit.title !== undefined) args.title = edit.title;
+    if (edit.description !== undefined) args.description = edit.description;
+    if (edit.waitsOn !== undefined) args.depends_on = edit.waitsOn;
     if (edit.remove) args.remove = true;
     const answer = await ask({ type: "command", command: "task", args });
     if (!answer.ok && answer.type === "notice") setNotice(answer.text);
   };
 
+  /** The "Link tasks" popup: it closes only when the server accepted the list (a loop is refused there). */
+  const saveWaitsOn = async (task: string, waitsOn: string[]) => {
+    const answer = await ask({ type: "command", command: "task", args: { task, depends_on: waitsOn } });
+    if (!answer.ok) return answer.type === "notice" ? answer.text : "The links were not saved.";
+    setDialog(null);
+    if (answer.type === "notice") setNotice(answer.text);
+    return null;
+  };
+
   const addTask = async (task: NewTask) => {
-    const answer = await ask({ type: "command", command: "task", args: { add: task.title, owner: task.owner ?? "", due: task.due ?? "" } });
+    const args: Record<string, unknown> = { add: task.title, owner: task.owner ?? "", due: task.due ?? "" };
+    if (task.description) args.description = task.description;
+    if (task.waitsOn?.length) args.depends_on = task.waitsOn;
+    const answer = await ask({ type: "command", command: "task", args });
     return answer.ok ? null : answer.type === "notice" ? answer.text : "The task was not added.";
+  };
+
+  /** The "New task" popup: it closes only when the server accepted the task. */
+  const createTask = async (task: NewTask) => {
+    const error = await addTask(task);
+    if (!error) {
+      setDialog(null);
+      setNotice(`Task added: “${task.title}”.`);
+    }
+    return error;
   };
 
   const editMilestone = async (edit: MilestoneEdit) => {
@@ -137,6 +177,16 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     }
     const answer = await ask({ type: "command", command: "milestone", args });
     return answer.ok ? null : answer.type === "notice" ? answer.text : "The milestone was not changed.";
+  };
+
+  /** The "New milestone" popup: it closes only when the server accepted the milestone. */
+  const createMilestone = async (edit: MilestoneEdit) => {
+    const error = await editMilestone(edit);
+    if (!error && "add" in edit) {
+      setDialog(null);
+      setNotice(`Milestone added: “${edit.add}”.`);
+    }
+    return error;
   };
 
   const checkin = async () => {
@@ -228,18 +278,22 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} />
+      <Sidebar space={space} view={view} onView={setView} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
       <main className="console__main">
         <header className="console__bar">
-          <h2 className="console__title">Group chat</h2>
+          <h2 className="console__title">{PAGE_TITLES[view]}</h2>
           <div className="console__tools">
-            <button className="btn btn--soft btn--small" onClick={() => setDialog("kickoff")}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
-            <button className="btn btn--soft btn--small" onClick={() => setDialog("planning")}><FontAwesomeIcon icon={faListOl} /> Plan tasks</button>
-            <button className="btn btn--soft btn--small" onClick={() => void checkin()}><FontAwesomeIcon icon={faClipboardCheck} /> Check-in</button>
-            <button className="btn btn--soft btn--small" onClick={() => void catchUp()}><FontAwesomeIcon icon={faClockRotateLeft} /> Catch up</button>
+            {(space.state?.tasks?.length ?? 0) > 0 && <TodayChip tasks={space.state?.tasks ?? []} onOpen={() => setDialog("today")} />}
+            <AskMenu
+              items={[
+                { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: () => setDialog("kickoff") },
+                { key: "planning", label: "Plan tasks", about: "List the tasks; Cadence suggests who could take each.", icon: faListOl, run: () => setDialog("planning") },
+                { key: "checkin", label: "Check-in", about: "Compare the plan with the dates and see what slips.", icon: faClipboardCheck, run: () => void checkin() },
+                { key: "catchup", label: "Catch up", about: "What changed while you were away.", icon: faClockRotateLeft, run: () => void catchUp() },
+              ]}
+            />
             <button className="btn btn--soft btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
-              <FontAwesomeIcon icon={faTableColumns} />{" "}
-              {panelOpen ? "Hide plan" : "Show plan"}
+              <FontAwesomeIcon icon={faTableColumns} /> Plan
             </button>
           </div>
           {(space.coordinator === "unavailable" || STATUS_TEXT[status] || notice) && (
@@ -256,19 +310,26 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             </div>
           )}
         </header>
-        <FirstSteps
-          state={space.state}
-          me={space.me?.id ?? null}
-          onProfile={() => setDialog("profile")}
-          onKickoff={() => setDialog("kickoff")}
-          onPlanning={() => setDialog("planning")}
-        />
-        <Chat
-          space={space}
-          disabled={status !== "open"}
-          onCommand={(text) => void runSlash(text)} onSay={(text) => socket.current?.say(text)}
-          onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
-        />
+        {view === "chat" && (
+          <>
+            <FirstSteps
+              state={space.state}
+              me={space.me?.id ?? null}
+              memberCount={space.members.length}
+              inviteCode={space.group?.inviteCode ?? ""}
+              onProfile={() => setDialog("profile")}
+            />
+            <Chat
+              space={space}
+              disabled={status !== "open"}
+              onCommand={(text) => void runSlash(text)} onSay={(text) => socket.current?.say(text)}
+              onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
+            />
+          </>
+        )}
+        {view === "dependencies" && <DependenciesPage tasks={space.state?.tasks ?? []} onNew={() => setDialog("newtask")} onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }} />}
+        {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
+        {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} />}
       </main>
       {panelOpen && (
         <div id="plan" className="console__panel">
@@ -320,7 +381,23 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         onClose={() => setDialog(null)}
       />
       <MilestonesDialog open={dialog === "milestones"} milestones={space.state?.milestones ?? []} onMilestone={editMilestone} onClose={() => setDialog(null)} />
+      <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />
+      <WaitsOnDialog open={dialog === "link"} tasks={space.state?.tasks ?? []} taskId={linkTask} onClose={() => setDialog(null)} onSave={saveWaitsOn} />
+      <NewMilestoneDialog open={dialog === "newmilestone"} onClose={() => setDialog(null)} onCreate={createMilestone} />
+      <TodayDialog open={dialog === "today"} today={todayIso()} tasks={space.state?.tasks ?? []} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onClose={() => setDialog(null)} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>
+  );
+}
+
+/** One quiet line above the chat: how many tasks are due today or late. It only opens the popup. */
+function TodayChip({ tasks, onOpen }: { tasks: NonNullable<Parameters<typeof todayView>[0]>; onOpen: () => void }) {
+  const view = todayView(tasks, todayIso());
+  const label =
+    view.late.length + view.today.length === 0
+      ? "Today: nothing due"
+      : [view.today.length > 0 && `${view.today.length} due`, view.late.length > 0 && `${view.late.length} late`].filter(Boolean).join(", ").replace(/^/, "Today: ");
+  return (
+    <button className="chip chip--today" onClick={onOpen}>{label}</button>
   );
 }

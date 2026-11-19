@@ -60,6 +60,40 @@ def test_checkin_card_shows_findings_and_one_button_per_option():
 
 def test_blocker_card_is_proactive():
     embed = proposal_embed(BLOCKER)
-    assert embed.title == "Coordinator · Something is blocked"
+    assert embed.title == "Coordinator · Something is blocked · Dependency"
     assert {f.name: f.value for f in embed.fields}["Who could help"] == "<@9>"
     assert ids(card_view(BLOCKER)) == ["coord:confirm:e3", "coord:reject:e3", "coord:why:e3", "coord:helpful:e3", "coord:not_now:e3"]
+
+
+# CS7 v2 and K3 (MUCA-Server 19/11): the same content on Discord and Slack.
+POSSIBLE = {**BLOCKER, "proposal_id": "e4", "payload": {**BLOCKER["payload"], "certainty": "possible",
+            "depends_on_title": "Booking API", "ways_forward": ["Test with mock data", "A minimal API first"]}}
+REVISIT = {"proposal_id": "f1", "kind": "revisit", "status": "pending", "rationale": "r",
+           "payload": {"context": {"strategy_id": "cs3_reopened_decision", "topic": "Nav", "evidence": []},
+                       "decision_id": "d1", "question": "App navigation", "choice": "Tabs",
+                       "reason": "Five sections fit", "new_point": "",
+                       "options": [{"label": "Keep “Tabs”"}, {"label": "Reopen it"}]}}
+
+
+def test_a_possible_dependency_says_it_is_not_confirmed_and_lists_ways_forward():
+    embed = proposal_embed(POSSIBLE)
+    assert embed.title == "Coordinator · Possible dependency (not confirmed yet) · Dependency"
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["May wait on"] == "Booking API"
+    assert fields["Possible ways forward (ideas, nothing changes by itself)"] == "• Test with mock data\n• A minimal API first"
+
+
+def test_a_revisit_card_recalls_the_decision_and_has_keep_and_reopen_buttons():
+    embed = proposal_embed(REVISIT)
+    assert embed.title == "Coordinator · Already decided · Decision"
+    fields = {f.name: f.value for f in embed.fields}
+    assert (fields["The group chose"], fields["Because"]) == ("Tabs", "Five sections fit")
+    assert fields["What seems new"].startswith("Nothing new so far")
+    assert ids(card_view(REVISIT)) == ["coord:choose0:f1", "coord:choose1:f1", "coord:why:f1", "coord:helpful:f1", "coord:not_now:f1"]
+
+
+def test_slack_draws_the_revisit_options_too():
+    from mulca_discord.slack.cards import card_blocks
+
+    actions = [e["action_id"] for b in card_blocks(REVISIT) if b["type"] == "actions" for e in b["elements"]]
+    assert actions[:2] == ["coord:choose0:f1", "coord:choose1:f1"]

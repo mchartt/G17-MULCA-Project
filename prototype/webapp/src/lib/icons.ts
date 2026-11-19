@@ -9,6 +9,7 @@ export {
   faCalendarDays,
   faCalendarCheck,
   faCheck,
+  faChevronDown,
   faCircleCheck,
   faCircleQuestion,
   faClipboardCheck,
@@ -38,4 +39,7 @@ export {
   faUsers,
   faWifi,
   faXmark,
+  faPlus,
+  faDiagramProject,
+  faLightbulb,
 } from "@fortawesome/free-solid-svg-icons";

@@ -18,9 +18,11 @@ from ..coordinator.card_content import (
     ABOUT_THE_CARD,
     BUTTON_LABELS,
     KIND_TITLES,
+    OPTION_KINDS,
     STATUS_WORDS,
     actions_for,
     card_fields,
+    card_title,
     clip,
 )
 from .ids import who
@@ -36,7 +38,7 @@ def to_mrkdwn(text: str) -> str:
 
 def card_text(proposal: dict) -> str:
     """The one-line version of the card (notifications, screen readers)."""
-    return f"Coordinator · {KIND_TITLES.get(proposal.get('kind'), 'Proposal')}: {proposal.get('rationale') or ''}".strip()
+    return f"Coordinator · {card_title(proposal.get('kind'), proposal.get('payload', {}))}: {proposal.get('rationale') or ''}".strip()
 
 
 def card_blocks(proposal: dict) -> list[dict]:
@@ -46,7 +48,7 @@ def card_blocks(proposal: dict) -> list[dict]:
     payload = proposal.get("payload", {})
     names = proposal.get("names")
     blocks: list[dict] = [
-        _section(f"*Coordinator · {KIND_TITLES.get(kind, 'Proposal')}*\n_{proposal.get('rationale') or 'Proposal from the coordinator.'}_")
+        _section(f"*Coordinator · {card_title(kind, payload)}*\n_{proposal.get('rationale') or 'Proposal from the coordinator.'}_")
     ]
     for name, value in card_fields(kind, payload, lambda member: who(member, names)):
         blocks.append(_section(f"*{name}*\n{to_mrkdwn(value) or '—'}"))
@@ -67,7 +69,7 @@ def _status_line(proposal: dict, status: str) -> str:
 def _buttons(kind: str | None, payload: dict, proposal_id: str) -> list[dict]:
     """Answers on the first row; "about this card" (Why?, Helpful, Not now) on a second."""
     answers, about = [], []
-    if kind in ("decision", "checkin"):
+    if kind in OPTION_KINDS:
         for n, option in enumerate(payload.get("options", [])[:3]):
             answers.append(_button(f"choose{n}", proposal_id, clip(option.get("label") or f"Option {n + 1}", 70), primary=True))
     for action in actions_for(kind, payload):

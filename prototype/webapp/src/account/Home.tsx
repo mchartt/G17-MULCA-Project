@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { createMySpace, joinMySpace, openMySpace, type SpaceRef, type User } from "../lib/account";
 import { ApiError, saveToken } from "../lib/api";
 import { faArrowRight, faRightFromBracket, faUserPen } from "../lib/icons";
+import { codeInAddress } from "../lib/invite";
 import { ProfileForm } from "./ProfileForm";
 
 type Props = {
@@ -17,7 +18,8 @@ type Props = {
 /** A logged-in person's home: their spaces, a new space, an invite code, their profile. */
 export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Props) {
   const [project, setProject] = useState("");
-  const [code, setCode] = useState(() => new URLSearchParams(location.search).get("code") ?? "");
+  const [code, setCode] = useState(codeInAddress);
+  const invited = codeInAddress() !== "";
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ where: string; text: string } | null>(null);
   const [editing, setEditing] = useState(false);
@@ -40,6 +42,28 @@ export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Prop
   const create = (e: FormEvent) => { e.preventDefault(); void enter("create", () => createMySpace(project)); };
   const join = (e: FormEvent) => { e.preventDefault(); void enter("join", () => joinMySpace(code)); };
   const off = disabled || busy !== null;
+  const createForm = (
+    <form key="create" className="panel-card form" onSubmit={create}>
+      <h3>Start a new space</h3>
+      <label htmlFor="c-project">Project name</label>
+      <input id="c-project" value={project} onChange={(e) => setProject(e.target.value)} maxLength={80} required placeholder="AUI group project" />
+      {error?.where === "create" && <p className="form__error" role="alert">{error.text}</p>}
+      <button className="btn btn--primary" type="submit" disabled={off}>
+        {busy === "create" ? "Creating…" : "Create the space"} <FontAwesomeIcon icon={faArrowRight} />
+      </button>
+    </form>
+  );
+  const joinForm = (
+    <form key="join" className={`panel-card form${invited ? " form--invited" : ""}`} onSubmit={join}>
+      <h3>{invited ? "You are invited" : "Join with an invite code"}</h3>
+      <label htmlFor="j-code">Invite code</label>
+      <input id="j-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={20} required className="code-field" spellCheck={false} />
+      {error?.where === "join" && <p className="form__error" role="alert">{error.text}</p>}
+      <button className={`btn ${invited ? "btn--primary" : "btn--dark"}`} type="submit" disabled={off}>
+        {busy === "join" ? "Joining…" : "Join the space"} <FontAwesomeIcon icon={faArrowRight} />
+      </button>
+    </form>
+  );
 
   return (
     <div className="home">
@@ -75,26 +99,9 @@ export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Prop
         </div>
       )}
 
+      {/* Arriving from an invite link, joining comes first. */}
       <div className="entry__forms">
-        <form className="panel-card form" onSubmit={create}>
-          <h3>Start a new space</h3>
-          <label htmlFor="c-project">Project name</label>
-          <input id="c-project" value={project} onChange={(e) => setProject(e.target.value)} maxLength={80} required placeholder="AUI group project" />
-          {error?.where === "create" && <p className="form__error" role="alert">{error.text}</p>}
-          <button className="btn btn--primary" type="submit" disabled={off}>
-            {busy === "create" ? "Creating…" : "Create the space"} <FontAwesomeIcon icon={faArrowRight} />
-          </button>
-        </form>
-
-        <form className="panel-card form" onSubmit={join}>
-          <h3>Join with an invite code</h3>
-          <label htmlFor="j-code">Invite code</label>
-          <input id="j-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={20} required className="code-field" spellCheck={false} />
-          {error?.where === "join" && <p className="form__error" role="alert">{error.text}</p>}
-          <button className="btn btn--dark" type="submit" disabled={off}>
-            {busy === "join" ? "Joining…" : "Join the space"} <FontAwesomeIcon icon={faArrowRight} />
-          </button>
-        </form>
+        {invited ? <>{joinForm}{createForm}</> : <>{createForm}{joinForm}</>}
       </div>
     </div>
   );

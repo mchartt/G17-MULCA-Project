@@ -4,6 +4,7 @@ import { Nav } from "../landing/Nav";
 import { logout, me, type SpaceRef, type User } from "../lib/account";
 import { adapterOnline } from "../lib/api";
 import { faEye, faHandPointer, faLock, faShieldHalved, faWifi } from "../lib/icons";
+import { codeInAddress } from "../lib/invite";
 import { AuthForms } from "./AuthForms";
 import { Home } from "./Home";
 
@@ -41,6 +42,9 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
   // undefined: still asking the server who is logged in on this browser.
   const [account, setAccount] = useState<{ user: User; spaces: SpaceRef[] } | null | undefined>(undefined);
 
+  // An invite link (/login?code=...) brings a teammate here: the page says so.
+  const invited = codeInAddress() !== "";
+
   const refresh = useCallback(() => me().then(setAccount), []);
 
   useEffect(() => {
@@ -57,7 +61,8 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
     <div className="login-page">
       <Nav />
       <main id="enter" className="entry" aria-labelledby="entry-title">
-        <h1 id="entry-title">{account ? "Your spaces." : "Open your group's space."}</h1>
+        <h1 id="entry-title">{account ? "Your spaces." : invited ? "Join your group's space." : "Open your group's space."}</h1>
+        {invited && !account && <p className="entry__lead">You have an invite. Create an account or log in, and the code is already filled in.</p>}
 
         {online === false && (
           <div className="offline" role="status">

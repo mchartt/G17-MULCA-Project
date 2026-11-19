@@ -34,7 +34,8 @@ async function openWith(open: () => Promise<{ token: string }>, onEnter: (token:
 
 /**
  * Join a teammate's space with the invite code (filled in when you arrive from an invite link).
- * A card in the guided setup; one line at the foot of the home.
+ * A card in the guided setup; on the home, a compact field beside "New project",
+ * because joining and creating are the two ways to start.
  */
 export function JoinForm({ disabled, onEnter, title, inline = false }: { disabled: boolean; onEnter: (token: string) => void; title?: string; inline?: boolean }) {
   const [code, setCode] = useState(codeInAddress);
@@ -57,10 +58,12 @@ export function JoinForm({ disabled, onEnter, title, inline = false }: { disable
 
   if (inline) {
     return (
-      <form className={`joinline${invited ? " joinline--invited" : ""}`} onSubmit={join} aria-label="Join a project">
-        <label htmlFor="j-code">Invite code</label>
-        <div className="joinline__row">{field}{button}</div>
-        {error ? <p className="form__error" role="alert">{error}</p> : hint}
+      <form className={`joinbar${invited ? " joinbar--invited" : ""}`} onSubmit={join} aria-label="Join a project">
+        <label htmlFor="j-code" className="sr-only">Invite code</label>
+        <input id="j-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={20} required className="code-field" spellCheck={false} placeholder="Invite code" aria-describedby="j-code-hint" title="A teammate finds it in the room box of their space, at the bottom left." />
+        {button}
+        <p id="j-code-hint" className="sr-only">A teammate finds it in the room box of their space, at the bottom left.</p>
+        {error && <p className="form__error joinbar__error" role="alert">{error}</p>}
       </form>
     );
   }
@@ -118,40 +121,35 @@ function hue(name: string) {
   return HUES[h % HUES.length]!;
 }
 
-/** The profile in a few words, so you can see what Cadence knows about you before opening it. */
-function ProfileFacts({ user }: { user: User }) {
-  const skills = user.skills.slice(0, 4);
+/** The profile in a few words, so you see what Cadence knows about you; empty, an invitation to fill it. */
+function ProfileFacts({ user, onEdit }: { user: User; onEdit: () => void }) {
+  const skills = user.skills.slice(0, 3);
   const more = user.skills.length - skills.length;
   if (!user.discipline.trim() && user.skills.length === 0 && user.weeklyHours === null) {
-    return <p className="me__empty">Your profile is empty. Cadence uses it only to suggest who could take a task.</p>;
+    return (
+      <button className="me__empty btn btn--link btn--small" onClick={onEdit}>
+        Add what you study and your skills: Cadence uses them to suggest who could take a task.
+      </button>
+    );
   }
   return (
-    <dl className="me__facts">
-      {user.discipline.trim() && (
-        <div><dt>Studies</dt><dd>{user.discipline}</dd></div>
-      )}
-      {skills.length > 0 && (
-        <div>
-          <dt>Skills</dt>
-          <dd className="me__skills">
-            {skills.map((s) => <span key={s} className="me__skill">{s}</span>)}
-            {more > 0 && <span className="me__skill me__skill--more">+{more}</span>}
-          </dd>
-        </div>
-      )}
-      {user.weeklyHours !== null && (
-        <div><dt>Weekly hours</dt><dd>{user.weeklyHours}</dd></div>
-      )}
-    </dl>
+    <ul className="me__facts" aria-label="Your profile">
+      {user.discipline.trim() && <li className="me__fact me__fact--study">{user.discipline}</li>}
+      {skills.map((s) => <li key={s} className="me__fact">{s}</li>)}
+      {more > 0 && <li className="me__fact me__fact--more">+{more} skills</li>}
+      {user.weeklyHours !== null && <li className="me__fact me__fact--hours">{user.weeklyHours} h a week</li>}
+    </ul>
   );
 }
 
 /**
- * A logged-in person's home, sized to the window: who you are on the left,
- * your projects on the right, a page at a time (never a long scroll), and a
- * line to join with a code. A new project opens the setup desk.
+ * A logged-in person's home, sized to the window: a slim strip with who you
+ * are, then your projects across the whole width, a page at a time (never a
+ * long scroll). The two ways to start sit together beside the title: join
+ * with a code, or a new project (the setup desk).
  */
 export function Home({ user, spaces, disabled, onEnter, onNew, onUser, onLogout }: Props) {
+  const invited = codeInAddress() !== "";
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<{ name: string; text: string } | null>(null);
   const [profile, setProfile] = useState(false);
@@ -189,26 +187,24 @@ export function Home({ user, spaces, disabled, onEnter, onNew, onUser, onLogout 
 
   return (
     <div className="home">
-      <aside className="me" aria-label="Your account">
-        <div className="me__who">
-          <span className="me__avatar" aria-hidden="true">{initials(user.displayName)}</span>
-          <div className="me__id">
-            <p className="me__name">{user.displayName}</p>
-            <p className="me__email" title={user.email}>{user.email}</p>
-          </div>
+      <header className="me" aria-label="Your account">
+        <span className="me__avatar" aria-hidden="true">{initials(user.displayName)}</span>
+        <div className="me__id">
+          <p className="me__name">{user.displayName}</p>
+          <p className="me__email" title={user.email}>{user.email}</p>
         </div>
-        <ProfileFacts user={user} />
+        <ProfileFacts user={user} onEdit={() => setProfile(true)} />
         <div className="me__actions">
           <button className="btn btn--soft btn--small" onClick={() => setProfile(true)}><FontAwesomeIcon icon={faUserPen} /> My profile</button>
+          <button id="privacy" className="btn btn--link btn--small" onClick={() => setPrivacy(true)} aria-label="Privacy: what Cadence reads and keeps">
+            <FontAwesomeIcon icon={faShieldHalved} /> Privacy
+          </button>
           <button className="btn btn--link btn--small" onClick={onLogout}><FontAwesomeIcon icon={faRightFromBracket} /> Log out</button>
         </div>
-        <button id="privacy" className="me__privacy btn btn--link btn--small" onClick={() => setPrivacy(true)}>
-          <FontAwesomeIcon icon={faShieldHalved} /> What Cadence reads and keeps
-        </button>
-      </aside>
+      </header>
 
       <section className="projects" aria-labelledby="home-title">
-        <header className="projects__head">
+        <div className="projects__head">
           <h1 id="home-title">
             Your projects{spaces.length > 0 && <span className="projects__count"> {spaces.length}</span>}
           </h1>
@@ -225,16 +221,22 @@ export function Home({ user, spaces, disabled, onEnter, onNew, onUser, onLogout 
               />
             </div>
           )}
-          <button className="btn btn--primary" onClick={onNew} disabled={disabled}>
-            <FontAwesomeIcon icon={faPlus} /> New project
-          </button>
-        </header>
+          {/* The two ways to start, side by side: someone else's project, or a new one. */}
+          <div className="projects__start">
+            <JoinForm inline disabled={disabled} onEnter={onEnter} />
+            <span className="projects__or" aria-hidden="true">or</span>
+            <button className="btn btn--primary" onClick={onNew} disabled={disabled}>
+              <FontAwesomeIcon icon={faPlus} /> New project
+            </button>
+          </div>
+        </div>
+        {invited && <p className="projects__invite" role="status">You have an invite: the code is filled in. Press Join the space.</p>}
 
         <div className="projects__box" ref={box}>
           {spaces.length === 0 ? (
             <div className="projects__empty">
               <p className="projects__empty-title">No projects yet.</p>
-              <p className="muted">Start one on the setup desk with the assignment and your notes, or join a teammate's with their invite code below.</p>
+              <p className="muted">Start one with New project: you lay the assignment and your notes on the setup desk. Joining a teammate's? Paste their invite code beside it; they find it in the room box of their space.</p>
             </div>
           ) : found.length === 0 ? (
             <div className="projects__empty">
@@ -282,7 +284,6 @@ export function Home({ user, spaces, disabled, onEnter, onNew, onUser, onLogout 
           )}
         </div>
 
-        <JoinForm inline disabled={disabled} onEnter={onEnter} />
       </section>
 
       <Dialog open={profile} title="My profile" onClose={() => setProfile(false)}>

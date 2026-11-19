@@ -558,3 +558,16 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .refl__bar { width: 100%; height: .6rem; accent-color: var(--act); }
 .refl__facts, .refl__decisions { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
 .refl__q { font-weight: 600; font-size: var(--t-xs); color: var(--ink2); }
+
+/* The dependency graph (19 Nov): plain SVG; solid border = saved in the plan, as the group decided. */
+.depgraph { overflow: auto; padding: .5rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+.depgraph svg { display: block; max-width: none; }
+.depgraph__edge { fill: none; stroke: var(--ink2); stroke-width: 1.5; }
+.depgraph__arrow { fill: var(--ink2); }
+.depgraph__node rect { fill: var(--surface); stroke: var(--act); stroke-width: 1.5; }
+.depgraph__node--waiting rect { stroke: var(--warn, #b45309); }
+.depgraph__node--done rect { fill: var(--subtle); stroke: var(--line); }
+.depgraph__title { font-size: 13px; font-weight: 600; fill: var(--ink); }
+.depgraph__state { font-size: 11px; fill: var(--ink2); }
+.page__actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.deps__row .link-btn { margin-left: .5rem; }

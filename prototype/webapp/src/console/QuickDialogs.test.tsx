@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { NewMilestoneDialog, NewTaskDialog, TodayDialog } from "./QuickDialogs";
+import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
 
 // jsdom has no <dialog> modal: show it as open.
 HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
@@ -100,4 +100,46 @@ test("today: what is late and what is due today, with who has it; open tasks wit
 test("today: nothing due says so", () => {
   render(<TodayDialog open today="2026-11-19" tasks={tasks.slice(1)} nameOf={() => undefined} onTask={vi.fn()} onClose={vi.fn()} />);
   expect(screen.getByText("Nothing is due today and nothing is late.")).toBeInTheDocument();
+});
+
+const linked = [
+  { task_id: "a", title: "Build the API", status: "doing", owner_id: 1, due_date: null },
+  { task_id: "d", title: "Design", status: "done", owner_id: 1, due_date: null },
+  { task_id: "t", title: "Test the API", status: "todo", owner_id: 2, due_date: null, depends_on: ["a", "d"] },
+  { task_id: "r", title: "Release", status: "todo", owner_id: 2, due_date: null },
+];
+
+test("link tasks: opened from a row, the task is chosen and what it waits on is already ticked, even a done one", async () => {
+  const onSave = vi.fn().mockResolvedValue(null);
+  render(<WaitsOnDialog open tasks={linked} taskId="t" onClose={vi.fn()} onSave={onSave} />);
+  expect(screen.getByLabelText("Task")).toHaveValue("t");
+  expect(screen.getByLabelText("Build the API")).toBeChecked();
+  expect(screen.getByLabelText("Design")).toBeChecked(); // done, but linked: kept in the list
+  expect(screen.queryByLabelText("Test the API", { selector: "input[type=checkbox]" })).toBeNull(); // a task cannot wait on itself
+  await userEvent.click(screen.getByLabelText("Design"));
+  await userEvent.click(screen.getByLabelText("Release"));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(onSave).toHaveBeenCalledWith("t", ["a", "r"]);
+});
+
+test("link tasks: opened from the page, nothing is chosen until a task is; choosing one loads its links", async () => {
+  const onSave = vi.fn().mockResolvedValue(null);
+  render(<WaitsOnDialog open tasks={linked} taskId={null} onClose={vi.fn()} onSave={onSave} />);
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  await userEvent.selectOptions(screen.getByLabelText("Task"), "Release");
+  await userEvent.click(screen.getByLabelText("Build the API"));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(onSave).toHaveBeenCalledWith("r", ["a"]);
+  await userEvent.selectOptions(screen.getByLabelText("Task"), "Test the API");
+  expect(screen.getByLabelText("Build the API")).toBeChecked(); // its own links, not the previous task's
+});
+
+test("link tasks: clearing every box saves an empty list, and a loop refused by the server is shown", async () => {
+  const onSave = vi.fn().mockResolvedValue("That would make a loop: the tasks would wait on each other and none could start.");
+  render(<WaitsOnDialog open tasks={linked} taskId="t" onClose={vi.fn()} onSave={onSave} />);
+  await userEvent.click(screen.getByLabelText("Build the API"));
+  await userEvent.click(screen.getByLabelText("Design"));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(onSave).toHaveBeenCalledWith("t", []);
+  expect(await screen.findByRole("alert")).toHaveTextContent("That would make a loop");
 });

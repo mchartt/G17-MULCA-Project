@@ -4,6 +4,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faFlag, faPlus, faTrashCan } from "../lib/icons";
 import type { Milestone, ProjectState } from "../lib/types";
+import { DependencyGraph } from "./DependencyGraph";
 import { milestoneGroups, planFacts, waitingOn, type MilestoneEdit, type Task } from "./plan";
 
 /** The milestones in three groups: to complete (a date ahead), date passed, date still to set. */
@@ -49,36 +50,46 @@ export function MilestonesPage({ milestones, today, onMilestone, onNew }: { mile
   );
 }
 
-/** What waits on what, as a list (the same facts the graph draws), with who is ready to start. */
-export function DependenciesPage({ tasks, onNew }: { tasks: Task[]; onNew: () => void }) {
+/** What waits on what: drawn, then listed in words (the list is the text alternative), with who is ready to start. */
+export function DependenciesPage({ tasks, onNew, onLink }: { tasks: Task[]; onNew: () => void; onLink: (taskId: string | null) => void }) {
   const rows = waitingOn(tasks);
   return (
     <section className="page" aria-label="Dependencies">
       <header className="page__head">
-        <p className="muted">When one task needs another to finish first, it waits on it. Say so when you create a task.</p>
-        <button className="btn btn--primary btn--small" onClick={onNew}><FontAwesomeIcon icon={faPlus} /> New task</button>
+        <p className="muted">When one task needs another to finish first, it waits on it.</p>
+        <div className="page__actions">
+          {tasks.length > 1 && <button className="btn btn--soft btn--small" onClick={() => onLink(null)}>Link tasks</button>}
+          <button className="btn btn--primary btn--small" onClick={onNew}><FontAwesomeIcon icon={faPlus} /> New task</button>
+        </div>
       </header>
       {rows.length === 0 ? (
-        <p className="muted register__empty">Nothing waits on anything yet. In “New task”, choose what it waits on, and it shows here.</p>
+        <p className="muted register__empty">Nothing waits on anything yet. In “New task”, choose what it waits on, or use “Link tasks” for tasks you already have.</p>
       ) : (
-        <ul className="deps">
-          {rows.map((row) => (
-            <li key={row.task.task_id ?? row.task.title} className="deps__row">
-              <p>
-                <strong>{row.task.title}</strong>{" "}
-                <span className={row.waiting ? "tag tag--warn" : "tag"}>{row.task.status === "done" ? "Done" : row.waiting ? "Waiting" : "Ready to start"}</span>
-              </p>
-              <ul className="deps__needs" aria-label={`${row.task.title} waits on`}>
-                {row.needs.map((n) => (
-                  <li key={n.task.task_id ?? n.task.title}>
-                    {n.done ? <FontAwesomeIcon icon={faCheck} aria-hidden="true" /> : <span className="deps__open" aria-hidden="true" />}
-                    {n.task.title} <span className="muted small">{n.done ? "done" : n.task.status}</span>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
+        <>
+          <DependencyGraph tasks={tasks} />
+          <section className="page__section" aria-labelledby="deps-list">
+            <h3 id="deps-list">As a list</h3>
+            <ul className="deps">
+              {rows.map((row) => (
+                <li key={row.task.task_id ?? row.task.title} className="deps__row">
+                  <p>
+                    <strong>{row.task.title}</strong>{" "}
+                    <span className={row.waiting ? "tag tag--warn" : "tag"}>{row.task.status === "done" ? "Done" : row.waiting ? "Waiting" : "Ready to start"}</span>
+                    {row.task.task_id && <button className="link-btn" aria-label={`Change what ${row.task.title} waits on`} onClick={() => onLink(row.task.task_id!)}>Change</button>}
+                  </p>
+                  <ul className="deps__needs" aria-label={`${row.task.title} waits on`}>
+                    {row.needs.map((n) => (
+                      <li key={n.task.task_id ?? n.task.title}>
+                        {n.done ? <FontAwesomeIcon icon={faCheck} aria-hidden="true" /> : <span className="deps__open" aria-hidden="true" />}
+                        {n.task.title} <span className="muted small">{n.done ? "done" : n.task.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </>
       )}
     </section>
   );

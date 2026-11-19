@@ -179,3 +179,85 @@ export function TodayDialog({ open, today, tasks, nameOf, onTask, onClose }: Tod
     </Dialog>
   );
 }
+
+/**
+ * Link tasks: choose a task and what it waits on. Opened from a row of the
+ * dependency page (the task is already chosen) or from "Link tasks".
+ * What it waits on is always saved as a whole list; the server refuses a
+ * loop and says why.
+ */
+export function WaitsOnDialog({ open, tasks, taskId, onClose, onSave }: { open: boolean; tasks: Task[]; taskId: string | null; onClose: () => void; onSave: (taskId: string, waitsOn: string[]) => Promise<string | null> }) {
+  const id = useId();
+  const [chosen, setChosen] = useState("");
+  const [waits, setWaits] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const current = (taskKey: string) => new Set(tasks.find((t) => t.task_id === taskKey)?.depends_on ?? []);
+
+  // Every time it opens: the task asked for (or none), with what it waits on today.
+  useEffect(() => {
+    if (!open) return;
+    setChosen(taskId ?? "");
+    setWaits(taskId ? current(taskId) : new Set());
+    setError(null);
+    setBusy(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, taskId]);
+
+  const open_tasks = tasks.filter((t) => t.task_id && t.status !== "done");
+  // Offered: the other open tasks, and any task it already waits on (even done), so saving never drops one silently.
+  const offered = tasks.filter((t) => t.task_id && t.task_id !== chosen && (t.status !== "done" || waits.has(t.task_id)));
+
+  function pick(taskKey: string) {
+    setChosen(taskKey);
+    setWaits(current(taskKey));
+    setError(null);
+  }
+
+  function toggle(taskKey: string) {
+    const next = new Set(waits);
+    if (!next.delete(taskKey)) next.add(taskKey);
+    setWaits(next);
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!chosen || busy) return;
+    setBusy(true);
+    const result = await onSave(chosen, offered.filter((t) => waits.has(t.task_id!)).map((t) => t.task_id!));
+    setBusy(false);
+    setError(result);
+  }
+
+  return (
+    <Dialog open={open} title="Link tasks" onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p className="muted small">A task that waits on another cannot start until the other is done.</p>
+        <label htmlFor={`${id}-task`}>Task</label>
+        <select id={`${id}-task`} className="field-select" value={chosen} onChange={(e) => pick(e.target.value)}>
+          <option value="">Choose a task…</option>
+          {open_tasks.map((t) => <option key={t.task_id} value={t.task_id}>{t.title}</option>)}
+        </select>
+        <fieldset className="form__waits" disabled={!chosen}>
+          <legend>Waits on</legend>
+          {offered.length === 0 ? (
+            <p className="muted small">No other open task.</p>
+          ) : (
+            offered.map((t) => (
+              <label key={t.task_id} className="check">
+                <input type="checkbox" checked={waits.has(t.task_id!)} onChange={() => toggle(t.task_id!)} />
+                {t.title}
+              </label>
+            ))
+          )}
+        </fieldset>
+        {error && <p className="form__error" role="alert">{error}</p>}
+        <div className="form__actions">
+          <button type="button" className="btn btn--soft" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn--primary" disabled={!chosen || busy}>Save</button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}

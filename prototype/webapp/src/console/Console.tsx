@@ -16,7 +16,7 @@ import { DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from
 import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { todayIso, todayView } from "./plan";
-import { NewMilestoneDialog, NewTaskDialog, TodayDialog } from "./QuickDialogs";
+import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { DependenciesPage, MilestonesPage, ReflectionPage } from "./Pages";
 import { Sidebar, type View } from "./Sidebar";
@@ -42,7 +42,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [panelOpen, setPanelOpen] = useState(false);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | null>(null);
+  // The task the "Link tasks" popup opens on (null: the member chooses).
+  const [linkTask, setLinkTask] = useState<string | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
@@ -132,9 +134,20 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     if (edit.owner !== undefined) args.owner = edit.owner ?? "";
     if (edit.due !== undefined) args.due = edit.due ?? "";
     if (edit.title !== undefined) args.title = edit.title;
+    if (edit.description !== undefined) args.description = edit.description;
+    if (edit.waitsOn !== undefined) args.depends_on = edit.waitsOn;
     if (edit.remove) args.remove = true;
     const answer = await ask({ type: "command", command: "task", args });
     if (!answer.ok && answer.type === "notice") setNotice(answer.text);
+  };
+
+  /** The "Link tasks" popup: it closes only when the server accepted the list (a loop is refused there). */
+  const saveWaitsOn = async (task: string, waitsOn: string[]) => {
+    const answer = await ask({ type: "command", command: "task", args: { task, depends_on: waitsOn } });
+    if (!answer.ok) return answer.type === "notice" ? answer.text : "The links were not saved.";
+    setDialog(null);
+    if (answer.type === "notice") setNotice(answer.text);
+    return null;
   };
 
   const addTask = async (task: NewTask) => {
@@ -314,7 +327,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             />
           </>
         )}
-        {view === "dependencies" && <DependenciesPage tasks={space.state?.tasks ?? []} onNew={() => setDialog("newtask")} />}
+        {view === "dependencies" && <DependenciesPage tasks={space.state?.tasks ?? []} onNew={() => setDialog("newtask")} onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }} />}
         {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
         {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} />}
       </main>
@@ -369,6 +382,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       />
       <MilestonesDialog open={dialog === "milestones"} milestones={space.state?.milestones ?? []} onMilestone={editMilestone} onClose={() => setDialog(null)} />
       <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />
+      <WaitsOnDialog open={dialog === "link"} tasks={space.state?.tasks ?? []} taskId={linkTask} onClose={() => setDialog(null)} onSave={saveWaitsOn} />
       <NewMilestoneDialog open={dialog === "newmilestone"} onClose={() => setDialog(null)} onCreate={createMilestone} />
       <TodayDialog open={dialog === "today"} today={todayIso()} tasks={space.state?.tasks ?? []} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onClose={() => setDialog(null)} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />

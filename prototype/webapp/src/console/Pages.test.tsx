@@ -33,7 +33,7 @@ test("milestones: creating goes through the popup, so the page only asks for it;
 
 test("dependencies: empty explains where a dependency comes from", async () => {
   const onNew = vi.fn();
-  render(<DependenciesPage tasks={[task("a", "API")]} onNew={onNew} />);
+  render(<DependenciesPage tasks={[task("a", "API")]} onNew={onNew} onLink={vi.fn()} />);
   expect(screen.getByText(/Nothing waits on anything yet/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "New task" }));
   expect(onNew).toHaveBeenCalled();
@@ -41,11 +41,12 @@ test("dependencies: empty explains where a dependency comes from", async () => {
 
 test("dependencies: each task that waits shows what it needs, and whether it can start", () => {
   const tasks = [task("a", "Build the API", "doing"), task("d", "Design", "done"), task("t", "Test the API", "todo", ["a"]), task("r", "Release", "todo", ["d"])];
-  render(<DependenciesPage tasks={tasks} onNew={vi.fn()} />);
-  const testing = screen.getByText("Test the API").closest("li")!;
+  render(<DependenciesPage tasks={tasks} onNew={vi.fn()} onLink={vi.fn()} />);
+  const list = within(screen.getByRole("region", { name: "As a list" }));
+  const testing = list.getByText("Test the API").closest("li")!;
   expect(within(testing).getByText("Waiting")).toBeInTheDocument();
   expect(within(within(testing).getByRole("list", { name: "Test the API waits on" })).getByText("Build the API")).toBeInTheDocument();
-  const release = screen.getByText("Release").closest("li")!;
+  const release = list.getByText("Release").closest("li")!;
   expect(within(release).getByText("Ready to start")).toBeInTheDocument();
 });
 
@@ -70,4 +71,22 @@ test("reflection: nothing saved yet says so, without numbers", () => {
   render(<ReflectionPage state={null} today="2026-11-19" />);
   expect(screen.getByText("No tasks yet.")).toBeInTheDocument();
   expect(screen.getByText(/No decision recorded yet/)).toBeInTheDocument();
+});
+
+test("dependencies: the graph is drawn above the list, and a row can reopen its links", async () => {
+  const onLink = vi.fn();
+  const tasks = [task("a", "Build the API", "doing"), task("t", "Test the API", "todo", ["a"]), task("x", "Alone")];
+  render(<DependenciesPage tasks={tasks} onNew={vi.fn()} onLink={onLink} />);
+  const graph = screen.getByRole("img", { name: /Dependency graph: 2 tasks, 1 links, 1 waiting/ });
+  expect(within(graph).getAllByText("Waiting").length).toBe(1);
+  expect(within(graph).queryByText("Alone")).toBeNull(); // it waits on nothing and nothing waits on it
+  await userEvent.click(screen.getByRole("button", { name: "Change what Test the API waits on" }));
+  expect(onLink).toHaveBeenLastCalledWith("t");
+  await userEvent.click(screen.getByRole("button", { name: "Link tasks" }));
+  expect(onLink).toHaveBeenLastCalledWith(null);
+});
+
+test("dependencies: with a single task there is nothing to link, so no Link tasks button", () => {
+  render(<DependenciesPage tasks={[task("a", "API")]} onNew={vi.fn()} onLink={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "Link tasks" })).toBeNull();
 });

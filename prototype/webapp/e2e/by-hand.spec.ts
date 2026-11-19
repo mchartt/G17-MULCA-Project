@@ -60,7 +60,7 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
 
   // The register: a task added by hand with nobody on it, then dated.
   await upNext.getByRole("button", { name: "All tasks" }).click();
-  await ada.getByLabel("New task", { exact: true }).fill("Write the report");
+  await ada.locator("dialog[open]").getByLabel("New task", { exact: true }).fill("Write the report"); // the open register, not the closed New task popup
   await ada.getByRole("button", { name: "Add task" }).click();
   await ada.getByLabel("Date of Write the report").fill("2030-12-01");
   if (SHOTS) await ada.screenshot({ path: `${SHOTS}/5-register.png` });
@@ -74,7 +74,7 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
 
   // A milestone by hand, then the plan day by day.
   await ada.getByRole("button", { name: /Edit milestones|Add a milestone/ }).click();
-  await ada.getByLabel("New milestone", { exact: true }).fill("First draft");
+  await ada.locator("dialog[open]").getByLabel("New milestone", { exact: true }).fill("First draft");
   await ada.getByLabel("Date of the new milestone").fill("2030-12-01");
   await ada.getByRole("button", { name: "Add milestone" }).click();
   await ada.locator("dialog[open]").getByRole("button", { name: "Close" }).click();

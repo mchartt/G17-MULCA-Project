@@ -36,7 +36,7 @@ export function QuickPanel({ groups, onClose }: { groups: QuickGroup[]; onClose:
           <h2 id="quick-title">Quick access</h2>
           <p>Shortcuts that work from every page.</p>
         </div>
-        <button className="icon-btn quick__close" aria-label="Close quick access" title="Close quick access" onClick={onClose}><FontAwesomeIcon icon={faXmark} /></button>
+        <button className="icon-btn quick__close" aria-label="Hide quick access" title="Hide quick access" onClick={onClose}><FontAwesomeIcon icon={faXmark} /></button>
       </div>
       {groups.map((group) => (
         <section key={group.key} className={`quick__group${group.tone ? ` quick__group--${group.tone}` : ""}`} aria-labelledby={`quick-${group.key}`}>

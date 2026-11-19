@@ -28,7 +28,7 @@ test("the panel says what it is, groups its buttons, and each button says what i
   await userEvent.click(within(ask).getByRole("button", { name: "Check-in Compare the plan with the dates." }));
   expect(run).toHaveBeenCalled();
   expect(within(screen.getByRole("region", { name: "Your dates" })).getByRole("button", { name: "Today 2 due." })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Close quick access" }));
+  await userEvent.click(screen.getByRole("button", { name: "Hide quick access" }));
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 

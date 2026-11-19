@@ -35,6 +35,19 @@ const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
 const SHEET = "(max-width: 1100px)";
 const asSheet = () => typeof matchMedia === "function" && matchMedia(SHEET).matches;
 
+/** Whether Quick access is a sheet right now; follows the window (a rotated tablet, a resized browser). */
+function useSheet(): boolean {
+  const [sheet, setSheet] = useState(asSheet);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const query = matchMedia(SHEET);
+    const change = () => setSheet(query.matches);
+    query.addEventListener?.("change", change);
+    return () => query.removeEventListener?.("change", change);
+  }, []);
+  return sheet;
+}
+
 /**
  * The console, chat first: the space on the left, the group chat in the
  * middle, Quick access on the right. The plan is memory, not the reason to
@@ -47,7 +60,10 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   // Quick access: a column on wide screens, a sheet (closed at first) on narrow ones.
-  const [quickOpen, setQuickOpen] = useState(() => !asSheet());
+  const sheet = useSheet();
+  const [quickOpen, setQuickOpen] = useState(!sheet);
+  // Crossing the breakpoint resets it: a column that turns into a sheet closes, so it never covers the page by surprise.
+  useEffect(() => setQuickOpen(!sheet), [sheet]);
   const quickButton = useRef<HTMLButtonElement>(null);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
@@ -320,14 +336,14 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   };
 
   // As a sheet, Quick access is modal in effect: focus moves into it, and the page behind it is inert.
-  const sheetOpen = quickOpen && asSheet();
+  const sheetOpen = quickOpen && sheet;
   useEffect(() => {
     if (sheetOpen) document.querySelector<HTMLElement>("#quick .quick__close")?.focus();
   }, [sheetOpen]);
 
   // A shortcut on a sheet closes the sheet first, so its answer or popup is not hidden behind it.
   const go = (fn: () => void) => () => {
-    if (asSheet()) setQuickOpen(false);
+    if (sheet) setQuickOpen(false);
     fn();
   };
   const closeQuick = () => {

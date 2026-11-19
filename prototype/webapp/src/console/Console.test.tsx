@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
@@ -40,7 +40,7 @@ test("the console opens chat first: one Quick access button in the bar, and the 
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByRole("complementary", { name: "Quick access" })).toBeNull();
   await userEvent.click(toggle);
-  await userEvent.click(screen.getByRole("button", { name: "Close quick access" }));
+  await userEvent.click(screen.getByRole("button", { name: "Hide quick access" }));
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect(toggle).toHaveFocus();
 });
@@ -194,7 +194,7 @@ test("below 1100px Quick access is a sheet: it starts closed, focus goes into it
   expect(screen.queryByRole("complementary", { name: "Quick access" })).toBeNull();
 
   await userEvent.click(toggle);
-  expect(screen.getByRole("button", { name: "Close quick access" })).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Hide quick access" })).toHaveFocus();
   expect(document.querySelector(".console__main")).toHaveAttribute("inert");
   expect(document.querySelector(".side")).toHaveAttribute("inert");
 
@@ -203,5 +203,23 @@ test("below 1100px Quick access is a sheet: it starts closed, focus goes into it
   expect(screen.queryByRole("complementary", { name: "Quick access" })).toBeNull();
   expect(screen.getByRole("dialog", { name: "Ask why" })).toBeInTheDocument();
   expect(document.querySelector(".console__main")).not.toHaveAttribute("inert");
+  vi.unstubAllGlobals();
+});
+
+test("when the window crosses the 1100px breakpoint, Quick access follows: a column that becomes a sheet closes, and back", async () => {
+  let matches = false;
+  const listeners = new Set<() => void>();
+  vi.stubGlobal("matchMedia", (query: string) => ({ get matches() { return matches; }, media: query, addEventListener: (_: string, f: () => void) => listeners.add(f), removeEventListener: (_: string, f: () => void) => listeners.delete(f), onchange: null, dispatchEvent: () => false }));
+  render(<Console token="t" onLeave={() => undefined} />);
+  expect(screen.getByRole("complementary", { name: "Quick access" })).toBeInTheDocument();
+
+  matches = true;
+  await act(async () => listeners.forEach((f) => f()));
+  expect(screen.queryByRole("complementary", { name: "Quick access" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Quick access" })).toHaveAttribute("aria-expanded", "false");
+
+  matches = false;
+  await act(async () => listeners.forEach((f) => f()));
+  expect(screen.getByRole("complementary", { name: "Quick access" })).toBeInTheDocument();
   vi.unstubAllGlobals();
 });

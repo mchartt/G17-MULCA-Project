@@ -64,6 +64,8 @@ export function Landing() {
         </div>
 
         <figure className="hero__demo" aria-label="Example: two messages, then Cadence's card">
+          {/* The buttons answer with a notice: it is an example, not a space. */}
+          <figcaption><span className="tag tag--sample">Example</span> Try the buttons: nothing is saved.</figcaption>
           <ul className="hero__chat">
             {CHAT.map((m) => (
               <li key={m.who}>

@@ -61,6 +61,7 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .hero__actions { margin: 1.8rem 0 .9rem; display: flex; flex-wrap: wrap; gap: .6rem; }
 .hero__actions .btn { text-decoration: none; }
 .hero__demo { margin: 0; padding: 1.5rem; border-radius: var(--r-dialog); background: linear-gradient(160deg, var(--ag-bg), var(--subtle)); display: grid; gap: .9rem; }
+.hero__demo figcaption { display: flex; gap: .5rem; align-items: center; font-size: var(--t-xs); color: var(--ink2); }
 .hero__chat { list-style: none; padding: 0; display: grid; gap: .5rem; }
 .hero__chat li { display: flex; gap: .6rem; align-items: flex-start; padding: .6rem .8rem; border-radius: var(--r-card); background: var(--surface); font-size: var(--t-sm); box-shadow: var(--shadow-soft); }
 .hero__demo .card { box-shadow: var(--shadow-float); }

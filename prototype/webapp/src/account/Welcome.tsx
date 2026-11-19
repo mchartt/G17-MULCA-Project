@@ -11,6 +11,9 @@ import { ProjectSetup } from "./ProjectSetup";
 /** The steps, in order. The first three are the profile, saved at the end of "skills". */
 export type WelcomeStep = "name" | "background" | "skills" | "ready" | "create" | "join";
 const PROFILE: WelcomeStep[] = ["name", "background", "skills"];
+/** Every screen in order: sets the direction of the slide and how full the progress bar is. */
+const ORDER: WelcomeStep[] = ["name", "background", "skills", "ready", "create", "join"];
+const FILLED: Record<WelcomeStep, number> = { name: 0.12, background: 0.32, skills: 0.52, ready: 0.75, create: 1, join: 1 };
 
 /** A profile counts as filled once it says something Cadence can use to suggest owners. */
 export const profileDone = (user: User) => !!user.discipline.trim() || user.skills.length > 0 || !!user.background?.trim();
@@ -43,6 +46,12 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  // Forward slides in from the right, Back from the left (join and create are the same depth).
+  const lastStep = useRef<WelcomeStep>(start);
+  const direction = ORDER.indexOf(step) >= ORDER.indexOf(lastStep.current) ? "forward" : "back";
+  useEffect(() => {
+    lastStep.current = step;
+  }, [step]);
 
   // Each new screen moves the focus to its question, so a screen reader reads it.
   useEffect(() => heading.current?.focus(), [step]);
@@ -168,7 +177,14 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
         </ol>
         <button className="btn btn--link btn--small" onClick={onSkip}>Skip for now</button>
       </div>
-      <div className="welcome__stage" key={step}>
+      <div className="welcome__bar" aria-hidden="true"><i style={{ transform: `scaleX(${FILLED[step]})` }} /></div>
+      <div className={`welcome__stage welcome__stage--${direction}${step === "ready" ? " welcome__stage--ready" : ""}`} key={step}>
+        {step === "name" && (
+          <p className="welcome__in" role="status">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.4l2.6 2.6 5.4-6" /></svg>
+            You're in.
+          </p>
+        )}
         {index >= 0 && <p className="welcome__count">Step {index + 1} of 3</p>}
         {body}
       </div>

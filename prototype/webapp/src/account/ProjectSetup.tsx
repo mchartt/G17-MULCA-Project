@@ -35,6 +35,8 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
   const [error, setError] = useState<string | null>(null);
   // Set when the space exists but some documents could not be read.
   const [created, setCreated] = useState<string | null>(null);
+  // The space is ready: a check is drawn for a moment, then the console opens.
+  const [ready, setReady] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
 
   function add(list: FileList | File[]) {
@@ -84,6 +86,9 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
         );
         return;
       }
+      setReady(true);
+      const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      await new Promise((done) => setTimeout(done, still ? 0 : 450));
       onEnter(token);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
@@ -113,7 +118,7 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
 
       <span className="form__label" id="c-docs-label">Documents Cadence can read <span className="muted">(optional)</span></span>
       <div
-        className={`shelf${over ? " shelf--over" : ""}`}
+        className={`shelf${over ? " shelf--over" : ""}${busy || ready ? " shelf--sending" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
@@ -123,7 +128,7 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
         {files.length > 0 && (
           <ul className="shelf__docs" aria-label="Documents added">
             {files.map((f, i) => (
-              <li key={`${f.name}-${f.size}`} className="doc" style={{ ["--tilt" as string]: `${((i % 3) - 1) * 2.2}deg` }}>
+              <li key={`${f.name}-${f.size}`} className="doc" style={{ ["--tilt" as string]: `${((i % 3) - 1) * 2.2}deg`, ["--i" as string]: i }}>
                 <span className="doc__kind">{kind(f.name)}</span>
                 <span className="doc__lines" aria-hidden="true"><i /><i /><i /><i /></span>
                 <span className="doc__name" title={f.name}>{f.name}</span>
@@ -148,8 +153,14 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
       {created ? (
         <button type="button" className="btn btn--primary" onClick={() => onEnter(created)}>Open the space <FontAwesomeIcon icon={faArrowRight} /></button>
       ) : (
-        <button className="btn btn--primary" type="submit" disabled={off}>
-          {busy ? "One moment…" : "Create the space"} <FontAwesomeIcon icon={faArrowRight} />
+        <button className={`btn btn--primary${ready ? " btn--ready" : ""}`} type="submit" disabled={off}>
+          {ready ? (
+            <>
+              <svg className="check-draw" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.4l2.6 2.6 5.4-6" /></svg> Ready
+            </>
+          ) : (
+            <>{busy ? "One moment…" : "Create the space"} <FontAwesomeIcon icon={faArrowRight} /></>
+          )}
         </button>
       )}
     </form>

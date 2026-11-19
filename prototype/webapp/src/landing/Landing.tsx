@@ -183,7 +183,7 @@ function PromptBar() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={400}
-        placeholder="Describe your group project… e.g. a usability study, demo on 2 December"
+        placeholder="Describe your group project…"
         autoComplete="off"
       />
       <button type="submit" className="prompt__send" aria-label="Start with this description">

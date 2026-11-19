@@ -33,6 +33,21 @@ function PrivacyNotice() {
   );
 }
 
+/** Beside the sign-up form: what the group gets, with the brand picture (asset 4). */
+function BrandPanel() {
+  return (
+    <aside className="brandpanel" aria-labelledby="brandpanel-title">
+      <img src="/brand/connects.webp" width={1672} height={941} alt="" decoding="async" />
+      <h2 id="brandpanel-title">Cadence connects your tasks, your plan and your decisions.</h2>
+      <ul>
+        <li>It reads the group chat and steps in only when something slips.</li>
+        <li>Every suggestion comes with its reason and the messages behind it.</li>
+        <li>Nothing changes until one of you confirms.</li>
+      </ul>
+    </aside>
+  );
+}
+
 /**
  * The way in (UC1), on its own page (/login): log in or create an account,
  * with the privacy notice beside it. Logged in, you see your spaces and can
@@ -106,6 +121,7 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
         <div className="entry__layout">
           <div className="entry__main">
             {account === null && <AuthForms disabled={online === false} onSignedIn={() => void refresh()} />}
+            {account === null && <PrivacyNotice />}
             {account && (
               <Home
                 user={account.user}
@@ -117,7 +133,8 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
               />
             )}
           </div>
-          <PrivacyNotice />
+          {/* Signing in: what Cadence does, beside the form. Logged in: what it keeps, beside your spaces. */}
+          {account === null ? <BrandPanel /> : <PrivacyNotice />}
         </div>
       </main>
     </div>

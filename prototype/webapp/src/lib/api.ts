@@ -73,6 +73,23 @@ export async function deleteSpace(token: string, confirm: string): Promise<strin
   return "Something went wrong. Nothing was deleted.";
 }
 
+/** Project settings: a new name for my space. Returns the problem to show, or null when renamed. */
+export async function renameSpace(token: string, name: string): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${ADAPTER_URL}/api/groups/rename`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch {
+    return "Cadence can't be reached. The name was not changed.";
+  }
+  if (res.ok) return null;
+  if (res.status === 422) return "Write a name of 1 to 80 characters.";
+  return "Something went wrong. The name was not changed.";
+}
+
 /** M5: a new private calendar feed link for my group (the previous one stops working). */
 export async function calendarLink(token: string): Promise<string> {
   const res = await fetch(`${ADAPTER_URL}/api/calendar`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });

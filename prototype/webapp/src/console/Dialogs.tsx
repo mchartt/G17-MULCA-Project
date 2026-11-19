@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { DOCUMENT_TYPES } from "../lib/documents";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPlug, faTrashCan, faUserPen } from "../lib/icons";
+import type { MemberId } from "../lib/types";
+import { initials } from "./Chat";
+import { GoalForm, LANGUAGES } from "./ProjectPanel";
+import { profileFacts, type MemberProfile } from "./space";
 import { TagInput, withPending } from "./TagInput";
 
 /** The shared modal: a native <dialog> with its title wired for screen readers. */
@@ -191,6 +197,141 @@ export function ConnectDialog({ open, code, onClose }: { open: boolean; code: st
           <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>
         </div>
       </div>
+    </Dialog>
+  );
+}
+
+
+type SettingsProps = {
+  open: boolean;
+  name: string;
+  goal: string;
+  deliverables: string[];
+  language: string;
+  onRename: (name: string) => Promise<string | null>;
+  onCharter: (goal: string, deliverables: string[]) => Promise<string | null>;
+  onLanguage: (language: string) => void;
+  onConnect: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+};
+
+/**
+ * Project settings, behind the gear next to the space's name. Renaming is a
+ * member's own action (saved at once); the goal and deliverables change the
+ * plan, so they become a card the group confirms, like every plan change.
+ */
+export function ProjectSettingsDialog({ open, name, goal, deliverables, language, onRename, onCharter, onLanguage, onConnect, onDelete, onClose }: SettingsProps) {
+  const [draft, setDraft] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [editingGoal, setEditingGoal] = useState(false);
+
+  // Each opening starts from the space as it is now (a rename arriving while open keeps the message).
+  useEffect(() => {
+    if (open) {
+      setDraft(name);
+      setMessage(null);
+      setEditingGoal(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function rename(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const problem = await onRename(draft);
+    setBusy(false);
+    setMessage(problem ? { ok: false, text: problem } : { ok: true, text: "Name saved." });
+  }
+
+  return (
+    <Dialog open={open} title="Project settings" onClose={onClose}>
+      {/* Rendered only while open, so its fields never duplicate the labels of the page behind. */}
+      {open && <div className="settings">
+        <form className="form settings__section" onSubmit={rename}>
+          <label htmlFor="settings-name">Name of the space</label>
+          <div className="settings__row">
+            <input id="settings-name" value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={80} required />
+            <button type="submit" className="btn btn--primary btn--small" disabled={busy || !draft.trim() || draft.trim() === name}>{busy ? "Saving…" : "Save name"}</button>
+          </div>
+          {message && <p className={message.ok ? "form__ok" : "form__error"} role={message.ok ? "status" : "alert"}>{message.text}</p>}
+        </form>
+
+        <section className="settings__section" aria-labelledby="settings-goal">
+          <h3 id="settings-goal">Goal and deliverables</h3>
+          {editingGoal ? (
+            <GoalForm goal={goal} deliverables={deliverables} onSave={onCharter} onClose={() => setEditingGoal(false)} />
+          ) : (
+            <>
+              <p className={goal ? "settings__goal" : "muted"}>{goal || "No goal yet. Paste the brief, or write it here."}</p>
+              {deliverables.length > 0 && <ul className="panel__list">{deliverables.map((d) => <li key={d}>{d}</li>)}</ul>}
+              <button type="button" className="btn btn--soft btn--small" onClick={() => setEditingGoal(true)}>{goal ? "Edit goal" : "Write the goal"}</button>
+              <p className="muted small">A change becomes a card in the chat. It is saved when a member confirms it.</p>
+            </>
+          )}
+        </section>
+
+        <section className="settings__section settings__inline">
+          <label htmlFor="settings-language-select">Cadence writes in</label>
+          <select id="settings-language-select" className="tasks__status" value={language} onChange={(e) => onLanguage(e.target.value)}>
+            {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+          </select>
+        </section>
+
+        <section className="settings__section settings__inline">
+          <span>Slack and Discord</span>
+          <button type="button" className="btn btn--soft btn--small" onClick={onConnect}><FontAwesomeIcon icon={faPlug} /> Connect a channel</button>
+        </section>
+
+        <section className="settings__section settings__danger" aria-labelledby="settings-danger">
+          <h3 id="settings-danger">Delete the space</h3>
+          <p className="muted small">Messages, plan and decisions are deleted for everyone. This cannot be undone.</p>
+          <button type="button" className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
+        </section>
+
+        <div className="form__actions">
+          <button type="button" className="btn btn--soft" onClick={onClose}>Close</button>
+        </div>
+      </div>}
+    </Dialog>
+  );
+}
+
+type MemberProps = {
+  open: boolean;
+  member: { id: MemberId; name: string } | null;
+  profile: MemberProfile | undefined;
+  color: string;
+  isMe: boolean;
+  onEditProfile: () => void;
+  onClose: () => void;
+};
+
+/** A teammate's profile, from the sidebar: what they wrote about themselves, nothing computed about them. */
+export function MemberDialog({ open, member, profile, color, isMe, onEditProfile, onClose }: MemberProps) {
+  const facts = profileFacts(profile);
+  const skills = profile?.skills ?? [];
+  return (
+    <Dialog open={open} title={member ? (isMe ? `${member.name} (you)` : member.name) : "Member"} onClose={onClose}>
+      {open && member && (
+        <div className="member">
+          <div className="member__head">
+            <span className="avatar member__avatar" style={{ background: color }} aria-hidden="true">{initials(member.name)}</span>
+            <p className="muted">{profile?.discipline?.trim() || (facts.length ? "" : "No profile yet.")}</p>
+          </div>
+          {skills.length > 0 && (
+            <ul className="member__skills" aria-label="Skills">{skills.map((s) => <li key={s} className="tag">{s}</li>)}</ul>
+          )}
+          {typeof profile?.weekly_hours === "number" && <p><strong>{profile.weekly_hours} h</strong> a week for group projects</p>}
+          {profile?.background?.trim() && <p className="member__background">{profile.background}</p>}
+          <p className="muted small">Cadence uses this only to suggest who could take a task. No scores, no rankings.</p>
+          <div className="form__actions">
+            {isMe && <button type="button" className="btn btn--soft" onClick={onEditProfile}><FontAwesomeIcon icon={faUserPen} /> Edit my profile</button>}
+            <button type="button" className="btn btn--primary" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }

@@ -49,10 +49,31 @@ test("Check-in from the Ask Cadence menu runs the same command as before", async
   expect(await screen.findByText("On track.")).toBeInTheDocument();
 });
 
-test("Delete this space is no longer next to the invite: it is under Project settings", () => {
+test("the gear next to the space's name opens Project settings, where Delete this space lives", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
-  const del = screen.getByRole("button", { name: "Delete this space", hidden: true });
-  expect(del.closest("details")).toHaveTextContent("Project settings");
+  expect(screen.queryByRole("button", { name: "Delete this space" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Project settings" }));
+  const settings = screen.getByRole("dialog", { name: "Project settings" });
+  expect(within(settings).getByLabelText("Name of the space")).toBeInTheDocument();
+  expect(within(settings).getByLabelText("Cadence writes in")).toBeInTheDocument();
+  await userEvent.click(within(settings).getByRole("button", { name: "Delete this space" }));
+  expect(screen.getByRole("dialog", { name: "Delete this space" })).toBeInTheDocument();
+});
+
+test("renaming the space from Project settings calls the adapter with the space token", async () => {
+  const calls: { url: string; body: unknown; auth: string }[] = [];
+  vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
+    calls.push({ url, body: init.body ? JSON.parse(String(init.body)) : null, auth: String((init.headers as Record<string, string>)?.Authorization ?? "") });
+    return new Response("{}", { status: 200 });
+  });
+  render(<Console token="t-rename" onLeave={() => undefined} />);
+  await userEvent.click(screen.getByRole("button", { name: "Project settings" }));
+  const settings = screen.getByRole("dialog", { name: "Project settings" });
+  await userEvent.type(within(settings).getByLabelText("Name of the space"), "AUI group 17");
+  await userEvent.click(within(settings).getByRole("button", { name: "Save name" }));
+  expect(await within(settings).findByText("Name saved.")).toBeInTheDocument();
+  expect(calls.find((c) => c.url.endsWith("/api/groups/rename"))).toMatchObject({ body: { name: "AUI group 17" }, auth: "Bearer t-rename" });
+  vi.unstubAllGlobals();
 });
 
 test("the Task quick action opens a popup; the task goes out as the usual task command and the popup closes when it is accepted", async () => {

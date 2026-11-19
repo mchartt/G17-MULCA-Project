@@ -31,8 +31,9 @@ test("Delete space: only after typing the name; every member is sent back to the
   await bruno.getByRole("button", { name: "Join the space" }).click();
   await expect(bruno.locator(".members")).toContainText("Ada");
 
-  await ada.getByText("Project settings").click();
-  await ada.getByRole("button", { name: "Delete this space" }).click();
+  // The gear next to the space's name opens Project settings; deleting is its last section.
+  await ada.getByRole("button", { name: "Project settings" }).click();
+  await ada.getByRole("dialog", { name: "Project settings" }).getByRole("button", { name: "Delete this space" }).click();
   const dialog = ada.getByRole("dialog", { name: "Delete this space" });
   const confirm = dialog.getByRole("button", { name: "Delete everything" });
   await expect(confirm).toBeDisabled();

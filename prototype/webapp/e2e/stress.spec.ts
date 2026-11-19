@@ -79,3 +79,33 @@ test("a busy space stays inside its columns at every width", async ({ browser })
     await ada.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Chat" }).click();
   }
 });
+
+test("Project settings renames the space for every member, and a member's profile opens in a popup", async ({ browser }) => {
+  const ada = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await ada.goto("/login");
+  await signUp(ada, "Ada");
+  await ada.locator("#c-project").fill("Group settings");
+  await ada.getByRole("button", { name: "Create the space" }).click();
+  await ada.locator(".invite code").waitFor();
+  const code = (await ada.locator(".invite code").textContent())!.trim();
+  const bruno = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+  await bruno.goto("/login");
+  await signUp(bruno, "Bruno");
+  await bruno.locator("#j-code").fill(code);
+  await bruno.getByRole("button", { name: "Join the space" }).click();
+  await bruno.locator(".invite code").waitFor();
+
+  await ada.getByRole("button", { name: "Project settings" }).click();
+  const settings = ada.getByRole("dialog", { name: "Project settings" });
+  await settings.getByLabel("Name of the space").fill("AUI group 17");
+  await settings.getByRole("button", { name: "Save name" }).click();
+  await expect(settings.getByText("Name saved.")).toBeVisible();
+  if (SHOTS) await ada.screenshot({ path: `${SHOTS}/settings.png` });
+  await settings.getByRole("button", { name: "Close" }).click();
+  // Bruno's open tab shows the new name without reloading.
+  await expect(bruno.getByRole("heading", { level: 1, name: "AUI group 17" })).toBeVisible();
+
+  await bruno.locator(".members").getByRole("button", { name: /Ada/ }).click();
+  await expect(bruno.getByRole("dialog", { name: "Ada" })).toBeVisible();
+  if (SHOTS) await bruno.screenshot({ path: `${SHOTS}/member.png` });
+});

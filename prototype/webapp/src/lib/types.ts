@@ -101,6 +101,8 @@ export type ServerEvent =
   | { type: "hello"; agentName: string; group: Group; me: Person; members: Person[]; messages: ChatMessage[] }
   | { type: "message"; message: ChatMessage }
   | { type: "members"; members: Person[] }
+  /** The space was renamed (Project settings): every open tab shows the new name. */
+  | { type: "group"; group: Group }
   | { type: "proposal"; proposal: Proposal }
   | { type: "state"; state: ProjectState }
   | { type: "status"; coordinator: "unavailable" }

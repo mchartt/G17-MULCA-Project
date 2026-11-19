@@ -5,7 +5,7 @@ import type { Person, ProjectState, MemberId, Names } from "../lib/types";
 import { formatDate } from "./ProposalCard";
 import { DoneBox } from "./PlanDialogs";
 import { nextMilestones, todayIso, upNext, type TaskEdit } from "./plan";
-import { dotFor, nameOf as spaceNameOf } from "./space";
+import { dotFor, nameOf as spaceNameOf, profileFacts } from "./space";
 
 type Props = {
   state: ProjectState | null;
@@ -178,7 +178,7 @@ export function ProjectPanel({ state, members, names = {}, onKickoff, onRefresh,
  * A member rewrites the goal and the deliverables. Saving does not change the
  * plan: it posts a charter card in the chat, saved when a member confirms it.
  */
-function GoalForm({ goal, deliverables, onSave, onClose }: { goal: string; deliverables: string[]; onSave: (goal: string, deliverables: string[]) => Promise<string | null>; onClose: () => void }) {
+export function GoalForm({ goal, deliverables, onSave, onClose }: { goal: string; deliverables: string[]; onSave: (goal: string, deliverables: string[]) => Promise<string | null>; onClose: () => void }) {
   const [text, setText] = useState(goal);
   const [list, setList] = useState(deliverables.join("\n"));
   const [busy, setBusy] = useState(false);
@@ -209,7 +209,7 @@ function GoalForm({ goal, deliverables, onSave, onClose }: { goal: string; deliv
   );
 }
 
-const LANGUAGES = [
+export const LANGUAGES = [
   { value: "", label: "Follow the chat" },
   { value: "en", label: "English" },
   { value: "it", label: "Italiano" },
@@ -240,7 +240,7 @@ function Team({ state, members, me, onProfile, onLanguage }: Pick<Props, "state"
         {shown.map((row) => {
           const p = row.profile;
           const mine = me !== null && String(row.id) === String(me);
-          const facts = [p?.discipline?.trim(), p?.skills?.length ? p.skills.join(", ") : "", typeof p?.weekly_hours === "number" ? `${p.weekly_hours} h/week` : ""].filter(Boolean);
+          const facts = profileFacts(p);
           return (
             <li key={String(row.id)}>
               <span className="dot" style={{ background: dotFor(row.id, members) }} aria-hidden="true" />

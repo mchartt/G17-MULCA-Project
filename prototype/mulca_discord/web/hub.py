@@ -291,6 +291,13 @@ class WebHub:
         channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
         await channel.send(answer.get("text") or UNAVAILABLE)
 
+    async def rename_group(self, member: Member, name: str) -> dict:
+        """Project settings: a new name for the space; every open tab of the group shows it."""
+        group = self.store.rename_group(member.group_id, name)
+        frame = {"id": group.id, "name": group.name, "inviteCode": group.invite_code}
+        await self.broadcast(group.id, {"type": "group", "group": frame})
+        return frame
+
     async def delete_group(self, member: Member) -> bool:
         """
         Delete everything about the member's group: first on MUCA-Server (the

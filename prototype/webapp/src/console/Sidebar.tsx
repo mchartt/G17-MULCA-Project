@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
-import { faBookmark, faCheck, faComments, faCopy, faDiagramProject, faFlag, faLightbulb, faListCheck, faPlug, faRightFromBracket, faTrashCan } from "../lib/icons";
+import { faBookmark, faCheck, faComments, faCopy, faDiagramProject, faFlag, faGear, faLightbulb, faListCheck, faPlug, faRightFromBracket } from "../lib/icons";
+import type { MemberId } from "../lib/types";
 import { copyText, inviteLink } from "../lib/invite";
 import { initials } from "./Chat";
 import type { Space } from "./space";
@@ -19,12 +20,12 @@ const PAGES: { key: View; label: string; icon: typeof faComments }[] = [
   { key: "reflection", label: "Reflection", icon: faLightbulb },
 ];
 
-type Props = { space: Space; view: View; onView: (view: View) => void; onLeave: () => void; onDelete: () => void; onConnect: () => void };
+type Props = { space: Space; view: View; onView: (view: View) => void; onLeave: () => void; onSettings: () => void; onMember: (id: MemberId) => void; onConnect: () => void };
 
 // A group is small, but the list must never push the rest of the sidebar away.
 const MEMBERS_SHOWN = 6;
 
-export function Sidebar({ space, view, onView, onLeave, onDelete, onConnect }: Props) {
+export function Sidebar({ space, view, onView, onLeave, onSettings, onMember, onConnect }: Props) {
   const [copied, setCopied] = useState(false);
   const [allMembers, setAllMembers] = useState(false);
   // You first, then the others as they joined.
@@ -43,7 +44,12 @@ export function Sidebar({ space, view, onView, onLeave, onDelete, onConnect }: P
   return (
     <nav className="side" aria-label="Space">
       <p className="brand"><span className="brand__mark" aria-hidden="true" />Cadence</p>
-      <h1 className="side__group">{space.group?.name}</h1>
+      <div className="side__head">
+        <h1 className="side__group">{space.group?.name}</h1>
+        <button className="icon-btn side__gear" aria-label="Project settings" title="Project settings" onClick={onSettings}>
+          <FontAwesomeIcon icon={faGear} />
+        </button>
+      </div>
 
       <ul className="side__pages" aria-label="Pages" data-tour="pages">
         {PAGES.map((page) => (
@@ -60,11 +66,14 @@ export function Sidebar({ space, view, onView, onLeave, onDelete, onConnect }: P
         <ul className="members">
           {members.map((m) => (
             <li key={m.id}>
-              <span className="avatar avatar--small" style={{ background: dotFor(m.id, space.members) }} aria-hidden="true">{initials(m.name)}</span>
-              <span className="members__name">
-                {m.name}
-                {m.id === space.me?.id && <span className="muted small"> (you)</span>}
-              </span>
+              {/* A teammate's profile opens in a popup. */}
+              <button className="members__row" onClick={() => onMember(m.id)}>
+                <span className="avatar avatar--small" style={{ background: dotFor(m.id, space.members) }} aria-hidden="true">{initials(m.name)}</span>
+                <span className="members__name">
+                  {m.name}
+                  {m.id === space.me?.id && <span className="muted small"> (you)</span>}
+                </span>
+              </button>
             </li>
           ))}
         </ul>
@@ -86,10 +95,6 @@ export function Sidebar({ space, view, onView, onLeave, onDelete, onConnect }: P
 
       <div className="side__foot">
         <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Back to my spaces</button>
-        <details className="side__more side__settings">
-          <summary>Project settings</summary>
-          <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
-        </details>
       </div>
     </nav>
   );

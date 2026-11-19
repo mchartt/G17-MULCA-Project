@@ -3,7 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
 import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faPeopleGroup, faTableColumns } from "../lib/icons";
-import { ADAPTER_URL, calendarLink, deleteSpace, saveToken } from "../lib/api";
+import { ADAPTER_URL, calendarLink, deleteSpace, renameSpace, saveToken } from "../lib/api";
 import { takePendingBrief } from "../lib/brief";
 import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
@@ -13,7 +13,8 @@ import { AskMenu } from "./AskMenu";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
-import { ConnectDialog, DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { ConnectDialog, DeleteDialog, Dialog, KickoffDialog, MemberDialog, ProfileDialog, ProjectSettingsDialog, type Profile } from "./Dialogs";
+import type { MemberId } from "../lib/types";
 import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { todayIso } from "./plan";
@@ -23,7 +24,7 @@ import { DecisionsPage, DependenciesPage, MilestonesPage, ReflectionPage, TasksP
 import { QuickRail } from "./QuickRail";
 import { Tour, tourSeen } from "./Tour";
 import { Sidebar, type View } from "./Sidebar";
-import { emptySpace, nameOf, reduce } from "./space";
+import { dotFor, emptySpace, nameOf, profileOf, reduce } from "./space";
 
 const PAGE_TITLES: Record<View, string> = { chat: "Group chat", tasks: "Tasks", dependencies: "Dependencies", milestones: "Milestones", decisions: "Plan and decisions", reflection: "Reflection" };
 
@@ -45,7 +46,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [panelOpen, setPanelOpen] = useState(false);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | "connect" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | "connect" | "settings" | "member" | null>(null);
+  // The teammate whose profile popup is open.
+  const [memberId, setMemberId] = useState<MemberId | null>(null);
   // The guided tour: shown once per space in this browser, and again from the quick actions.
   const [touring, setTouring] = useState(false);
   // The task the "Link tasks" popup opens on (null: the member chooses).
@@ -297,6 +300,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     }
   };
 
+  /** Project settings: a new name; every open tab hears it from the adapter ("group" event). */
+  const rename = (name: string) => renameSpace(token, name);
+
   const removeSpace = async (confirm: string) => {
     const error = await deleteSpace(token, confirm);
     if (!error) leave();
@@ -311,7 +317,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} view={view} onView={setView} onLeave={leave} onDelete={() => setDialog("delete")} onConnect={() => setDialog("connect")} />
+      <Sidebar space={space} view={view} onView={setView} onLeave={leave} onSettings={() => setDialog("settings")} onMember={(id) => { setMemberId(id); setDialog("member"); }} onConnect={() => setDialog("connect")} />
       <main className="console__main">
         <header className="console__bar">
           <h2 className="console__title">{PAGE_TITLES[view]}</h2>
@@ -397,6 +403,29 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       />
       {touring && view === "chat" && <Tour onClose={() => { setTouring(false); document.getElementById("composer-input")?.focus(); }} />}
       <ConnectDialog open={dialog === "connect"} code={room} onClose={() => setDialog(null)} />
+      <ProjectSettingsDialog
+        open={dialog === "settings"}
+        name={space.group?.name ?? ""}
+        goal={space.state?.charter?.goal ?? ""}
+        deliverables={space.state?.charter?.deliverables ?? []}
+        language={space.state?.language ?? ""}
+        onRename={rename}
+        onCharter={editCharter}
+        onLanguage={(language) => void setLanguage(language)}
+        onConnect={() => setDialog("connect")}
+        onDelete={() => setDialog("delete")}
+        // Closing because another popup opened (Delete, Connect) must not cancel that popup.
+        onClose={() => setDialog((d) => (d === "settings" ? null : d))}
+      />
+      <MemberDialog
+        open={dialog === "member"}
+        member={space.members.find((m) => String(m.id) === String(memberId)) ?? null}
+        profile={memberId !== null ? profileOf(memberId, space.state) : undefined}
+        color={memberId !== null ? dotFor(memberId, space.members) : "var(--ink3)"}
+        isMe={memberId !== null && String(memberId) === String(space.me?.id)}
+        onEditProfile={() => setDialog("profile")}
+        onClose={() => setDialog((d) => (d === "member" ? null : d))}
+      />
       <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} onRead={(file) => readDocument(token, file)} />
       {user ? (
         // Logged in: the profile is the account's, saved once for every space.

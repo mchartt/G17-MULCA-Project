@@ -10,11 +10,12 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
     GET  /api/session  Authorization: Bearer <t>  -> {group, me}           who am I
     GET  /api/health                              -> {ok: true}            is the adapter there
     POST /api/groups/delete {confirm: group name} + Bearer -> {deleted: true}  delete everything (rule 10)
+    POST /api/groups/rename {name} + Bearer -> {group}                     a new name (Project settings)
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
          -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why"|"ask"|"catchup"|"language"|"charter"|"milestone"|"approach", args, requestId}
          -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now"|"helpful", option?, requestId}
-         <- hello, message, members, proposal, state, status, reply{requestId, answer}, deleted
+         <- hello, message, members, group, proposal, state, status, reply{requestId, answer}, deleted
 
 Every request is checked server side: the token names exactly one member of one
 group, and a socket only ever receives its own group's events (section 10).
@@ -51,6 +52,10 @@ class CreateGroup(BaseModel):
 class JoinGroup(BaseModel):
     invite_code: str = Field(alias="inviteCode", min_length=4, max_length=20)
     display_name: str = Field(default="", alias="displayName", max_length=40)
+
+
+class RenameGroup(BaseModel):
+    name: str = Field(max_length=80)
 
 
 class DeleteGroup(BaseModel):
@@ -168,6 +173,17 @@ def create_web_app(
         if not await hub.delete_group(member):
             raise HTTPException(502, "The coordinator server could not delete the data. Nothing was deleted: try again later.")
         return {"deleted": True}
+
+    @app.post("/api/groups/rename")
+    async def rename_group(body: RenameGroup, authorization: str = Header(default="")) -> dict:
+        """Project settings: any member gives the space a new name (their own action, no card)."""
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        name = " ".join(body.name.split())
+        if not name:
+            raise HTTPException(422, "Write the new name of the space.")
+        return {"group": await hub.rename_group(member, name)}
 
     @app.post("/api/calendar")
     async def calendar_link(authorization: str = Header(default="")) -> dict:

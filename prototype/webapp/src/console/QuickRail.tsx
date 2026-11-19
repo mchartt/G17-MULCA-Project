@@ -30,9 +30,11 @@ export function QuickRail({ tasks, onTask, onMilestone, onToday, onProfile, onTo
     <nav className="rail" aria-label="Quick actions" data-tour="rail">
       <button className="rail__btn" aria-label="Create a task" onClick={onTask}><FontAwesomeIcon icon={faListCheck} /><span>Task</span></button>
       <button className="rail__btn" aria-label="Create a milestone" onClick={onMilestone}><FontAwesomeIcon icon={faFlag} /><span>Milestone</span></button>
-      <button className="rail__btn" aria-label={today.label} onClick={onToday}>
+      {/* Seen: "Today" and a badge; heard: the whole line ("Today: 1 late"). */}
+      <button className="rail__btn" onClick={onToday}>
         <FontAwesomeIcon icon={faCalendarDays} />
-        <span>Today</span>
+        <span aria-hidden="true">Today</span>
+        <span className="sr-only">{today.label}</span>
         {today.count > 0 && <b className="rail__badge" aria-hidden="true">{today.count}</b>}
       </button>
       <button className="rail__btn" aria-label="Your profile" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /><span>Profile</span></button>

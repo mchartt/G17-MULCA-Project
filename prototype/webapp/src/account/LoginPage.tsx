@@ -12,7 +12,7 @@ import { profileDone, Welcome } from "./Welcome";
 const NOTICE = [
   { icon: faEye, text: "It reads the messages written in your group's space and in the Discord or Slack channel you link to it, so it can notice what needs coordinating." },
   { icon: faLock, text: "It keeps your email (to log in), your display name and, if you add them, your discipline, skills and weekly hours." },
-  { icon: faShieldHalved, text: "Messages are sent to Azure OpenAI to write Cadence's answers and proposals." },
+  { icon: faShieldHalved, text: "Messages, and the brief or documents you give when creating a project, are sent to Azure OpenAI to write Cadence's answers and proposals. Uploaded files are read, not kept." },
   { icon: faHandPointer, text: "It never scores or ranks people, and nothing in the plan changes until a member confirms it." },
 ];
 

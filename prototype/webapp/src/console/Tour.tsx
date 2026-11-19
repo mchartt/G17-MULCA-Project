@@ -7,7 +7,7 @@ export const STOPS: Stop[] = [
   {
     target: "composer",
     title: "Talk to your group here",
-    text: "Write as usual. To ask Cadence something directly, start with @coordinator. Try “@coordinator hello”.",
+    text: "Write as usual. To ask Cadence something directly, start with @coordinator, for example “@coordinator why did we choose React?”. Type / to see the commands.",
     side: "above",
   },
   {

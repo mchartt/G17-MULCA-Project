@@ -17,11 +17,14 @@ export function composeBrief(description: string, documents: BriefDocument[]): s
   return parts.filter(Boolean).join("\n\n");
 }
 
-export function savePendingBrief(spaceToken: string, text: string): void {
+/** false when the browser refused to keep it (storage full or blocked): the caller says so. */
+export function savePendingBrief(spaceToken: string, text: string): boolean {
+  if (!text.trim()) return true;
   try {
-    if (text.trim()) sessionStorage.setItem(KEY + spaceToken, text);
+    sessionStorage.setItem(KEY + spaceToken, text);
+    return true;
   } catch {
-    /* private mode: the member can paste the brief from the setup card */
+    return false; // the member can paste the brief from the setup card
   }
 }
 

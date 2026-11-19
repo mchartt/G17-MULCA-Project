@@ -4,6 +4,7 @@ import { TagInput, withPending } from "../console/TagInput";
 import { saveProfile, type User } from "../lib/account";
 import { ApiError } from "../lib/api";
 import { faArrowLeft, faArrowRight, faCircleCheck, faPlus, faUsers } from "../lib/icons";
+import { codeInAddress } from "../lib/invite";
 import { JoinForm } from "./Home";
 import { ProjectSetup } from "./ProjectSetup";
 
@@ -64,6 +65,22 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
     }
   }
 
+  const invited = codeInAddress() !== "";
+  const createChoice = (
+    <button key="create" className="choice" onClick={() => setStep("create")}>
+      <span className="choice__icon"><FontAwesomeIcon icon={faPlus} /></span>
+      <strong>Create a project</strong>
+      <span className="muted small">Name it, describe it, add the brief. Then invite your team.</span>
+    </button>
+  );
+  const joinChoice = (
+    <button key="join" className="choice" onClick={() => setStep("join")}>
+      <span className="choice__icon"><FontAwesomeIcon icon={faUsers} /></span>
+      <strong>Join a project</strong>
+      <span className="muted small">{invited ? "You have an invite: the code is already filled in." : "A teammate already created it and sent you a code."}</span>
+    </button>
+  );
+
   const title = (text: string) => <h1 ref={heading} tabIndex={-1} className="welcome__title">{text}</h1>;
   const previous = back();
 
@@ -115,17 +132,9 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
         <span className="welcome__check" aria-hidden="true"><FontAwesomeIcon icon={faCircleCheck} /></span>
         {title("Don't worry, your profile is set up.")}
         <p className="welcome__lead">You can change it any time from “Your profile”. Now, a project to work on.</p>
+        {/* Arriving from an invite link, joining comes first: the code is already filled in. */}
         <div className="welcome__choices">
-          <button className="choice" onClick={() => setStep("create")}>
-            <span className="choice__icon"><FontAwesomeIcon icon={faPlus} /></span>
-            <strong>Create a project</strong>
-            <span className="muted small">Name it, describe it, add the brief. Then invite your team.</span>
-          </button>
-          <button className="choice" onClick={() => setStep("join")}>
-            <span className="choice__icon"><FontAwesomeIcon icon={faUsers} /></span>
-            <strong>Join a project</strong>
-            <span className="muted small">A teammate already created it and sent you a code.</span>
-          </button>
+          {invited ? <>{joinChoice}{createChoice}</> : <>{createChoice}{joinChoice}</>}
         </div>
       </div>
     );
@@ -135,7 +144,7 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
         {title(step === "create" ? "Tell Cadence about your project." : "Join your team.")}
         <p className="welcome__lead">
           {step === "create"
-            ? "Cadence reads this to understand the goal and the deadlines, and keeps the documents as context."
+            ? "Cadence reads this once to propose the goal, the deliverables and the milestones. You confirm them in the chat."
             : "Paste the invite code a teammate sent you."}
         </p>
         {step === "create" ? <ProjectSetup disabled={disabled} onEnter={onEnter} /> : <JoinForm title="Invite code" disabled={disabled} onEnter={onEnter} />}

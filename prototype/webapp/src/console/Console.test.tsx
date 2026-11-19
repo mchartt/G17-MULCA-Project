@@ -104,9 +104,10 @@ test("a page's New button opens the same popup as the Task quick action", async 
 test("the quick actions sit on the right: task, milestone, today, profile, tour", () => {
   render(<Console token="t" onLeave={() => undefined} />);
   const rail = screen.getByRole("navigation", { name: "Quick actions" });
-  expect(within(rail).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
-    "Create a task", "Create a milestone", "Today: nothing due", "Your profile", "Show the tour again",
-  ]);
+  for (const name of ["Create a task", "Create a milestone", "Today: nothing due", "Your profile", "Show the tour again"]) {
+    expect(within(rail).getByRole("button", { name })).toBeInTheDocument();
+  }
+  expect(within(rail).getAllByRole("button")).toHaveLength(5);
 });
 
 test("the Decisions page is the plan and decision registry, empty until the group confirms something", async () => {

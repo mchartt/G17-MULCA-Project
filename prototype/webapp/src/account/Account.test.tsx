@@ -82,6 +82,28 @@ test("create an account, then the guided setup: profile, ready, a project with i
   expect(sessionStorage.getItem("cadence.brief:space-1")).toBe("AUI prototype, demo on 2 December.");
 });
 
+test("invited, a new account finishes the profile and finds Join first, with the code filled in", async () => {
+  history.replaceState(null, "", "/login?code=AB12CD");
+  localStorage.setItem("cadence.account", "acc-1");
+  server = ({ path, method, body }) => {
+    if (path === "/api/health") return { json: { ok: true } };
+    if (path === "/api/me" && method === "GET") return { json: { user: ADA, spaces: [] } };
+    if (path === "/api/me" && method === "PUT") return { json: { user: { ...ADA, ...body } } };
+    return { status: 500, json: {} };
+  };
+  render(<LoginPage onEnter={vi.fn()} />);
+  await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Save my profile/ }));
+  await screen.findByRole("heading", { name: "Don't worry, your profile is set up." });
+  const choices = screen.getAllByRole("button").filter((b) => b.classList.contains("choice"));
+  expect(choices[0]).toHaveTextContent("Join a project");
+  expect(choices[0]).toHaveTextContent("the code is already filled in");
+  await userEvent.click(choices[0]!);
+  expect(screen.getByLabelText("Invite code")).toHaveValue("AB12CD");
+  history.replaceState(null, "", "/");
+});
+
 test("the guided setup can be skipped: the home with create and join is there", async () => {
   localStorage.setItem("cadence.account", "acc-1");
   server = ({ path, method }) => {

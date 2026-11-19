@@ -19,8 +19,8 @@ const size = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round
 const kind = (name: string) => name.split(".").pop()?.toUpperCase() ?? "FILE";
 
 /**
- * A new project: its name, what it is about, and the documents Cadence keeps
- * as context (the assignment, notes). The space is created first, because
+ * A new project: its name, what it is about, and the documents Cadence reads
+ * once to draft the plan (the assignment, notes; the files are not kept). The space is created first, because
  * reading a document needs the space's token; then each file is read, and the
  * description and the documents go to the console, which hands them to Cadence
  * as the brief. Nothing is decided here: Cadence answers with a card.
@@ -72,10 +72,14 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
           failed.push(file.name);
         }
       }
-      savePendingBrief(token, composeBrief(description, read));
-      if (failed.length) {
+      const passed = savePendingBrief(token, composeBrief(description, read));
+      if (failed.length || !passed) {
         setCreated(token);
-        setError(`The space is ready, but ${failed.join(", ")} could not be read. You can paste its text later from the setup card.`);
+        setError(
+          failed.length
+            ? `The space is ready, but ${failed.join(", ")} could not be read. You can paste its text later from the setup card.`
+            : "The space is ready, but the brief is too long to pass on from here. Paste it from the setup card in the space.",
+        );
         return;
       }
       onEnter(token);
@@ -132,7 +136,7 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
         <button type="button" className="shelf__add" onClick={() => picker.current?.click()} disabled={off || files.length >= 6}>
           <FontAwesomeIcon icon={faFileLines} />
           <strong>{files.length ? "Add another document" : "Drop, paste or choose documents"}</strong>
-          <span className="muted small">The assignment, notes, a brief. PDF, Word, PowerPoint or text, up to 10 MB each. Files are read, not kept.</span>
+          <span className="muted small">The assignment, notes, a brief. PDF, Word, PowerPoint or text, up to 10 MB each. Cadence reads their text once to draft the plan; the files are not kept.</span>
         </button>
         <input ref={picker} className="sr-only" type="file" multiple accept={DOCUMENT_TYPES} tabIndex={-1} aria-hidden="true" onChange={(e) => { if (e.target.files) add(e.target.files); e.target.value = ""; }} />
       </div>

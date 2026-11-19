@@ -95,10 +95,10 @@ test("landing, guided setup, a project with a document, the tour and the registr
   await shot(page, "12-console-brief-card");
   await charter.getByRole("button", { name: "Confirm" }).click();
 
-  // Say hello to Cadence.
-  await page.getByLabel("Message to the group").fill("@coordinator hello! How should we plan the work?");
+  // Ask Cadence directly, as the tour says (answered from the decision log, no model needed).
+  await page.getByLabel("Message to the group").fill("@coordinator why did we choose React?");
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(1500);
+  await expect(page.locator(".chat")).toContainText("No decision has been recorded yet.");
   await shot(page, "13-console-chat");
 
   // The registry: the confirmed plan.

@@ -2,7 +2,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
-import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faTableColumns } from "../lib/icons";
+import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faPeopleGroup, faTableColumns } from "../lib/icons";
 import { ADAPTER_URL, calendarLink, deleteSpace, saveToken } from "../lib/api";
 import { takePendingBrief } from "../lib/brief";
 import { readDocument } from "../lib/documents";
@@ -222,6 +222,12 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     setNotice(answer.type === "notice" ? answer.text : null);
   };
 
+  /** "Plan together": Cadence asks the group how it wants to plan the work, then sums the answers up in a card. */
+  const planTogether = async () => {
+    const answer = await ask({ type: "command", command: "approach" });
+    setNotice(answer.type === "notice" ? answer.text : null);
+  };
+
   const catchUp = async () => {
     setCaught({ summary: "", catchup: null });
     setDialog("catchup");
@@ -312,6 +318,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
           <div className="console__tools">
             <AskMenu
               items={[
+                { key: "approach", label: "Plan together", about: "Cadence asks how you want to work, then sums up your answers.", icon: faPeopleGroup, run: () => void planTogether() },
                 { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: () => setDialog("kickoff") },
                 { key: "planning", label: "Plan tasks", about: "List the tasks; Cadence suggests who could take each.", icon: faListOl, run: () => setDialog("planning") },
                 { key: "checkin", label: "Check-in", about: "Compare the plan with the dates and see what slips.", icon: faClipboardCheck, run: () => void checkin() },

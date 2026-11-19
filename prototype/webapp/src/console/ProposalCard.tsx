@@ -13,6 +13,7 @@ const KIND_TITLES: Record<string, string> = {
   checkin: "Check-in",
   blocker: "Something is blocked",
   revisit: "Already decided",
+  approach: "How you plan the work",
 };
 // Which shared need a proactive card answers (the three needs the tutor named
 // on 18/11: ownership, dependencies, decisions). Shown as a small label, so
@@ -23,6 +24,7 @@ const NEED_LABELS: Record<string, string> = {
   cs7_blockers_dependencies: "Dependency",
   cs3_close_decision: "Decision",
   cs3_reopened_decision: "Decision",
+  plan_opener: "Plan",
 };
 const STATUS_WORDS: Record<string, string> = {
   pending: "Waiting for a member to confirm",
@@ -38,6 +40,7 @@ const STRATEGY_WHY: Record<string, string> = {
   cs3_close_decision: "The same question had two or more options and no decision.",
   cs7_blockers_dependencies: "Some work seems to wait on other work that is not ready, and a date is at risk.",
   cs3_reopened_decision: "A choice the group already made, with a reason, was being discussed again.",
+  plan_opener: "Cadence asked how you want to plan the work: this is what you answered.",
   // Preview only (src/preview/): MUCA-Server has no such strategy yet.
   cs14_find_a_time: "The group needed a meeting before a deadline and nobody proposed a time.",
 };
@@ -207,6 +210,27 @@ function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (i
         {reason && <Field label="Because">{reason}</Field>}
         <Field label="What seems new">{newPoint || "Nothing new so far: the same arguments as before."}</Field>
         <p className="card__ask">Has anything changed? Keep it, or reopen the question.</p>
+      </>
+    );
+  }
+  if (kind === "approach") {
+    const list = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
+    const agreed = list(payload.agreements);
+    const open = list(payload.open_points);
+    return (
+      <>
+        <Field label="In short">{String(payload.summary ?? "")}</Field>
+        <div className="card__field">
+          <h4>What you agreed</h4>
+          <ul>{agreed.map((a) => <li key={a}>{a}</li>)}</ul>
+        </div>
+        {open.length > 0 && (
+          <div className="card__field">
+            <h4>Still open <span className="muted">· raised, not agreed</span></h4>
+            <ul>{open.map((o) => <li key={o}>{o}</li>)}</ul>
+          </div>
+        )}
+        <p className="card__ask">Confirm it and it goes to your decisions. You can change it later with “Plan together”.</p>
       </>
     );
   }

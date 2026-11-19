@@ -132,3 +132,10 @@ test("Connect Slack or Discord explains the bot and the link command", async () 
   const popup = screen.getByRole("dialog", { name: "Connect Slack or Discord" });
   expect(within(popup).getByText(/Without the bot installed, the command does nothing/)).toBeInTheDocument();
 });
+
+test("Plan together, from the Ask Cadence menu, asks the server with the approach command", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(screen.getByRole("button", { name: "Ask Cadence" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /^Plan together/ }));
+  expect(asked).toContainEqual({ type: "command", command: "approach" });
+});

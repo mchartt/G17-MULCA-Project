@@ -45,4 +45,5 @@ export {
   faGear,
   faPlug,
   faBookmark,
+  faPeopleGroup,
 } from "@fortawesome/free-solid-svg-icons";

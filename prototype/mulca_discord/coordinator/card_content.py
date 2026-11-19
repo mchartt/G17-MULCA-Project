@@ -38,6 +38,7 @@ KIND_TITLES = {
     "checkin": "Check-in",
     "blocker": "Something is blocked",
     "revisit": "Already decided",
+    "approach": "How you plan the work",
 }
 # The three shared needs (ownership, dependencies, decisions), as a short label.
 NEED_LABELS = {
@@ -46,6 +47,7 @@ NEED_LABELS = {
     "cs7_blockers_dependencies": "Dependency",
     "cs3_close_decision": "Decision",
     "cs3_reopened_decision": "Decision",
+    "plan_opener": "Plan",
 }
 # Kinds whose answers are one button per option in payload["options"].
 OPTION_KINDS = ("decision", "checkin", "revisit")
@@ -56,8 +58,9 @@ STRATEGY_NAMES = {
     "cs3_close_decision": "Close the decision (CS3): the same question had two or more options and no decision.",
     "cs7_blockers_dependencies": "Blockers and dependencies (CS7): some work seems to wait on other work that is not ready, and a date is at risk.",
     "cs3_reopened_decision": "Already decided (CS3): a choice the group made, with a reason, was being discussed again.",
+    "plan_opener": "Plan together: Cadence asked how you want to plan the work, and this is what you answered.",
 }
-PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker", "revisit")
+PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker", "revisit", "approach")
 # The "about this card" buttons, on a second row so the answers come first.
 ABOUT_THE_CARD = ("why", "helpful", "not_now")
 
@@ -136,6 +139,11 @@ def card_fields(kind: str | None, payload: dict, who: Who) -> list[tuple[str, st
         if payload.get("ways_forward"):
             fields.append(("Possible ways forward (ideas, nothing changes by itself)", _bullets(payload["ways_forward"])))
         return fields
+    if kind == "approach":
+        fields = [("In short", payload.get("summary", "")), ("What you agreed", _bullets(payload.get("agreements", [])))]
+        if payload.get("open_points"):
+            fields.append(("Still open (raised, not agreed)", _bullets(payload["open_points"])))
+        return fields
     if kind == "revisit":
         fields = [("Question", payload.get("question", "")), ("The group chose", payload.get("choice", ""))]
         if payload.get("reason"):
@@ -156,6 +164,7 @@ def actions_for(kind: str | None, payload: dict) -> list[str]:
         "plan": ["confirm", "reject"],
         "blocker": ["confirm", "reject"],
         "revisit": [],
+        "approach": ["confirm", "reject"],
     }.get(kind, ["confirm", "reject"])
     if kind in PROACTIVE_KINDS:
         actions += ["why", "helpful", "not_now"]

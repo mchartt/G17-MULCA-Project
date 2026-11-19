@@ -92,6 +92,21 @@ def scripted(name: str, user: str) -> dict:
             ],
             "rationale": "Stepping in because a task is late.",
         }
+    if name == "plan_approach":
+        # Plan opener (CS-OPEN-01), SCRIPTED: every answer becomes an agreed point.
+        answers = re.findall(r"^\[(\d+)\] [^:]+: (.*)$", user.split("<chat>")[1], re.MULTILINE)
+        points = [{"text": text[:150], "evidence": [int(n)]} for n, text in answers[:5]]
+        return {
+            "outcome": "agreed" if points else "none",
+            "topic": "how we work",
+            "evidence": [p["evidence"][0] for p in points],
+            "rationale": "Stepping in because you said how you want to plan the work.",
+            "question": "",
+            "summary": "; ".join(p["text"] for p in points)[:190] or "-",
+            "agreements": points,
+            "open_points": [],
+            "options": [],
+        }
     if name == "decision_answer":
         ids = re.findall(r"- id (\w+):", user.split("<decisions>")[1])
         return {"answer": "The group chose it in the decision card.", "decision_ids": ids[:1]}
@@ -138,6 +153,12 @@ class FakePolicy(AnswerEverything):
             return False
         return await super().on_utterance(utterance)
 
+
+# The plan opener's window (opener.py: 60 s minimum, 5 s quiet, 10 min cap) is
+# shortened here only, so a browser test does not wait a minute. SCRIPTED timing.
+from muca_server.cognition.coordination import opener as _opener  # noqa: E402
+
+_opener.MIN_OPEN_SECONDS, _opener.QUIET_SECONDS, _opener.MAX_OPEN_SECONDS = 3.0, 1.5, 60.0
 
 MUCA_PORT = int(os.environ.get("FAKE_MUCA_PORT", "8091"))
 WEB_PORT = int(os.environ.get("FAKE_WEB_PORT", "8090"))

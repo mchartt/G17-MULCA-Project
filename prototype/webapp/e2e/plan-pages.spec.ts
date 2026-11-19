@@ -8,8 +8,10 @@ import { signUp } from "./account.mjs";
 
 const SHOTS = process.env.SHOTS_DIR;
 
+// New task / New milestone are the buttons of their own pages (the right-hand panel has no copy of them).
 async function newFromMenu(page, what: "Task" | "Milestone") {
-  await page.getByRole("navigation", { name: "Quick actions" }).getByRole("button", { name: `Create a ${what.toLowerCase()}` }).click();
+  await page.getByRole("list", { name: "Pages" }).getByRole("button", { name: what === "Task" ? "Tasks" : "Milestones", exact: true }).click();
+  await page.getByRole("button", { name: `New ${what.toLowerCase()}` }).click();
 }
 
 test("quick actions, pages and dependencies", async ({ page }) => {
@@ -20,7 +22,7 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await page.getByRole("button", { name: "Create the space" }).click();
   await expect(page.getByRole("heading", { name: "Group Pages" })).toBeVisible();
 
-  // The chat is where the space opens.
+  // The chat is where the space opens; Quick access is beside it.
   const rail = page.getByRole("list", { name: "Pages" });
   await expect(rail.getByRole("button", { name: "Chat" })).toHaveAttribute("aria-current", "page");
 
@@ -41,11 +43,11 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await popup.getByLabel("Build the API").check();
   await popup.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByText("Task added: “Test the API”.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Today: 1 late" })).toBeVisible();
-  await page.getByRole("button", { name: "Today: 1 late" }).click();
+  await expect(page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today\s*1 late/ })).toBeVisible();
+  await page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today\s*1 late/ }).click();
   await expect(popup.getByRole("region", { name: "Late" })).toContainText("Test the API");
   await popup.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByRole("button", { name: "Today: 1 late" })).toBeFocused(); // the focus goes back to where the popup was opened
+  await expect(page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today\s*1 late/ })).toBeFocused(); // the focus goes back to where the popup was opened
 
   // The dependency page: drawn and listed; the second task waits.
   await rail.getByRole("button", { name: "Dependencies" }).click();

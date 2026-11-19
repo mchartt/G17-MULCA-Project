@@ -160,8 +160,8 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .card__ask { margin-top: .75rem; color: var(--ink); }
 
 /* ---------- Console ---------- */
-.console { display: grid; grid-template-columns: 16.5rem minmax(0, 1fr) 22.5rem; height: 100vh; background: var(--canvas); font-size: var(--t-sm); line-height: 1.25rem; }
-.console--wide { grid-template-columns: 16.5rem minmax(0, 1fr); }
+.console { display: grid; grid-template-columns: 16.5rem minmax(0, 1fr) 19.5rem; grid-template-areas: "side main quick"; height: 100vh; background: var(--canvas); font-size: var(--t-sm); line-height: 1.25rem; }
+.console--no-quick { grid-template-columns: 16.5rem minmax(0, 1fr); grid-template-areas: "side main"; }
 .side { background: var(--surface); padding: 1rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; border-right: 1px solid var(--line-s); }
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 600; letter-spacing: -0.01em; }
 .brand__mark { width: 1rem; height: 1rem; border-radius: 4px; background: var(--ag-solid); }
@@ -194,20 +194,7 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .composer textarea { flex: 1; resize: none; border: none; padding: .55rem 0; background: transparent; }
 .composer textarea:focus { outline: none; }
 .composer:focus-within { border-color: var(--act); box-shadow: 0 0 0 3px rgba(31, 79, 216, .18); }
-.console__panel { overflow-y: auto; }
-.panel { padding: 1.3rem 1.2rem 1.6rem; display: grid; gap: 1rem; }
-.panel__head { display: flex; justify-content: space-between; align-items: center; padding: .3rem .4rem; }
-.panel__head h2 { font-size: var(--t-md); }
-.panel__empty { display: grid; gap: 1rem; justify-items: start; padding: 1.25rem; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--line); }
-.panel__section { padding: 1.1rem 1.2rem; }
 /* Quorum overline: small mono capitals over a section. */
-.panel__section h3 { font-family: var(--mono); font-size: .6875rem; line-height: 1rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); font-weight: 600; margin-bottom: .6rem; display: flex; gap: .45rem; align-items: center; }
-.panel__section h3 svg { color: var(--act); }
-.panel__goal { font-size: var(--t-md); line-height: 1.75rem; font-weight: 600; }
-.timeline { list-style: none; padding: 0 0 0 1rem; border-left: 2px solid var(--inset); display: grid; gap: .7rem; }
-.timeline li { display: grid; position: relative; }
-.timeline li::before { content: ""; position: absolute; left: -1.38rem; top: .4rem; width: .7rem; height: .7rem; border-radius: var(--r-pill); background: var(--act); box-shadow: 0 0 0 3px var(--surface); }
-.timeline__date { font-size: var(--t-xs); color: var(--ink2); }
 .tasks, .decisions { list-style: none; padding: 0; display: grid; gap: .75rem; }
 .tasks li { display: grid; grid-template-columns: auto 1fr; column-gap: .55rem; align-items: center; }
 .tasks li > :nth-child(n+3) { grid-column: 2; }
@@ -231,14 +218,13 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(8px); } to { opacity: 1; transform: none; } }
 
+/* Narrow: the sidebar keeps its column and Quick access becomes a sheet over the chat (experience.css). */
 @media (max-width: 1100px) {
-  .console, .console--wide { grid-template-columns: 15rem minmax(0, 1fr); }
-  .console__panel { grid-column: 1 / -1; }
-  .console { height: auto; min-height: 100vh; }
+  .console, .console--no-quick { grid-template-columns: 15rem minmax(0, 1fr); grid-template-areas: "side main"; }
 }
 @media (max-width: 760px) {
   .nav nav a:not(.nav__cta) { display: none; }
-  .console, .console--wide { grid-template-columns: 1fr; }
+  .console, .console--no-quick { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "main"; height: auto; min-height: 100vh; }
   .side { box-shadow: 0 1px 0 var(--line-s); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -395,24 +381,17 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 @media (max-width: 640px) { .steps__step { grid-template-columns: auto 1fr; } .steps__step .btn { grid-column: 2; justify-self: start; } }
 
 /* Project panel: deliverables under the goal, the goal form, the team. */
-.panel__label { margin-top: .8rem; }
 .panel__list { margin: .2rem 0 0; padding-left: 1.1rem; display: grid; gap: .15rem; }
-.panel__foot { margin-top: .7rem; display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .goalform { display: grid; gap: .35rem; }
-.team { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
-.team li { display: grid; grid-template-columns: auto 1fr; column-gap: .55rem; align-items: center; }
-.team li > :nth-child(n+3) { grid-column: 2; justify-self: start; }
-.team__name { font-weight: 600; }
-.team__language { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--line); display: flex; gap: .6rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 
 /* Review of 17 Nov: notices on their own row, long words never push a column wider. */
 .console__notices { flex-basis: 100%; display: grid; gap: .3rem; justify-items: start; min-width: 0; }
 .console__notices .banner { margin-top: 0; max-width: 100%; }
 .console__title { white-space: nowrap; }
 .console__tools { justify-content: flex-end; }
-.msg__text, .bubble, .panel__goal, .tasks__title, .decisions p, .timeline li, .card, .side__group, .members li, .team li, .banner { overflow-wrap: anywhere; min-width: 0; }
+.msg__text, .bubble, .tasks__title, .decisions p, .card, .side__group, .members li, .banner { overflow-wrap: anywhere; min-width: 0; }
 .bubble { min-width: 0; max-width: 100%; }
-.panel-card, .panel__section { min-width: 0; }
+.panel-card { min-width: 0; }
 
 /* Up next: a done box, the task, then who and when on one wrapping line. */
 .tasks li { align-items: start; }
@@ -425,8 +404,6 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .donebox--on { background: var(--ok); border-color: var(--ok); }
 .donebox:focus-visible { outline: var(--focus); outline-offset: 2px; }
 .donebox:disabled { cursor: default; opacity: .5; }
-.panel__links { display: inline-flex; gap: .9rem; flex-wrap: wrap; }
-.team__background { white-space: pre-line; }
 
 /* The plan's own pages (dialogs): planning rows, the task register, day by day, milestones. */
 .field-select, .rows input, .addrow input, .register input[type="date"] { font: inherit; font-size: var(--t-xs); min-height: 2rem; padding: 0 .55rem; border: 1px solid var(--line); border-radius: var(--r-field); background: var(--surface); color: var(--ink); min-width: 0; }
@@ -488,15 +465,6 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .side__more[open] summary { margin-bottom: .5rem; }
 .side__more summary:focus-visible { outline: var(--focus); outline-offset: 2px; }
 
-/* Chat first (U1, 19 Nov): one "Ask Cadence" menu instead of five buttons. */
-.ask { position: relative; }
-.ask__menu { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 20; list-style: none; margin: 0; padding: .35rem; min-width: 17rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .08); display: grid; gap: .1rem; }
-.ask__item { width: 100%; display: grid; grid-template-columns: 1.1rem 1fr; gap: .6rem; align-items: start; text-align: left; padding: .5rem .6rem; border: 0; border-radius: var(--r-field); background: none; color: var(--ink); font: inherit; cursor: pointer; }
-.ask__item:hover, .ask__item:focus-visible { background: var(--subtle); outline: none; }
-.ask__item:focus-visible { box-shadow: inset 0 0 0 2px var(--act); }
-.ask__icon { margin-top: .2rem; color: var(--ink2); }
-.ask__label { display: block; font-weight: 600; font-size: var(--t-xs); }
-.ask__about { display: block; font-size: var(--t-xs); color: var(--ink2); }
 /* Setting up a space (Francesco, Figma "Onboarding and setup"): a stepper Team > Profile > Brief > Charter
    and one card for the current step. It folds to the stepper line and goes once the charter is confirmed. */
 .setup { margin: 1rem 1.5rem 0; padding: .7rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
@@ -525,10 +493,9 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .setup__drop svg { color: var(--ink2); }
 .side__settings { margin-top: -.9rem; }
 
-/* Quick actions (19 Nov): "+ New" opens popups; one quiet "Today" line above the chat. */
+/* New popups (19 Nov): the forms behind each page's "New" button. */
 .side__new { margin: -.4rem 0 .2rem; }
 .side__new .btn { width: 100%; justify-content: center; }
-.side__new .ask__menu { left: 0; right: auto; }
 .form__pair { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .form__pair label { display: block; }
 .form__pair .field-select, .form__pair input { width: 100%; min-height: 2.25rem; }

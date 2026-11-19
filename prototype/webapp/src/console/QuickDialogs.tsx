@@ -180,6 +180,90 @@ export function TodayDialog({ open, today, tasks, nameOf, onTask, onClose }: Tod
   );
 }
 
+/** "Ask why": a question about a past decision, answered from the decision log with its source. */
+export function AskWhyDialog({ open, onClose, onWhy }: { open: boolean; onClose: () => void; onWhy: (question: string) => Promise<string> }) {
+  const id = useId();
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) return;
+    setQuestion("");
+    setAnswer(null);
+    setBusy(false);
+  }, [open]);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!question.trim() || busy) return;
+    setBusy(true);
+    setAnswer(await onWhy(question.trim()));
+    setBusy(false);
+  }
+
+  return (
+    <Dialog open={open} title="Ask why" onClose={onClose}>
+      <p className="muted">Ask why the group decided something. Cadence answers from the decision log and shows its source.</p>
+      <form className="form" onSubmit={submit}>
+        <label htmlFor={`${id}-q`}>Your question</label>
+        <input id={`${id}-q`} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Why did we choose…?" maxLength={500} />
+        {answer && <p className="askwhy__answer" role="status">{answer}</p>}
+        <div className="form__actions">
+          <button type="button" className="btn btn--soft" onClick={onClose}>Close</button>
+          <button type="submit" className="btn btn--primary" disabled={busy || !question.trim()}>{busy ? "Looking…" : "Ask"}</button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** N3: milestones and task dates in each member's own calendar, read-only, through a private link. */
+export function CalendarDialog({ open, onClose, onCalendar }: { open: boolean; onClose: () => void; onCalendar: () => Promise<string> }) {
+  const id = useId();
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (open) return;
+    setError(null);
+    setCopied(false);
+  }, [open]);
+
+  async function make() {
+    setError(null);
+    setCopied(false);
+    try {
+      setUrl(await onCalendar());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The link could not be created.");
+    }
+  }
+
+  return (
+    <Dialog open={open} title="Add to my calendar" onClose={onClose}>
+      <p className="muted">Milestones and task dates appear in your own calendar, read-only. Keep the link private: a new link turns the old one off.</p>
+      <div className="calendar">
+        <div>
+          <button type="button" className="btn btn--primary btn--small" onClick={() => void make()}>{url ? "Make a new link" : "Create my link"}</button>
+        </div>
+        {url && (
+          <>
+            <label htmlFor={`${id}-url`} className="small">Subscribe to this link. Google Calendar: Other calendars, From URL. Outlook: Add calendar, Subscribe from web.</label>
+            <div className="askwhy__row">
+              <input id={`${id}-url`} readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+              <button type="button" className="btn btn--soft btn--small" onClick={() => void navigator.clipboard?.writeText(url).then(() => setCopied(true))}>{copied ? "Copied" : "Copy"}</button>
+            </div>
+          </>
+        )}
+        {error && <p className="form__error" role="alert">{error}</p>}
+      </div>
+      <div className="form__actions"><button type="button" className="btn btn--soft" onClick={onClose}>Close</button></div>
+    </Dialog>
+  );
+}
+
 /**
  * Link tasks: choose a task and what it waits on. Opened from a row of the
  * dependency page (the task is already chosen) or from "Link tasks".

@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Proposal } from "../lib/types";
-import { ProjectPanel } from "./ProjectPanel";
 import { ProposalCard } from "./ProposalCard";
 
 const names = (id: number | string) => ({ 1: "Ada", 2: "Bruno" })[id] ?? "?";
@@ -41,30 +40,4 @@ test("a blocker card is proactive: Mark as blocked, Why?, Helpful, Not now", () 
   render(<ProposalCard proposal={blocker} agentName="Cadence" onAnswer={vi.fn()} memberName={names} />);
   expect(screen.getByText("Bruno")).toBeInTheDocument();
   expect(screen.getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Mark as blocked", "Reject", "Why?", "Helpful", "Not now"]);
-});
-
-test("the panel lets a member change a task's status and ask why a decision was taken", async () => {
-  const onTask = vi.fn();
-  const onWhy = vi.fn().mockResolvedValue("You chose think-aloud.\nSource: “Which test?” → Think-aloud (decided by Bruno on 20 Nov).");
-  render(
-    <ProjectPanel
-      state={{ tasks: [{ task_id: "a", title: "Server", status: "todo", owner_id: 1 }], decisions: [{ question: "Which test?", choice: "Think-aloud" }] }}
-      members={[{ id: 1, name: "Ada" }]}
-      onKickoff={vi.fn()} onRefresh={vi.fn()} onTask={onTask} onWhy={onWhy}
-    />,
-  );
-  await userEvent.click(screen.getByRole("checkbox", { name: "Server: done" }));
-  expect(onTask).toHaveBeenCalledWith("a", { status: "done" });
-  await userEvent.type(screen.getByLabelText("Ask why the group decided something"), "Why think-aloud?");
-  await userEvent.click(screen.getByRole("button", { name: "Ask" }));
-  expect(onWhy).toHaveBeenCalledWith("Why think-aloud?");
-  expect(await screen.findByText(/Source: “Which test\?”/)).toBeInTheDocument();
-});
-
-test("the calendar link is created on request and can be copied", async () => {
-  const onCalendar = vi.fn().mockResolvedValue("http://127.0.0.1:8090/api/calendar/abc.ics");
-  render(<ProjectPanel state={{ milestones: [{ title: "Demo", due_date: "2026-12-02" }] }} members={[]} onKickoff={vi.fn()} onRefresh={vi.fn()} onCalendar={onCalendar} />);
-  await userEvent.click(screen.getByRole("button", { name: "Add to my calendar" }));
-  expect(await screen.findByDisplayValue("http://127.0.0.1:8090/api/calendar/abc.ics")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Make a new link" })).toBeInTheDocument();
 });

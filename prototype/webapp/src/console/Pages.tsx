@@ -147,7 +147,7 @@ export function ReflectionPage({ state, today }: { state: ProjectState | null; t
 }
 
 /** The tasks in four groups, from what needs attention to what is done. Owners and dates as the plan has them. */
-export function TasksPage({ tasks, today, nameOf, onTask, onNew }: { tasks: Task[]; today: string; nameOf: (id: MemberId) => string | undefined; onTask: (taskId: string, edit: TaskEdit) => void; onNew: () => void }) {
+export function TasksPage({ tasks, today, me = null, nameOf, onTask, onNew }: { tasks: Task[]; today: string; me?: MemberId | null; nameOf: (id: MemberId) => string | undefined; onTask: (taskId: string, edit: TaskEdit) => void; onNew: () => void }) {
   const waits = new Set(waitingOn(tasks).filter((r) => r.waiting).map((r) => r.task));
   const titleOf = new Map(tasks.filter((t) => t.task_id).map((t) => [t.task_id!, t.title]));
   const sections = [
@@ -182,7 +182,13 @@ export function TasksPage({ tasks, today, nameOf, onTask, onNew }: { tasks: Task
                         <span className="muted small task-row__waits"> waits on {(t.depends_on ?? []).map((id) => titleOf.get(id)).filter(Boolean).join(", ")}</span>
                       )}
                     </span>
-                    <span className="task-row__owner">{t.owner_id ? nameOf(t.owner_id) ?? "a member" : <span className="muted">No owner</span>}</span>
+                    <span className="task-row__owner">
+                      {t.owner_id ? nameOf(t.owner_id) ?? "a member" : <span className="muted">No owner</span>}
+                      {/* An unowned task is a gap (CS5): one click for the member who steps up. */}
+                      {!t.owner_id && t.task_id && me !== null && t.status !== "done" && (
+                        <button className="link-btn" aria-label={`Take ${t.title}`} onClick={() => onTask(t.task_id!, { owner: me })}>I'll take it</button>
+                      )}
+                    </span>
                     <span className={`task-row__due${late ? " task-row__due--late" : ""}`}>{t.due_date ? `${late ? "Late · " : ""}${dayLabel(t.due_date)}` : <span className="muted">No date</span>}</span>
                   </li>
                 );

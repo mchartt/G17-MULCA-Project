@@ -18,8 +18,8 @@ export const STOPS: Stop[] = [
   },
   {
     target: "rail",
-    title: "Quick actions",
-    text: "Create a task or a milestone, see what is due today, and edit your profile. Cadence reads the same plan.",
+    title: "Quick access",
+    text: "What you can ask Cadence to do, what is due today, your calendar and your profile, one click from any page. The Quick access button at the top shows or hides it.",
     side: "left",
   },
   {

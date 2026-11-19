@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { DependenciesPage, MilestonesPage, ReflectionPage } from "./Pages";
+import { DependenciesPage, MilestonesPage, ReflectionPage, TasksPage } from "./Pages";
 
 const task = (task_id: string, title: string, status = "todo", depends_on: string[] = [], owner_id: number | null = 1, due_date: string | null = null) => ({ task_id, title, status, depends_on, owner_id, due_date });
 
@@ -89,4 +89,18 @@ test("dependencies: the graph is drawn above the list, and a row can reopen its 
 test("dependencies: with a single task there is nothing to link, so no Link tasks button", () => {
   render(<DependenciesPage tasks={[task("a", "API")]} onNew={vi.fn()} onLink={vi.fn()} />);
   expect(screen.queryByRole("button", { name: "Link tasks" })).toBeNull();
+});
+
+test("tasks: a task nobody owns offers \"I'll take it\" to the member looking, a done one does not", async () => {
+  const onTask = vi.fn();
+  const tasks = [task("a", "Slides", "todo", [], null), task("b", "Report", "done", [], null), task("c", "Server", "todo", [], 1)];
+  render(<TasksPage tasks={tasks} today="2026-11-19" me={2} nameOf={(id) => (id === 1 ? "Ada" : "Bruno")} onTask={onTask} onNew={vi.fn()} />);
+  expect(screen.getAllByRole("button", { name: /^Take / })).toHaveLength(1);
+  await userEvent.click(screen.getByRole("button", { name: "Take Slides" }));
+  expect(onTask).toHaveBeenCalledWith("a", { owner: 2 });
+});
+
+test("tasks: a guest of the space (no member) cannot take a task", () => {
+  render(<TasksPage tasks={[task("a", "Slides", "todo", [], null)]} today="2026-11-19" nameOf={() => undefined} onTask={vi.fn()} onNew={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: /^Take / })).toBeNull();
 });

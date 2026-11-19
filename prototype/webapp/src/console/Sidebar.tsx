@@ -21,12 +21,12 @@ const PAGES: { key: View; label: string; icon: typeof faComments }[] = [
   { key: "reflection", label: "Reflection", icon: faLightbulb },
 ];
 
-type Props = { space: Space; view: View; onView: (view: View) => void; onLeave: () => void; onSettings: () => void; onMember: (id: MemberId) => void; onConnect: () => void };
+type Props = { space: Space; view: View; onView: (view: View) => void; onLeave: () => void; onSettings: () => void; onMember: (id: MemberId) => void; onConnect: () => void; /** Quick access is a sheet over the page: nothing behind it can be reached. */ inert?: boolean };
 
 // A group is small, but the list must never push the rest of the sidebar away.
 const MEMBERS_SHOWN = 6;
 
-export function Sidebar({ space, view, onView, onLeave, onSettings, onMember, onConnect }: Props) {
+export function Sidebar({ space, view, onView, onLeave, onSettings, onMember, onConnect, inert }: Props) {
   const [copied, setCopied] = useState(false);
   const [allMembers, setAllMembers] = useState(false);
   // You first, then the others as they joined.
@@ -43,7 +43,7 @@ export function Sidebar({ space, view, onView, onLeave, onSettings, onMember, on
   }
 
   return (
-    <nav className="side" aria-label="Space">
+    <nav className="side" aria-label="Space" inert={inert}>
       <p className="brand"><LogoMark size={22} />Cadence</p>
       <div className="side__head">
         <h1 className="side__group">{space.group?.name}</h1>

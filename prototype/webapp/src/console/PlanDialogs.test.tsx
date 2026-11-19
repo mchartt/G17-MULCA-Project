@@ -2,8 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { KickoffDialog } from "./Dialogs";
-import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
-import { ProjectPanel } from "./ProjectPanel";
+import { AgendaDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import { TagInput, withPending } from "./TagInput";
 import { useState } from "react";
 
@@ -89,44 +88,6 @@ test("day by day groups the open work and says who has it", () => {
   expect(undated).toHaveTextContent("Slides");
   expect(undated).toHaveTextContent("No owner");
   expect(screen.queryByText("Kickoff notes")).toBeNull(); // done
-});
-
-test("milestones are added, re-dated and removed by hand; the server's refusal is shown", async () => {
-  const onMilestone = vi.fn().mockResolvedValueOnce("Write the date as YYYY-MM-DD.").mockResolvedValue(null);
-  render(<MilestonesDialog open milestones={[{ milestone_id: "m1", title: "Demo", due_date: "2026-12-02" }]} onMilestone={onMilestone} onClose={vi.fn()} />);
-  await userEvent.type(screen.getByLabelText("New milestone"), "First draft");
-  await userEvent.click(screen.getByRole("button", { name: "Add milestone" }));
-  expect(onMilestone).toHaveBeenLastCalledWith({ add: "First draft", due: null });
-  expect(await screen.findByRole("alert")).toHaveTextContent("Write the date");
-  expect(screen.getByLabelText("New milestone")).toHaveValue("First draft"); // kept, to try again
-  await userEvent.click(screen.getByRole("button", { name: "Remove Demo" }));
-  expect(onMilestone).toHaveBeenLastCalledWith({ milestone: "m1", remove: true });
-});
-
-test("the panel is a quick view: what is open, who has it, and links to the full pages", async () => {
-  const onTask = vi.fn();
-  const onOpen = vi.fn();
-  render(<ProjectPanel state={{ tasks }} members={members} me={2} onKickoff={vi.fn()} onRefresh={vi.fn()} onTask={onTask} onOpen={onOpen} />);
-  const upNext = screen.getByRole("heading", { name: "Up next" }).closest("section")!;
-  expect(within(upNext).queryByText("Kickoff notes")).toBeNull(); // done tasks leave the quick view
-  expect(upNext).toHaveTextContent("2 open · 1 done");
-  expect(within(upNext).getByText("No owner")).toBeInTheDocument();
-  await userEvent.click(within(upNext).getByRole("button", { name: "I'll take it" }));
-  expect(onTask).toHaveBeenLastCalledWith("b", { owner: 2 });
-  await userEvent.click(within(upNext).getByRole("checkbox", { name: "Server API: done" }));
-  expect(onTask).toHaveBeenLastCalledWith("a", { status: "done" });
-  await userEvent.click(within(upNext).getByRole("button", { name: "All tasks" }));
-  await userEvent.click(within(upNext).getByRole("button", { name: /Day by day/ }));
-  await userEvent.click(screen.getByRole("button", { name: "Add a milestone" }));
-  expect(onOpen.mock.calls.map((c) => c[0])).toEqual(["tasks", "agenda", "milestones"]);
-});
-
-test("the panel never grows with the plan: five tasks, then a count", () => {
-  const many = Array.from({ length: 12 }, (_, n) => ({ task_id: `t${n}`, title: `Task ${n}`, status: "todo", owner_id: 1 }));
-  render(<ProjectPanel state={{ tasks: many }} members={members} onKickoff={vi.fn()} onRefresh={vi.fn()} />);
-  const upNext = screen.getByRole("heading", { name: "Up next" }).closest("section")!;
-  expect(within(upNext).getAllByRole("listitem")).toHaveLength(5);
-  expect(upNext).toHaveTextContent("7 more open");
 });
 
 test("skills are tags: Enter or a comma adds one, Backspace and the × remove, typed text still counts", async () => {

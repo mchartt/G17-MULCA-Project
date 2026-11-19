@@ -47,4 +47,8 @@ export {
   faPlug,
   faBookmark,
   faPeopleGroup,
+  faBolt,
+  faCalendarDay,
+  faCalendarWeek,
+  faPenToSquare,
 } from "@fortawesome/free-solid-svg-icons";

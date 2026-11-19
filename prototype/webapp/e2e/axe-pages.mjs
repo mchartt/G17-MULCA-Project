@@ -16,7 +16,8 @@ const report = async (name) => {
 };
 const popup = page.locator("dialog[open]");
 const fromMenu = async (what) => {
-  await page.getByRole("navigation", { name: "Quick actions" }).getByRole("button", { name: `Create a ${what.toLowerCase()}` }).click();
+  await page.getByRole("list", { name: "Pages" }).getByRole("button", { name: what === "Task" ? "Tasks" : "Milestones", exact: true }).click();
+  await page.getByRole("button", { name: `New ${what.toLowerCase()}` }).click();
 };
 
 await page.goto("http://127.0.0.1:8090/login");
@@ -24,7 +25,7 @@ await signUp(page, "Ada");
 await page.locator("#c-project").fill("Axe pages");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.getByRole("heading", { name: "Axe pages" }).waitFor();
-await report("chat with the rail");
+await report("chat with Quick access");
 
 
 await fromMenu("Task");
@@ -38,7 +39,7 @@ await popup.getByLabel("Due date").fill("2020-01-01");
 await popup.getByLabel("Build the API").check();
 await report("New task popup (with waits on)");
 await popup.getByRole("button", { name: "Add task" }).click();
-await page.getByRole("button", { name: /^Today:/ }).click();
+await page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today/ }).click();
 await report("Today popup");
 await popup.getByRole("button", { name: "Close" }).click();
 

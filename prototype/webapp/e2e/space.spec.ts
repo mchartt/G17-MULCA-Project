@@ -2,7 +2,7 @@
 // a second member joins with the code, kickoff card, confirm, plan updates for both.
 import { expect, test } from "@playwright/test";
 import { signUp } from "./account.mjs";
-import { askCadence, openPlan } from "./console.mjs";
+import { askCadence, showPage } from "./console.mjs";
 
 test("two members: create, join, kickoff card, confirm, plan", async ({ browser }) => {
   const ada = await (await browser.newContext()).newPage();
@@ -32,9 +32,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   await expect(bruno.getByText("@coordinator hello team", { exact: true })).toBeVisible();
   await expect(bruno.locator(".msg--agent").first()).toContainText("Cadence");
 
-  // Kickoff from the panel: the card appears for both.
-  await openPlan(ada);
-  await openPlan(bruno);
+  // Kickoff from Quick access: the card appears for both.
   await askCadence(bruno, "Paste the assignment");
   await bruno.getByRole("textbox", { name: "Assignment" }).fill("Deliver the prototype by 2 December.");
   await bruno.getByRole("button", { name: "Send to Cadence" }).click();
@@ -43,9 +41,12 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   await expect(card.getByRole("status")).toHaveText("Waiting for a member to confirm");
 
   // Nothing changed yet; the first click applies it everywhere.
-  await expect(ada.locator(".panel")).toContainText("No goal yet");
+  await showPage(ada, "Decisions");
+  await expect(ada.getByRole("region", { name: "Decisions", exact: true })).toContainText("No plan confirmed yet");
+  await showPage(ada, "Chat");
   await card.getByRole("button", { name: "Confirm" }).click();
   await expect(bruno.locator(".card", { hasText: "Project charter" }).getByRole("status")).toHaveText(/^Confirmed by /);
-  await expect(bruno.locator(".panel__goal")).toHaveText("Ship the coordinator.");
-  await expect(bruno.locator(".panel")).toContainText("Confirmed by Ada");
+  await showPage(bruno, "Decisions");
+  await expect(bruno.locator(".registry__goal")).toHaveText("Ship the coordinator.");
+  await expect(bruno.getByRole("region", { name: "Decisions", exact: true })).toContainText("Confirmed by Ada");
 });

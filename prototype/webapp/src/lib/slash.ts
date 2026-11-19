@@ -22,7 +22,7 @@ export const COMMANDS: SlashCommand[] = [
   { name: "task", hint: "/task <number> <todo|doing|done|blocked>", about: "Update a task, or /task add <title>" },
   { name: "why", hint: "/why <question>", about: "Answer from the decision log" },
   { name: "ask", hint: "/ask <question>", about: "Answer from the plan, the dates and the decisions" },
-  { name: "plan", hint: "/plan", about: "Show the project plan" },
+  { name: "plan", hint: "/plan", about: "Open the plan and decisions" },
   { name: "profile", hint: "/profile", about: "Edit your profile" },
   { name: "language", hint: "/language <en|it|auto>", about: "The language Cadence writes in" },
   { name: "help", hint: "/help", about: "List these commands" },

@@ -47,11 +47,13 @@ try {
 
   if (scenario === "L4") {
     // A plan started by hand before the charter: no question expected.
-    await ada.getByRole("navigation", { name: "Quick actions" }).getByRole("button", { name: "Create a task" }).click();
+    await ada.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Tasks", exact: true }).click();
+    await ada.getByRole("button", { name: "New task" }).click();
     await ada.locator("dialog[open]").getByLabel("Name").fill("Build the API");
     await ada.locator("dialog[open]").getByRole("button", { name: "Add task" }).click();
     await ada.getByText("Task added: “Build the API”.").waitFor();
     log("task added by hand");
+    await ada.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Chat", exact: true }).click();
   }
 
   await askCadence(ada, "Paste the assignment");

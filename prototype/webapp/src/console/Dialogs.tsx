@@ -4,9 +4,50 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlug, faTrashCan, faUserPen } from "../lib/icons";
 import type { MemberId } from "../lib/types";
 import { initials } from "./Chat";
-import { GoalForm, LANGUAGES } from "./ProjectPanel";
 import { profileFacts, type MemberProfile } from "./space";
 import { TagInput, withPending } from "./TagInput";
+
+/** The language Cadence writes in for a group: "" means it follows the chat. */
+export const LANGUAGES = [
+  { value: "", label: "Follow the chat" },
+  { value: "en", label: "English" },
+  { value: "it", label: "Italiano" },
+];
+
+/**
+ * A member rewrites the goal and the deliverables. Saving does not change the
+ * plan: it posts a charter card in the chat, saved when a member confirms it.
+ */
+export function GoalForm({ goal, deliverables, onSave, onClose }: { goal: string; deliverables: string[]; onSave: (goal: string, deliverables: string[]) => Promise<string | null>; onClose: () => void }) {
+  const [text, setText] = useState(goal);
+  const [list, setList] = useState(deliverables.join("\n"));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const result = await onSave(text.trim(), list.split("\n").map((d) => d.trim()).filter(Boolean));
+    setBusy(false);
+    setError(result);
+    if (!result) onClose();
+  }
+
+  return (
+    <form className="form goalform" onSubmit={submit}>
+      <label htmlFor="goal-text">Goal</label>
+      <textarea id="goal-text" rows={5} value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} required />
+      <label htmlFor="goal-deliverables">Deliverables, one per line</label>
+      <textarea id="goal-deliverables" rows={3} value={list} onChange={(e) => setList(e.target.value)} />
+      <p className="muted small">Your change becomes a card in the chat. It is saved when a member confirms it.</p>
+      {error && <p className="form__error" role="alert">{error}</p>}
+      <div className="form__actions">
+        <button type="button" className="btn btn--soft btn--small" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary btn--small" disabled={busy || !text.trim()}>{busy ? "Sending…" : "Propose change"}</button>
+      </div>
+    </form>
+  );
+}
 
 /** The shared modal: a native <dialog> with its title wired for screen readers. */
 export function Dialog({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: ReactNode }) {

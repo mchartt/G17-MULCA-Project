@@ -33,11 +33,11 @@ function PrivacyNotice() {
   );
 }
 
-/** Beside the sign-up form: what the group gets, with the brand picture (asset 4). */
+/** Beside the sign-up form: what the group gets, with a photo of a group at work. */
 function BrandPanel() {
   return (
     <aside className="brandpanel" aria-labelledby="brandpanel-title">
-      <img src="/brand/connects.webp" width={1672} height={941} alt="" decoding="async" />
+      <img src="/brand/group-at-laptop.webp" width={1672} height={941} alt="Three students around a laptop, working on their group project." decoding="async" />
       <h2 id="brandpanel-title">Cadence connects your tasks, your plan and your decisions.</h2>
       <ul>
         <li>It reads the group chat and steps in only when something slips.</li>

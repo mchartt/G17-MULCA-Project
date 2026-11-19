@@ -6,6 +6,7 @@ export function Nav() {
     <header className="nav nav--light">
       <a className="nav__brand" href="/#top" aria-label="Cadence, home"><Logo size={26} /></a>
       <nav aria-label="Page">
+        <a className="nav__opt" href="/#demo">Try it</a>
         <a href="/#how">How it works</a>
         <a href="/login#privacy">Privacy</a>
         <a className="nav__cta" href="/login">Open your space</a>

@@ -2,6 +2,7 @@
 export {
   faArrowLeft,
   faArrowRight,
+  faArrowUp,
   faThumbsUp,
   faTrashCan,
   faBellSlash,

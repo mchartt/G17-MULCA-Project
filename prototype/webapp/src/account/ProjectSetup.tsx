@@ -2,7 +2,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent } from "react";
 import { createMySpace } from "../lib/account";
 import { ApiError, saveToken } from "../lib/api";
-import { composeBrief, savePendingBrief, type BriefDocument } from "../lib/brief";
+import { clearDraftBrief, composeBrief, draftBrief, savePendingBrief, type BriefDocument } from "../lib/brief";
 import { DOCUMENT_TYPES, readDocument } from "../lib/documents";
 import { faArrowRight, faFileLines, faXmark } from "../lib/icons";
 
@@ -27,7 +27,8 @@ const kind = (name: string) => name.split(".").pop()?.toUpperCase() ?? "FILE";
  */
 export function ProjectSetup({ disabled, onEnter, title }: Props) {
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  // Pre-filled with what the member typed in the landing's prompt bar, if anything.
+  const [description, setDescription] = useState(draftBrief);
   const [files, setFiles] = useState<File[]>([]);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export function ProjectSetup({ disabled, onEnter, title }: Props) {
         }
       }
       const passed = savePendingBrief(token, composeBrief(description, read));
+      clearDraftBrief();
       if (failed.length || !passed) {
         setCreated(token);
         setError(

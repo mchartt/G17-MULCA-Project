@@ -38,3 +38,31 @@ export function takePendingBrief(spaceToken: string): string | null {
     return null;
   }
 }
+
+// The description typed in the landing's prompt bar, before the account
+// exists: kept in this tab until the project is created, then dropped.
+const DRAFT_KEY = "cadence.draft-brief";
+
+export function saveDraftBrief(text: string): void {
+  try {
+    if (text.trim()) sessionStorage.setItem(DRAFT_KEY, text.trim().slice(0, 4000));
+  } catch {
+    /* private mode: the member types it again in the setup */
+  }
+}
+
+export function draftBrief(): string {
+  try {
+    return sessionStorage.getItem(DRAFT_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function clearDraftBrief(): void {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}

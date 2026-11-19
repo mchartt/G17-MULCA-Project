@@ -132,8 +132,6 @@
 
 
 /* ---------- Console: the room, quick actions, tour, pages, chat background ---------- */
-.console { grid-template-columns: 16.5rem minmax(0, 1fr) 22.5rem 4.75rem; }
-.console--wide { grid-template-columns: 16.5rem minmax(0, 1fr) 4.75rem; }
 .side__page { transition: background-color 150ms var(--ease), color 150ms var(--ease); }
 .room { padding: .9rem; border-radius: 16px; background: var(--canvas); border: 1px solid var(--line-s); display: grid; gap: .5rem; }
 .room h2 { font-size: var(--t-xs); color: var(--ink2); font-weight: 500; }
@@ -143,13 +141,29 @@
 .side__foot { gap: .2rem; }
 .side__foot .side__settings { margin-top: 0; }
 
-.rail { display: flex; flex-direction: column; align-items: center; gap: .35rem; padding: .9rem .4rem; background: var(--surface); border-left: 1px solid var(--line-s); }
-.rail__btn { position: relative; width: 3.7rem; display: grid; justify-items: center; gap: .25rem; padding: .6rem .2rem; border: 0; border-radius: 14px; background: none; color: var(--ink2); font-size: .68rem; font-weight: 500; cursor: pointer; transition: background-color 150ms var(--ease), color 150ms var(--ease), transform 250ms var(--spring); }
-.rail__btn svg { font-size: 1.05rem; }
-.rail__btn:hover { background: var(--subtle); color: var(--ink); transform: translateY(-1px); }
-.rail__btn:active { transform: scale(.96); }
-.rail__btn--quiet { margin-top: auto; color: var(--ink3); }
-.rail__badge { position: absolute; top: .3rem; right: .55rem; min-width: 1.05rem; height: 1.05rem; padding: 0 .25rem; border-radius: 999px; background: var(--er); color: #fff; font-size: .62rem; display: grid; place-items: center; }
+/* Quick access (right): a labelled column, each button with one line saying what it does.
+   Violet icons are Cadence doing the work; blue ones are the member's own shortcuts. */
+.quick { grid-area: quick; display: flex; flex-direction: column; gap: 1.35rem; min-width: 0; overflow-y: auto; padding: 1rem .85rem 1.5rem; background: var(--surface); border-left: 1px solid var(--line-s); }
+.quick__head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; padding: 0 .35rem; }
+.quick__head h2 { font-size: var(--t-md); line-height: 1.75rem; }
+.quick__head p { font-size: var(--t-xs); color: var(--ink2); }
+.quick__close:hover:not(:disabled) { color: var(--ink); }
+.quick__group { display: grid; gap: .25rem; min-width: 0; }
+.quick__group h3 { font-size: var(--t-xs); font-weight: 600; color: var(--ink); padding: 0 .35rem; }
+.quick__note { font-size: var(--t-xs); color: var(--ink2); padding: 0 .35rem .2rem; }
+.quick__list { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; }
+.quick__item { position: relative; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .45rem .4rem; border: 0; border-radius: 14px; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color 150ms var(--ease), transform 250ms var(--spring); }
+.quick__item:hover { background: var(--subtle); }
+.quick__item:active { transform: scale(.98); }
+.quick__item:focus-visible { outline: var(--focus); outline-offset: 1px; }
+.quick__icon { width: 2.25rem; height: 2.25rem; flex: none; display: grid; place-items: center; border-radius: 11px; background: var(--act-s); color: var(--act); font-size: .9rem; }
+.quick__group--cadence .quick__icon { background: var(--ag-bg); color: var(--ag-fg); }
+.quick__text { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.quick__label { font-weight: 600; font-size: var(--t-sm); }
+.quick__about { font-size: var(--t-xs); line-height: 1.1rem; color: var(--ink2); }
+.quick__badge { min-width: 1.25rem; height: 1.25rem; padding: 0 .35rem; border-radius: 999px; background: var(--er); color: #fff; font-size: .68rem; display: inline-grid; place-items: center; }
+.quick__badge--inline { margin-left: .3rem; }
+.quick__scrim { display: none; }
 
 /* The chat sits on a light grey with a few sketched friends: robots, stars, squares. Decoration only. */
 .chat__log { background-color: var(--chat-bg); background-image: var(--doodles); background-size: 320px 320px; }
@@ -193,8 +207,6 @@
 .connect__command code { flex: 1; font-size: var(--t-xs); overflow-wrap: anywhere; user-select: all; }
 
 @media (max-width: 1100px) {
-  .console, .console--wide { grid-template-columns: 15rem minmax(0, 1fr) 4.75rem; }
-  .console__panel { grid-column: 1 / -1; }
   .flow__grid { grid-template-columns: 1fr; }
   .flow__stage { display: none; }
   .flow__step { min-height: 0; padding: 2rem 0; color: var(--ink); transform: none; }
@@ -205,9 +217,6 @@
   .guide li::after { display: none; }
 }
 @media (max-width: 760px) {
-  .console, .console--wide { grid-template-columns: 1fr; }
-  .rail { flex-direction: row; justify-content: space-around; border-left: 0; border-top: 1px solid var(--line-s); position: sticky; bottom: 0; z-index: 5; }
-  .rail__btn--quiet { margin-top: 0; }
   .welcome__choices, .guide ol { grid-template-columns: 1fr; }
   .task-row { grid-template-columns: auto minmax(0, 1fr) !important; }
   .task-row__owner, .task-row__due { grid-column: 2; }
@@ -221,12 +230,8 @@
 /* ---------- Robustness (19/11, stress.spec.ts): a space after weeks of use ----------
    Named areas keep every column where it belongs at every width; long words,
    long lists and long notices stay inside their box. */
-.console { grid-template-areas: "side main panel rail"; }
-.console--wide { grid-template-areas: "side main rail"; }
 .console > .side { grid-area: side; }
 .console > .console__main { grid-area: main; min-width: 0; }
-.console > .console__panel { grid-area: panel; min-width: 0; }
-.console > .rail { grid-area: rail; }
 
 /* Notices: a long answer scrolls inside its banner, the chat keeps its room. */
 .console__notices .banner { max-height: 7.5rem; overflow-y: auto; overflow-wrap: anywhere; }
@@ -250,6 +255,7 @@
 .team__background, .setup__card, .catchup li { overflow-wrap: anywhere; min-width: 0; }
 .askwhy__answer { max-height: 12rem; overflow-y: auto; }
 .task-row__owner, .task-row__due { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-row__owner { white-space: normal; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; align-items: center; column-gap: .5rem; }
 .setup__code { flex-wrap: wrap; row-gap: .3rem; }
 .setup__card code { overflow-wrap: anywhere; }
 
@@ -262,18 +268,15 @@
 .members li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: .6rem; }
 .side__group { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
 
-/* Rail badge: anchored to the icon's corner, capped at 99+. */
-.rail__btn svg { position: relative; }
-.rail__badge { top: .25rem; right: .35rem; max-width: 2.1rem; }
-
 @media (max-width: 1100px) {
-  .console, .console--wide { grid-template-columns: 15rem minmax(0, 1fr) 4.75rem; grid-template-areas: "side main rail"; height: 100vh; }
-  /* The plan opens as a sheet over the chat, beside the rail, instead of dropping below the page. */
-  .console > .console__panel { position: fixed; top: 0; bottom: 0; right: 4.75rem; width: min(22.5rem, calc(100vw - 6rem)); z-index: 30; background: var(--canvas); border-left: 1px solid var(--line-s); box-shadow: var(--shadow-lift); grid-column: auto; }
+  .console, .console--no-quick { height: 100vh; }
+  /* Quick access opens as a sheet over the chat, with a dim backdrop; "Quick access" in the bar opens and closes it. */
+  .console > .quick { position: fixed; inset: 0 0 0 auto; width: min(21rem, calc(100vw - 2.5rem)); z-index: 30; box-shadow: var(--shadow-lift); }
+  .quick__scrim { display: block; position: fixed; inset: 0; z-index: 29; background: rgba(15, 17, 21, .36); }
 }
 @media (max-width: 760px) {
-  .console, .console--wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "main" "rail"; height: auto; min-height: 100vh; }
-  .console > .console__panel { right: 0; width: 100vw; bottom: 4.5rem; }
+  .console, .console--no-quick { height: auto; min-height: 100vh; }
+  .console > .quick { width: min(24rem, 100vw); }
   .console__main { min-height: 70vh; }
   /* A compact sidebar: the pages scroll sideways as chips, the rest stays one tap away. */
   .side { gap: .9rem; }

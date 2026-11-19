@@ -15,7 +15,7 @@ async function noOverflow(page: Page, where: string) {
     const out: string[] = [];
     const doc = document.documentElement;
     if (doc.scrollWidth > innerWidth + 1) out.push(`page ${doc.scrollWidth} > ${innerWidth}`);
-    const selectors = [".console__main", ".console__bar", ".side", ".rail", ".page", ".chat__log", ".card", ".bubble", ".register__row", ".members li", ".room", ".console__notices"];
+    const selectors = [".console__main", ".console__bar", ".side", ".quick", ".page", ".chat__log", ".card", ".bubble", ".register__row", ".members li", ".room", ".console__notices"];
     for (const selector of selectors) {
       document.querySelectorAll<HTMLElement>(selector).forEach((el, i) => {
         if (el.offsetParent === null) return; // hidden

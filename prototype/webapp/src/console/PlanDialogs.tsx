@@ -1,12 +1,12 @@
-// The plan's own pages, opened from the panel so the panel itself stays short:
-// planning as a list of tasks, the register of every task, the plan day by
-// day, and the milestones. Every change here is a member's own action.
+// The plan's popups, opened from Quick access: planning as a list of tasks,
+// the register of every task, and the plan day by day. Every change here is
+// a member's own action.
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { faCheck, faFlag, faTrashCan } from "../lib/icons";
 import type { MemberId, Milestone, Person } from "../lib/types";
 import { Dialog } from "./Dialogs";
-import { agenda, dayLabel, STATUSES, todayIso, type MilestoneEdit, type NewTask, type Task, type TaskEdit } from "./plan";
+import { agenda, dayLabel, STATUSES, todayIso, type NewTask, type Task, type TaskEdit } from "./plan";
 
 /** "" in a select means nobody; a member's id travels as text and goes back as it was. */
 function ownerFrom(value: string, members: Person[]): MemberId | null {
@@ -146,7 +146,7 @@ export function TaskRegisterDialog({ open, tasks, me, onClose, onAdd, ...edits }
   }
 
   return (
-    <Dialog open={open} title="All tasks" onClose={onClose}>
+    <Dialog open={open} title="Edit tasks" onClose={onClose}>
       <form className="addrow" onSubmit={add}>
         <input aria-label="New task" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="Add a task…" />
         <OwnerSelect label="Owner of the new task" value={owner} members={edits.members} nobody="No owner yet" onChange={setOwner} />
@@ -241,55 +241,6 @@ export function AgendaDialog({ open, tasks, milestones, onClose, ...edits }: Edi
             </li>
           ))}
         </ol>
-      )}
-      <div className="form__actions"><button type="button" className="btn btn--soft" onClick={onClose}>Close</button></div>
-    </Dialog>
-  );
-}
-
-/** The group's deadlines, set by hand: add one, change its date or name, remove it. */
-export function MilestonesDialog({ open, milestones, onClose, onMilestone }: { open: boolean; milestones: Milestone[]; onClose: () => void; onMilestone: (edit: MilestoneEdit) => Promise<string | null> }) {
-  const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function add(e: FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return;
-    const result = await onMilestone({ add: title.trim(), due: due || null });
-    setError(result);
-    if (!result) {
-      setTitle("");
-      setDue("");
-    }
-  }
-
-  return (
-    <Dialog open={open} title="Milestones" onClose={onClose}>
-      <p className="muted">The dates the group works towards. Cadence reads them at the check-in and when it suggests dates for tasks.</p>
-      <form className="addrow" onSubmit={add}>
-        <input aria-label="New milestone" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} placeholder="Add a milestone…" />
-        <input type="date" aria-label="Date of the new milestone" value={due} onChange={(e) => setDue(e.target.value)} />
-        <button className="btn btn--primary btn--small" type="submit" disabled={!title.trim()}>Add milestone</button>
-      </form>
-      {error && <p className="form__error" role="alert">{error}</p>}
-      {milestones.length === 0 ? (
-        <p className="muted register__empty">No milestones yet.</p>
-      ) : (
-        <ul className="register">
-          {milestones.map((m) => (
-            <li key={m.milestone_id ?? m.title} className="register__row">
-              <span className="register__flag" aria-hidden="true"><FontAwesomeIcon icon={faFlag} /></span>
-              <span className="register__title">{m.title}</span>
-              {m.milestone_id && (
-                <>
-                  <input type="date" aria-label={`Date of ${m.title}`} value={m.due_date ?? ""} onChange={(e) => void onMilestone({ milestone: m.milestone_id!, due: e.target.value || null }).then(setError)} />
-                  <button type="button" className="icon-btn" aria-label={`Remove ${m.title}`} onClick={() => void onMilestone({ milestone: m.milestone_id!, remove: true }).then(setError)}><FontAwesomeIcon icon={faTrashCan} /></button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
       )}
       <div className="form__actions"><button type="button" className="btn btn--soft" onClick={onClose}>Close</button></div>
     </Dialog>

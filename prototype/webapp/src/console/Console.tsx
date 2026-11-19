@@ -2,26 +2,24 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
-import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faPeopleGroup, faTableColumns } from "../lib/icons";
+import { faBolt, faCalendarCheck, faCalendarDay, faCalendarWeek, faCircleQuestion, faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faPeopleGroup, faPenToSquare, faRotate, faScaleBalanced, faUserPen } from "../lib/icons";
 import { ADAPTER_URL, calendarLink, deleteSpace, renameSpace, saveToken } from "../lib/api";
 import { takePendingBrief } from "../lib/brief";
 import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp } from "../lib/types";
-import { AskMenu } from "./AskMenu";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
 import { ConnectDialog, DeleteDialog, Dialog, KickoffDialog, MemberDialog, ProfileDialog, ProjectSettingsDialog, type Profile } from "./Dialogs";
 import type { MemberId } from "../lib/types";
-import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
+import { AgendaDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { todayIso } from "./plan";
-import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
-import { ProjectPanel } from "./ProjectPanel";
+import { AskWhyDialog, CalendarDialog, NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
 import { DecisionsPage, DependenciesPage, MilestonesPage, ReflectionPage, TasksPage } from "./Pages";
-import { QuickRail } from "./QuickRail";
+import { capBadge, QuickPanel, todaySummary, type QuickGroup } from "./QuickPanel";
 import { Tour, tourSeen } from "./Tour";
 import { Sidebar, type View } from "./Sidebar";
 import { dotFor, emptySpace, nameOf, profileOf, reduce } from "./space";
@@ -33,20 +31,43 @@ const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
   closed: "Connection lost. Reconnecting…",
 };
 
+/** Below this width Quick access is a sheet over the chat, not a column beside it (see experience.css). */
+const SHEET = "(max-width: 1100px)";
+const asSheet = () => typeof matchMedia === "function" && matchMedia(SHEET).matches;
+
+/** Whether Quick access is a sheet right now; follows the window (a rotated tablet, a resized browser). */
+function useSheet(): boolean {
+  const [sheet, setSheet] = useState(asSheet);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const query = matchMedia(SHEET);
+    const change = () => setSheet(query.matches);
+    query.addEventListener?.("change", change);
+    return () => query.removeEventListener?.("change", change);
+  }, []);
+  return sheet;
+}
+
 /**
  * The console, chat first: the space on the left, the group chat in the
- * middle. The plan is memory, not the reason to open Cadence, so it starts
- * closed and opens beside the chat on request ("Plan"). The on-demand
- * actions live behind one "Ask Cadence" menu (tutor feedback, 18 Nov:
- * "you can start without showing the plan"; "so much happening at once").
+ * middle, Quick access on the right. The plan is memory, not the reason to
+ * open Cadence: its pages are on the left, and the right-hand panel holds only
+ * the shortcuts that work from any page (what to ask Cadence, the dates, the
+ * member's own profile). Tutor feedback, 18 Nov: "you can start without
+ * showing the plan"; "so much happening at once".
  */
 export function Console({ token, onLeave }: { token: string; onLeave: () => void }) {
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
-  const [panelOpen, setPanelOpen] = useState(false);
+  // Quick access: a column on wide screens, a sheet (closed at first) on narrow ones.
+  const sheet = useSheet();
+  const [quickOpen, setQuickOpen] = useState(!sheet);
+  // Crossing the breakpoint resets it: a column that turns into a sheet closes, so it never covers the page by surprise.
+  useEffect(() => setQuickOpen(!sheet), [sheet]);
+  const quickButton = useRef<HTMLButtonElement>(null);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | "connect" | "settings" | "member" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "newtask" | "newmilestone" | "today" | "askwhy" | "calendar" | "link" | "connect" | "settings" | "member" | null>(null);
   // The teammate whose profile popup is open.
   const [memberId, setMemberId] = useState<MemberId | null>(null);
   // The guided tour: shown once per space in this browser, and again from the quick actions.
@@ -292,7 +313,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         return setNotice(answer.type === "notice" ? answer.text : "No answer.");
       }
       case "plan":
-        return setPanelOpen(true);
+        return setView("decisions");
       case "profile":
         return setDialog("profile");
       case "language":
@@ -314,25 +335,76 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     return answer.ok ? null : answer.type === "notice" ? answer.text : "Profile not saved.";
   };
 
+  // As a sheet, Quick access is modal in effect: focus moves into it, and the page behind it is inert.
+  const sheetOpen = quickOpen && sheet;
+  useEffect(() => {
+    if (sheetOpen) document.querySelector<HTMLElement>("#quick .quick__close")?.focus();
+  }, [sheetOpen]);
+
+  // A shortcut on a sheet closes the sheet first, so its answer or popup is not hidden behind it.
+  const go = (fn: () => void) => () => {
+    if (sheet) setQuickOpen(false);
+    fn();
+  };
+  const closeQuick = () => {
+    setQuickOpen(false);
+    quickButton.current?.focus();
+  };
+  const tasks = space.state?.tasks ?? [];
+  const today = todaySummary(tasks);
+  const quick: QuickGroup[] = [
+    {
+      key: "ask",
+      title: "Ask Cadence",
+      note: "Cadence steps in on its own. These are for when you want it to.",
+      tone: "cadence",
+      entries: [
+        { key: "approach", label: "Plan together", about: "Cadence asks how you want to work, then sums up your answers.", icon: faPeopleGroup, run: go(() => void planTogether()) },
+        { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: go(() => setDialog("kickoff")) },
+        { key: "planning", label: "Plan tasks", about: "List the tasks; Cadence suggests who could take each.", icon: faListOl, run: go(() => setDialog("planning")) },
+        { key: "checkin", label: "Check-in", about: "Compare the plan with the dates and see what slips.", icon: faClipboardCheck, run: go(() => void checkin()) },
+        { key: "catchup", label: "Catch up", about: "What changed while you were away.", icon: faClockRotateLeft, run: go(() => void catchUp()) },
+      ],
+    },
+    {
+      key: "dates",
+      title: "Your dates",
+      entries: [
+        { key: "today", label: "Today", about: today.about, icon: faCalendarDay, badge: today.count, run: go(() => setDialog("today")) },
+        { key: "agenda", label: "Day by day", about: "Every open task and milestone by date, late first.", icon: faCalendarWeek, run: go(() => setDialog("agenda")) },
+        { key: "tasks", label: "Edit tasks", about: "Change the owner, date or status of any task.", icon: faPenToSquare, run: go(() => setDialog("tasks")) },
+        { key: "calendar", label: "Add to my calendar", about: "A private link for Google Calendar or Outlook.", icon: faCalendarCheck, run: go(() => setDialog("calendar")) },
+      ],
+    },
+    {
+      key: "memory",
+      title: "Project memory",
+      entries: [
+        { key: "why", label: "Ask why", about: "Why did the group decide something? Answered from the log.", icon: faScaleBalanced, run: go(() => setDialog("askwhy")) },
+        { key: "refresh", label: "Refresh the plan", about: "Reload the plan if something looks out of date.", icon: faRotate, run: go(() => void ask({ type: "command", command: "state" })) },
+      ],
+    },
+    {
+      key: "you",
+      title: "You",
+      entries: [
+        { key: "profile", label: "Your profile", about: "Skills and background: Cadence suggests owners from them.", icon: faUserPen, run: go(() => setDialog("profile")) },
+        { key: "tour", label: "Show the tour", about: "The quick walk-through of this screen.", icon: faCircleQuestion, run: go(() => { setView("chat"); setTouring(true); }) },
+      ],
+    },
+  ];
+
   return (
-    <div className={`console${panelOpen ? "" : " console--wide"}`}>
+    <div className={`console${quickOpen ? "" : " console--no-quick"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} view={view} onView={setView} onLeave={leave} onSettings={() => setDialog("settings")} onMember={(id) => { setMemberId(id); setDialog("member"); }} onConnect={() => setDialog("connect")} />
-      <main className="console__main">
+      <Sidebar inert={sheetOpen} space={space} view={view} onView={setView} onLeave={leave} onSettings={() => setDialog("settings")} onMember={(id) => { setMemberId(id); setDialog("member"); }} onConnect={() => setDialog("connect")} />
+      <main className="console__main" inert={sheetOpen}>
         <header className="console__bar">
           <h2 className="console__title">{PAGE_TITLES[view]}</h2>
           <div className="console__tools">
-            <AskMenu
-              items={[
-                { key: "approach", label: "Plan together", about: "Cadence asks how you want to work, then sums up your answers.", icon: faPeopleGroup, run: () => void planTogether() },
-                { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: () => setDialog("kickoff") },
-                { key: "planning", label: "Plan tasks", about: "List the tasks; Cadence suggests who could take each.", icon: faListOl, run: () => setDialog("planning") },
-                { key: "checkin", label: "Check-in", about: "Compare the plan with the dates and see what slips.", icon: faClipboardCheck, run: () => void checkin() },
-                { key: "catchup", label: "Catch up", about: "What changed while you were away.", icon: faClockRotateLeft, run: () => void catchUp() },
-              ]}
-            />
-            <button className="btn btn--soft btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
-              <FontAwesomeIcon icon={faTableColumns} /> Plan
+            <button ref={quickButton} className="btn btn--soft btn--small" aria-expanded={quickOpen} aria-controls="quick" data-tour={quickOpen ? undefined : "rail"} onClick={() => setQuickOpen(!quickOpen)}>
+              <FontAwesomeIcon icon={faBolt} /> Quick access
+              {!quickOpen && today.count > 0 && <b className="quick__badge quick__badge--inline" aria-hidden="true">{capBadge(today.count)}</b>}
             </button>
           </div>
           {(space.coordinator === "unavailable" || STATUS_TEXT[status] || notice) && (
@@ -368,39 +440,18 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             />
           </>
         )}
-        {view === "tasks" && <TasksPage tasks={space.state?.tasks ?? []} today={todayIso()} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onNew={() => setDialog("newtask")} />}
-        {view === "decisions" && <DecisionsPage state={space.state} nameOf={(id) => nameOf(id, space)} onPlan={() => setPanelOpen(true)} />}
-        {view === "dependencies" && <DependenciesPage tasks={space.state?.tasks ?? []} onNew={() => setDialog("newtask")} onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }} />}
+        {view === "tasks" && <TasksPage tasks={tasks} today={todayIso()} me={space.me?.id ?? null} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onNew={() => setDialog("newtask")} />}
+        {view === "decisions" && <DecisionsPage state={space.state} nameOf={(id) => nameOf(id, space)} onPlan={() => setDialog("settings")} />}
+        {view === "dependencies" && <DependenciesPage tasks={tasks} onNew={() => setDialog("newtask")} onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }} />}
         {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
         {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} />}
       </main>
-      {panelOpen && (
-        <div id="plan" className="console__panel">
-          <ProjectPanel
-            state={space.state}
-            members={space.members}
-            names={space.names}
-            me={space.me?.id ?? null}
-            onProfile={() => setDialog("profile")}
-            onLanguage={(language) => void setLanguage(language)}
-            onCharter={editCharter}
-            onKickoff={() => setDialog("kickoff")}
-            onRefresh={() => void ask({ type: "command", command: "state" })}
-            onTask={(taskId, edit) => void editTask(taskId, edit)}
-            onOpen={setDialog}
-            onWhy={why}
-            onCalendar={() => calendarLink(token)}
-          />
-        </div>
+      {quickOpen && (
+        <>
+          <div className="quick__scrim" aria-hidden="true" onClick={closeQuick} />
+          <QuickPanel groups={quick} onClose={closeQuick} />
+        </>
       )}
-      <QuickRail
-        tasks={space.state?.tasks ?? []}
-        onTask={() => setDialog("newtask")}
-        onMilestone={() => setDialog("newmilestone")}
-        onToday={() => setDialog("today")}
-        onProfile={() => setDialog("profile")}
-        onTour={() => { setView("chat"); setTouring(true); }}
-      />
       {touring && view === "chat" && <Tour onClose={() => { setTouring(false); document.getElementById("composer-input")?.focus(); }} />}
       <ConnectDialog open={dialog === "connect"} code={room} onClose={() => setDialog(null)} />
       <ProjectSettingsDialog
@@ -456,7 +507,8 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         onTask={(taskId, edit) => void editTask(taskId, edit)}
         onClose={() => setDialog(null)}
       />
-      <MilestonesDialog open={dialog === "milestones"} milestones={space.state?.milestones ?? []} onMilestone={editMilestone} onClose={() => setDialog(null)} />
+      <AskWhyDialog open={dialog === "askwhy"} onClose={() => setDialog(null)} onWhy={why} />
+      <CalendarDialog open={dialog === "calendar"} onClose={() => setDialog(null)} onCalendar={() => calendarLink(token)} />
       <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />
       <WaitsOnDialog open={dialog === "link"} tasks={space.state?.tasks ?? []} taskId={linkTask} onClose={() => setDialog(null)} onSave={saveWaitsOn} />
       <NewMilestoneDialog open={dialog === "newmilestone"} onClose={() => setDialog(null)} onCreate={createMilestone} />

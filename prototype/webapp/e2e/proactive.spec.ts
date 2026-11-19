@@ -4,7 +4,7 @@
 // card for everyone and the plan. Not now silences instead.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { signUp } from "./account.mjs";
-import { openPlan } from "./console.mjs";
+import { showPage } from "./console.mjs";
 
 async function space(browser: Browser, project: string): Promise<[Page, Page]> {
   const ada = await (await browser.newContext()).newPage();
@@ -15,7 +15,6 @@ async function space(browser: Browser, project: string): Promise<[Page, Page]> {
   await ada.locator("#c-project").fill(project);
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: project })).toBeVisible();
-  await openPlan(ada);
   const code = (await ada.locator(".invite code").textContent())!.trim();
   const bruno = await (await browser.newContext()).newPage();
   await bruno.goto(`/?code=${code}`);
@@ -53,8 +52,10 @@ test("CS2: a simple task becomes a card; Why? explains it; I'll take it puts it 
   // The outcome says who, on both screens (U3).
   await expect(card.getByRole("status")).toHaveText("Confirmed by Bruno");
   await expect(card.getByRole("button", { name: "I'll take it" })).toHaveCount(0);
-  await expect(ada.locator(".panel")).toContainText("Fix fonts and margins of the report");
-  await expect(ada.locator(".panel")).toContainText("Bruno");
+  await showPage(ada, "Tasks");
+  await expect(ada.getByRole("region", { name: "Tasks", exact: true })).toContainText("Fix fonts and margins of the report");
+  await expect(ada.getByRole("region", { name: "Tasks", exact: true })).toContainText("Bruno");
+  await showPage(ada, "Chat");
 
   // Helpful: feedback only, counted by the server, the card stays confirmed.
   await card.getByRole("button", { name: "Helpful" }).click();
@@ -69,7 +70,8 @@ test("CS3: the decision card has one button per option; the choice goes to the d
   await expect(card).toContainText("Which usability test do we run?");
   await card.getByRole("button", { name: "Think-aloud" }).click();
   await expect(ada.locator(".card", { hasText: "Close the decision" }).getByRole("status")).toHaveText("Confirmed by Bruno");
-  await expect(ada.locator(".panel")).toContainText("Think-aloud");
+  await showPage(ada, "Decisions");
+  await expect(ada.getByRole("region", { name: "Decisions", exact: true })).toContainText("Think-aloud");
 });
 
 test("Not now closes the card as silenced for 30 minutes and changes nothing", async ({ browser }) => {
@@ -78,5 +80,6 @@ test("Not now closes the card as silenced for 30 minutes and changes nothing", a
   const card = ada.locator(".card", { hasText: "One person can do this" });
   await card.getByRole("button", { name: "Not now" }).click();
   await expect(card.getByRole("status")).toHaveText("Not now (Ada): silenced on this topic for 30 minutes");
-  await expect(ada.locator(".panel")).not.toContainText("Fix fonts and margins of the report");
+  await showPage(ada, "Tasks");
+  await expect(ada.getByRole("region", { name: "Tasks", exact: true })).not.toContainText("Fix fonts and margins of the report");
 });

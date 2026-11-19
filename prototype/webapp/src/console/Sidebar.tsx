@@ -1,19 +1,28 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
-import { faCheck, faCopy, faFlag, faListCheck, faPlus, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
+import { faCheck, faComments, faCopy, faDiagramProject, faFlag, faLightbulb, faListCheck, faPlus, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
 import { AskMenu } from "./AskMenu";
 import { initials } from "./Chat";
 import type { Space } from "./space";
 import { dotFor } from "./space";
 
 export type NewWhat = "task" | "milestone";
+/** The pages of the left rail. The chat is the first and the one a space opens on. */
+export type View = "chat" | "dependencies" | "milestones" | "reflection";
 
-type Props = { space: Space; onProfile: () => void; onLeave: () => void; onDelete: () => void; onNew: (what: NewWhat) => void };
+const PAGES: { key: View; label: string; icon: typeof faComments }[] = [
+  { key: "chat", label: "Chat", icon: faComments },
+  { key: "dependencies", label: "Dependencies", icon: faDiagramProject },
+  { key: "milestones", label: "Milestones", icon: faFlag },
+  { key: "reflection", label: "Reflection", icon: faLightbulb },
+];
+
+type Props = { space: Space; view: View; onView: (view: View) => void; onProfile: () => void; onLeave: () => void; onDelete: () => void; onNew: (what: NewWhat) => void };
 
 // A group is small, but the list must never push the rest of the sidebar away.
 const MEMBERS_SHOWN = 6;
 
-export function Sidebar({ space, onProfile, onLeave, onDelete, onNew }: Props) {
+export function Sidebar({ space, view, onView, onProfile, onLeave, onDelete, onNew }: Props) {
   const [copied, setCopied] = useState(false);
   const [allMembers, setAllMembers] = useState(false);
   // You first, then the others as they joined.
@@ -47,6 +56,16 @@ export function Sidebar({ space, onProfile, onLeave, onDelete, onNew }: Props) {
           ]}
         />
       </div>
+
+      <ul className="side__pages" aria-label="Pages">
+        {PAGES.map((page) => (
+          <li key={page.key}>
+            <button className="side__page" aria-current={view === page.key ? "page" : undefined} onClick={() => onView(page.key)}>
+              <FontAwesomeIcon icon={page.icon} className="side__icon" /> {page.label}
+            </button>
+          </li>
+        ))}
+      </ul>
 
       <div className="side__block">
         <h2>Invite code</h2>

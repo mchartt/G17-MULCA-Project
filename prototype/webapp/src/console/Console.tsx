@@ -18,8 +18,11 @@ import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { todayIso, todayView } from "./plan";
 import { NewMilestoneDialog, NewTaskDialog, TodayDialog } from "./QuickDialogs";
 import { ProjectPanel } from "./ProjectPanel";
-import { Sidebar } from "./Sidebar";
+import { DependenciesPage, MilestonesPage, ReflectionPage } from "./Pages";
+import { Sidebar, type View } from "./Sidebar";
 import { emptySpace, nameOf, reduce } from "./space";
+
+const PAGE_TITLES: Record<View, string> = { chat: "Group chat", dependencies: "Dependencies", milestones: "Milestones", reflection: "Reflection" };
 
 const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
   connecting: "Connecting to your space…",
@@ -37,6 +40,8 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [panelOpen, setPanelOpen] = useState(false);
+  // The page beside the chat: the chat is where a space opens.
+  const [view, setView] = useState<View>("chat");
   const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
@@ -260,10 +265,10 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
+      <Sidebar space={space} view={view} onView={setView} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
       <main className="console__main">
         <header className="console__bar">
-          <h2 className="console__title">Group chat</h2>
+          <h2 className="console__title">{PAGE_TITLES[view]}</h2>
           <div className="console__tools">
             {(space.state?.tasks?.length ?? 0) > 0 && <TodayChip tasks={space.state?.tasks ?? []} onOpen={() => setDialog("today")} />}
             <AskMenu
@@ -292,19 +297,26 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             </div>
           )}
         </header>
-        <FirstSteps
-          state={space.state}
-          me={space.me?.id ?? null}
-          memberCount={space.members.length}
-          inviteCode={space.group?.inviteCode ?? ""}
-          onProfile={() => setDialog("profile")}
-        />
-        <Chat
-          space={space}
-          disabled={status !== "open"}
-          onCommand={(text) => void runSlash(text)} onSay={(text) => socket.current?.say(text)}
-          onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
-        />
+        {view === "chat" && (
+          <>
+            <FirstSteps
+              state={space.state}
+              me={space.me?.id ?? null}
+              memberCount={space.members.length}
+              inviteCode={space.group?.inviteCode ?? ""}
+              onProfile={() => setDialog("profile")}
+            />
+            <Chat
+              space={space}
+              disabled={status !== "open"}
+              onCommand={(text) => void runSlash(text)} onSay={(text) => socket.current?.say(text)}
+              onAnswer={(proposalId, click) => ask({ type: "click", proposalId, ...click })}
+            />
+          </>
+        )}
+        {view === "dependencies" && <DependenciesPage tasks={space.state?.tasks ?? []} onNew={() => setDialog("newtask")} />}
+        {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
+        {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} />}
       </main>
       {panelOpen && (
         <div id="plan" className="console__panel">

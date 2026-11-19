@@ -78,3 +78,27 @@ test("+ New also makes a milestone, in its own popup", async () => {
   await userEvent.click(within(popup).getByRole("button", { name: "Add milestone" }));
   expect(asked).toContainEqual({ type: "command", command: "milestone", args: { add: "Prototype ready", due: "2026-12-01" } });
 });
+
+test("the left rail opens on the chat; a page replaces the chat and the chat comes back with its own entry", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  const rail = screen.getByRole("list", { name: "Pages" });
+  expect(within(rail).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Chat", "Dependencies", "Milestones", "Reflection"]);
+  expect(within(rail).getByRole("button", { name: "Chat" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("region", { name: "Group chat" })).toBeInTheDocument();
+
+  await userEvent.click(within(rail).getByRole("button", { name: "Milestones" }));
+  expect(within(rail).getByRole("button", { name: "Milestones" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("region", { name: "Milestones" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Group chat" })).toBeNull();
+  expect(screen.getByRole("heading", { level: 2, name: "Milestones" })).toBeInTheDocument();
+
+  await userEvent.click(within(rail).getByRole("button", { name: "Chat" }));
+  expect(screen.getByRole("region", { name: "Group chat" })).toBeInTheDocument();
+});
+
+test("a page's New button opens the same popup as the + New menu", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(within(screen.getByRole("list", { name: "Pages" })).getByRole("button", { name: "Dependencies" }));
+  await userEvent.click(screen.getByRole("button", { name: "New task" }));
+  expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
+});

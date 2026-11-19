@@ -80,3 +80,48 @@ export function todayView(tasks: Task[], today: string): { late: Task[]; today: 
     today: dated.filter((t) => t.due_date === today),
   };
 }
+
+/** The milestones as the group thinks of them: a date still ahead, a date already passed, no date yet. */
+export function milestoneGroups(milestones: Milestone[], today: string): { toComplete: Milestone[]; passed: Milestone[]; toSchedule: Milestone[] } {
+  return {
+    toComplete: milestones.filter((m) => m.due_date && m.due_date >= today).sort(byDate),
+    passed: milestones.filter((m) => m.due_date && m.due_date < today).sort(byDate),
+    toSchedule: milestones.filter((m) => !m.due_date),
+  };
+}
+
+export type Waiting = { task: Task; needs: { task: Task; done: boolean }[]; waiting: boolean };
+
+/**
+ * Who waits on whom: one row per task that waits on something. `waiting` is
+ * true while the task is open and at least one task it needs is not done.
+ * A task that waits on something no longer in the plan simply drops that link.
+ */
+export function waitingOn(tasks: Task[]): Waiting[] {
+  const byId = new Map(tasks.filter((t) => t.task_id).map((t) => [t.task_id!, t]));
+  return tasks
+    .map((task) => {
+      const needs = (task.depends_on ?? []).flatMap((id) => {
+        const found = byId.get(id);
+        return found ? [{ task: found, done: found.status === "done" }] : [];
+      });
+      return { task, needs, waiting: task.status !== "done" && needs.some((n) => !n.done) };
+    })
+    .filter((row) => row.needs.length > 0);
+}
+
+/** A few honest numbers about the plan as it stands (the Reflection page). No judgement of people. */
+export function planFacts(tasks: Task[], milestones: Milestone[], today: string) {
+  const open = tasks.filter((t) => t.status !== "done");
+  const groups = milestoneGroups(milestones, today);
+  return {
+    tasks: tasks.length,
+    done: tasks.length - open.length,
+    late: open.filter((t) => t.due_date && t.due_date < today).length,
+    noOwner: open.filter((t) => !t.owner_id).length,
+    noDate: open.filter((t) => !t.due_date).length,
+    milestones: milestones.length,
+    milestonesPassed: groups.passed.length,
+    milestonesToSchedule: groups.toSchedule.length,
+  };
+}

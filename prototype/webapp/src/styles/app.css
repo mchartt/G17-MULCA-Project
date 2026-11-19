@@ -539,3 +539,22 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .form .form__waits label.check { margin-top: .45rem; }
 .chip--today { align-self: center; }
 @media (max-width: 640px) { .form__pair { grid-template-columns: 1fr; } }
+
+/* The left rail's pages (19 Nov): the chat first, then what waits on what, the milestones, the reflection. */
+.side__pages { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; }
+.side__page { width: 100%; display: flex; gap: .6rem; align-items: center; padding: .5rem .65rem; border: 0; border-radius: var(--r-field); background: none; color: var(--ink2); font: inherit; font-weight: 500; font-size: var(--t-sm); cursor: pointer; text-align: left; }
+.side__page:hover { background: var(--subtle); color: var(--ink); }
+.side__page[aria-current="page"] { background: var(--act-s); color: var(--act); }
+.side__page:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.side__icon { width: 1rem; flex: none; }
+.page { flex: 1; min-height: 0; padding: 1.25rem 1.5rem 2rem; overflow: auto; display: grid; gap: 1.25rem; align-content: start; }
+.page__head { display: flex; gap: 1rem; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.page__section h3 { font-size: var(--t-md); margin-bottom: .25rem; }
+.deps { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+.deps__row { padding: .75rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+.deps__needs { list-style: none; margin: .4rem 0 0; padding: 0; display: grid; gap: .25rem; font-size: var(--t-xs); }
+.deps__needs li { display: flex; gap: .5rem; align-items: center; }
+.deps__open { width: .6rem; height: .6rem; border: 1.5px solid var(--ink2); border-radius: 50%; display: inline-block; flex: none; }
+.refl__bar { width: 100%; height: .6rem; accent-color: var(--act); }
+.refl__facts, .refl__decisions { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.refl__q { font-weight: 600; font-size: var(--t-xs); color: var(--ink2); }

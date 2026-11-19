@@ -28,6 +28,7 @@ test("after the charter Cadence asks how you plan the work, and the answer becom
   // The question arrives in the chat as Cadence's message.
   const question = ada.locator(".msg--agent", { hasText: "How do you want to plan the work?" });
   await expect(question).toBeVisible({ timeout: 10_000 });
+  await ada.waitForTimeout(900); // the bubble fades in
   if (SHOTS) await ada.screenshot({ path: `${SHOTS}/opener-1-question.png` });
 
   await ada.getByLabel("Message to the group").fill("Let's split by area: I take the API.");

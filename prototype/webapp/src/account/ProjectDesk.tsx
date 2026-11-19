@@ -149,7 +149,7 @@ export function ProjectDesk({ disabled, onEnter, onBack }: Props) {
 
       {/* The mat: drop files anywhere on it, or choose them with the button. */}
       <div
-        className={`mat${over ? " mat--over" : ""}${busy || ready ? " mat--sending" : ""}${files.length ? "" : " mat--empty"}`}
+        className={`mat${over ? " mat--over" : ""}${busy || ready ? " mat--sending" : ""}${files.length ? "" : " mat--empty"}${full ? " mat--full" : ""}`}
         onDragOver={(e) => { e.preventDefault(); if (!full) setOver(true); }}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
         onDrop={onDrop}
@@ -157,7 +157,7 @@ export function ProjectDesk({ disabled, onEnter, onBack }: Props) {
         role="group"
       >
         <div className="mat__bar">
-          <span id="c-docs-label" className="mat__label">Documents Cadence can read <span className="muted">(optional)</span></span>
+          <span id="c-docs-label" className="mat__label">Documents <span className="mat__long">Cadence can read </span><span className="muted">(optional)</span></span>
           <span className="mat__count">{files.length} of {MAX_DOCS}</span>
         </div>
 

@@ -245,7 +245,21 @@
   .mat__hint { gap: .7rem; }
   .mat__hint p { font-size: var(--t-sm); }
   .desk__pad textarea { flex: none; height: 5.3rem; min-height: 0; }
-  .doc { width: min(7rem, 100%); }
+  /* Six sheets must fit the mat's two rows: size them by the window's height too. */
+  /* The sheets take the room they need: the mat grows rather than letting them cover its label or buttons. */
+  .mat__docs { flex: none; gap: .8rem; padding: .5rem .3rem; }
+  .mat:not(.mat--empty) .mat__tools .muted { display: none; }
+  .desk__pad textarea { height: 3.9rem; }
+  .doc { width: min(5.6rem, 100%, 8.4vh); padding: .45rem .45rem .4rem; gap: .25rem; }
+  .desk { gap: .75rem; }
+  .desk-page { padding-top: calc(52px + .7rem); }
+  .mat__long { display: none; }
+  .mat--full .mat__tools { display: none; }
+  .desk__pad { padding: 1rem; }
+  .desk__head h1 { font-size: 1.4rem; }
+  .mat { gap: .6rem; }
+  .doc__lines i:nth-child(n + 4) { display: none; }
+  .doc__name { font-size: .68rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

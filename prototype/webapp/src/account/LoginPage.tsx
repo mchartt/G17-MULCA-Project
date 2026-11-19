@@ -7,11 +7,12 @@ import { faEye, faHandPointer, faLock, faShieldHalved, faWifi } from "../lib/ico
 import { codeInAddress } from "../lib/invite";
 import { AuthForms } from "./AuthForms";
 import { Home } from "./Home";
+import { profileDone, Welcome } from "./Welcome";
 
 const NOTICE = [
   { icon: faEye, text: "It reads the messages written in your group's space and in the Discord or Slack channel you link to it, so it can notice what needs coordinating." },
   { icon: faLock, text: "It keeps your email (to log in), your display name and, if you add them, your discipline, skills and weekly hours." },
-  { icon: faShieldHalved, text: "Messages are sent to Azure OpenAI to write Cadence's answers and proposals." },
+  { icon: faShieldHalved, text: "Messages, and the brief or documents you give when creating a project, are sent to Azure OpenAI to write Cadence's answers and proposals. Uploaded files are read, not kept." },
   { icon: faHandPointer, text: "It never scores or ranks people, and nothing in the plan changes until a member confirms it." },
 ];
 
@@ -32,6 +33,21 @@ function PrivacyNotice() {
   );
 }
 
+/** Beside the sign-up form: what the group gets, with the brand picture (asset 4). */
+function BrandPanel() {
+  return (
+    <aside className="brandpanel" aria-labelledby="brandpanel-title">
+      <img src="/brand/connects.webp" width={1672} height={941} alt="" decoding="async" />
+      <h2 id="brandpanel-title">Cadence connects your tasks, your plan and your decisions.</h2>
+      <ul>
+        <li>It reads the group chat and steps in only when something slips.</li>
+        <li>Every suggestion comes with its reason and the messages behind it.</li>
+        <li>Nothing changes until one of you confirms.</li>
+      </ul>
+    </aside>
+  );
+}
+
 /**
  * The way in (UC1), on its own page (/login): log in or create an account,
  * with the privacy notice beside it. Logged in, you see your spaces and can
@@ -45,7 +61,16 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
   // An invite link (/login?code=...) brings a teammate here: the page says so.
   const invited = codeInAddress() !== "";
 
-  const refresh = useCallback(() => me().then(setAccount), []);
+  // The guided setup, shown to a new account (empty profile, no space) until finished or skipped.
+  const [guided, setGuided] = useState<boolean | null>(null);
+  const refresh = useCallback(
+    () =>
+      me().then((found) => {
+        setAccount(found);
+        setGuided((before) => before ?? (found ? !profileDone(found.user) && found.spaces.length === 0 : null));
+      }),
+    [],
+  );
 
   useEffect(() => {
     void adapterOnline().then(setOnline);
@@ -55,7 +80,26 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
   const signOut = async () => {
     await logout();
     setAccount(null);
+    setGuided(null);
   };
+
+  if (account && guided) {
+    return (
+      <div className="login-page login-page--welcome">
+        <Nav />
+        <main className="entry entry--welcome">
+          <Welcome
+            user={account.user}
+            start="name"
+            disabled={online === false}
+            onUser={(user) => setAccount({ ...account, user })}
+            onEnter={onEnter}
+            onSkip={() => setGuided(false)}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">
@@ -77,6 +121,7 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
         <div className="entry__layout">
           <div className="entry__main">
             {account === null && <AuthForms disabled={online === false} onSignedIn={() => void refresh()} />}
+            {account === null && <PrivacyNotice />}
             {account && (
               <Home
                 user={account.user}
@@ -88,7 +133,8 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
               />
             )}
           </div>
-          <PrivacyNotice />
+          {/* Signing in: what Cadence does, beside the form. Logged in: what it keeps, beside your spaces. */}
+          {account === null ? <BrandPanel /> : <PrivacyNotice />}
         </div>
       </main>
     </div>

@@ -17,7 +17,7 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "s
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
 export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now" | "helpful";
 export type Click = { action: CardAction; option?: number };
-export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup" | "language" | "charter" | "milestone";
+export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup" | "language" | "charter" | "milestone" | "approach";
 
 /**
  * A member's id. Web members have small numbers. In a linked group a card can
@@ -90,7 +90,8 @@ export type ProjectState = {
   /** The language the group chose for Cadence's texts: "en", "it", or "" (it follows the chat). */
   language?: string;
   tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null; description?: string; depends_on?: string[] }[];
-  decisions?: { question: string; choice: string; reason?: string }[];
+  /** decided_by / decided_at: shown when the server sends them (the decision registry page). */
+  decisions?: { question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number }[];
 };
 
 export type Notice = { type: "notice"; ok: boolean; text: string; catchup?: CatchUp };
@@ -100,6 +101,8 @@ export type ServerEvent =
   | { type: "hello"; agentName: string; group: Group; me: Person; members: Person[]; messages: ChatMessage[] }
   | { type: "message"; message: ChatMessage }
   | { type: "members"; members: Person[] }
+  /** The space was renamed (Project settings): every open tab shows the new name. */
+  | { type: "group"; group: Group }
   | { type: "proposal"; proposal: Proposal }
   | { type: "state"; state: ProjectState }
   | { type: "status"; coordinator: "unavailable" }

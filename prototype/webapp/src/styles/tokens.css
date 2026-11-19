@@ -42,7 +42,7 @@
   /* Members: five colours that stay apart for colour-blind readers. */
   --m1: #B84E00; --m2: #0072B2; --m3: #00785A; --m4: #A8477F; --m5: #7A5F00;
 
-  --font: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --font: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif;
   --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
 
   /* Type scale (Quorum): caption 12, body-sm 13, body 14, body-lg 16,

@@ -229,6 +229,12 @@ class WebStore:
         ).fetchall()
         return [_message(r) for r in reversed(rows)]
 
+    def rename_group(self, group_id: int, name: str) -> Group | None:
+        """A member's own action (Project settings): the space's new name."""
+        with self._db:
+            self._db.execute("UPDATE web_group SET name = ? WHERE id = ?", (name, group_id))
+        return self.group(group_id)
+
     def delete_group(self, group_id: int) -> None:
         """Every web-side row of the group (members and messages cascade)."""
         with self._db:

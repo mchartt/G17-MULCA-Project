@@ -2,6 +2,7 @@
 export {
   faArrowLeft,
   faArrowRight,
+  faArrowUp,
   faThumbsUp,
   faTrashCan,
   faBellSlash,
@@ -42,4 +43,8 @@ export {
   faPlus,
   faDiagramProject,
   faLightbulb,
+  faGear,
+  faPlug,
+  faBookmark,
+  faPeopleGroup,
 } from "@fortawesome/free-solid-svg-icons";

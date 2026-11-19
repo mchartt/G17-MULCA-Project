@@ -51,6 +51,8 @@ export function reduce(space: Space, event: ServerEvent): Space {
       const timeline = at >= 0 ? space.timeline.map((t, i) => (i === at ? item : t)) : [...space.timeline, item];
       return { ...space, timeline, coordinator: event.message.author ? space.coordinator : "available" };
     }
+    case "group":
+      return { ...space, group: event.group };
     case "members":
       return { ...space, members: event.members };
     case "proposal": {
@@ -80,6 +82,20 @@ export function nameOf(id: MemberId | null | undefined, space: Pick<Space, "memb
 
 /** The member's colour dot, stable for a given id (the stickers on the board). */
 export const DOT_COLOURS = ["var(--m1)", "var(--m2)", "var(--m3)", "var(--m4)", "var(--m5)"];
+/** One member's profile, as Cadence keeps it (sent with the project state). */
+export type MemberProfile = NonNullable<ProjectState["members"]>[number];
+
+export function profileOf(id: MemberId, state: ProjectState | null): MemberProfile | undefined {
+  return state?.members?.find((p) => String(p.member_id) === String(id));
+}
+
+/** The short facts of a profile: discipline, skills, hours (shared by the Team panel and the member popup). */
+export function profileFacts(p: MemberProfile | undefined): string[] {
+  return [p?.discipline?.trim(), p?.skills?.length ? p.skills.join(", ") : "", typeof p?.weekly_hours === "number" ? `${p.weekly_hours} h/week` : ""].filter(
+    (f): f is string => !!f,
+  );
+}
+
 export function dotFor(id: MemberId, members: Person[]): string {
   const index = members.findIndex((m) => m.id === id);
   // Not a web member (a linked channel): a stable colour from the id's last digits.

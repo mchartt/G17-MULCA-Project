@@ -70,11 +70,14 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
   }
 
   return (
-    <section className="chat" aria-label="Group chat">
+    <section className="chat" aria-label="Group chat" data-tour="chat">
       <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions">
         {space.timeline.length === 0 && (
           <div className="chat__empty">
+            <span className="chat__empty-mark" aria-hidden="true"><FontAwesomeIcon icon={faCompass} /></span>
+            <p className="chat__empty-title">Say hello to your group.</p>
             <p>Talk normally. Cadence reads along and steps in only when it notices a coordination gap: no owner, a blocker, a decision going in circles. Nothing changes until one of you clicks.</p>
+            <p className="muted small">To ask Cadence directly, start with <code>@coordinator</code>. Type <code>/</code> to see the commands.</p>
           </div>
         )}
         {space.timeline.map((item) =>
@@ -106,7 +109,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
           ))}
         </ul>
       )}
-      <form className="composer" onSubmit={send}>
+      <form className="composer" onSubmit={send} data-tour="composer">
         <label htmlFor="composer-input" className="sr-only">Message to the group</label>
         <textarea
           id="composer-input"

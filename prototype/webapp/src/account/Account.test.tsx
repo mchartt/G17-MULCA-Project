@@ -16,6 +16,7 @@ let server: (call: Call) => { status?: number; json: unknown };
 beforeEach(() => {
   calls = [];
   localStorage.clear();
+  sessionStorage.clear();
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
     const call: Call = {
       method: init.method ?? "GET",
@@ -31,12 +32,13 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
 });
 
-test("create an account, then start a space as yourself", async () => {
+test("create an account, then the guided setup: profile, ready, a project with its description", async () => {
   const onEnter = vi.fn();
   let spaces: unknown[] = [];
-  server = ({ method, path, token }) => {
+  server = ({ method, path, token, body }) => {
     if (path === "/api/health") return { json: { ok: true } };
     if (path === "/api/register") return { json: { accountToken: "acc-1", user: ADA } };
+    if (path === "/api/me" && method === "PUT") return { json: { user: { ...ADA, ...body } } };
     if (path === "/api/me" && method === "GET") return token === "acc-1" ? { json: { user: ADA, spaces } } : { status: 401, json: { detail: "Log in again." } };
     if (path === "/api/groups") {
       spaces = [{ id: 7, name: "Team 17", inviteCode: "AB12CD" }];
@@ -56,15 +58,81 @@ test("create an account, then start a space as yourself", async () => {
 
   await userEvent.click(screen.getByLabelText("I have read this and I agree"));
   await userEvent.click(screen.getByRole("button", { name: /Create my account/ }));
-  expect(await screen.findByText("Ada", { selector: "strong" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "What should your group call you?" })).toBeInTheDocument();
   expect(savedAccount()).toBe("acc-1");
 
-  // No name asked again: the account has it.
+  // One question per screen; the name is already there from the sign-up.
+  expect(screen.getByLabelText("Your name")).toHaveValue("Ada");
+  await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
+  await userEvent.type(screen.getByLabelText("What you study"), "HCI");
+  await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
+  await userEvent.type(screen.getByLabelText("Skills"), "figma,");
+  await userEvent.click(screen.getByRole("button", { name: /Save my profile/ }));
+  expect(await screen.findByRole("heading", { name: "Don't worry, your profile is set up." })).toBeInTheDocument();
+  expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ displayName: "Ada", discipline: "HCI", skills: ["figma"] });
+
+  await userEvent.click(screen.getByRole("button", { name: /Create a project/ }));
   await userEvent.type(screen.getByLabelText("Project name"), "Team 17");
+  await userEvent.type(screen.getByLabelText("What is the project about?"), "AUI prototype, demo on 2 December.");
   await userEvent.click(screen.getByRole("button", { name: /Create the space/ }));
   await waitFor(() => expect(onEnter).toHaveBeenCalledWith("space-1"));
   expect(calls.find((c) => c.path === "/api/groups")).toMatchObject({ body: { groupName: "Team 17" }, token: "acc-1" });
   expect(savedToken()).toBe("space-1");
+  // The description waits for the console, which sends it to Cadence as the brief.
+  expect(sessionStorage.getItem("cadence.brief:space-1")).toBe("AUI prototype, demo on 2 December.");
+});
+
+test("invited, a new account finishes the profile and finds Join first, with the code filled in", async () => {
+  history.replaceState(null, "", "/login?code=AB12CD");
+  localStorage.setItem("cadence.account", "acc-1");
+  server = ({ path, method, body }) => {
+    if (path === "/api/health") return { json: { ok: true } };
+    if (path === "/api/me" && method === "GET") return { json: { user: ADA, spaces: [] } };
+    if (path === "/api/me" && method === "PUT") return { json: { user: { ...ADA, ...body } } };
+    return { status: 500, json: {} };
+  };
+  render(<LoginPage onEnter={vi.fn()} />);
+  await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
+  await userEvent.click(screen.getByRole("button", { name: /Save my profile/ }));
+  await screen.findByRole("heading", { name: "Don't worry, your profile is set up." });
+  const choices = screen.getAllByRole("button").filter((b) => b.classList.contains("choice"));
+  expect(choices[0]).toHaveTextContent("Join a project");
+  expect(choices[0]).toHaveTextContent("the code is already filled in");
+  await userEvent.click(choices[0]!);
+  expect(screen.getByLabelText("Invite code")).toHaveValue("AB12CD");
+  history.replaceState(null, "", "/");
+});
+
+test("the guided setup can be skipped: the home with create and join is there", async () => {
+  localStorage.setItem("cadence.account", "acc-1");
+  server = ({ path, method }) => {
+    if (path === "/api/health") return { json: { ok: true } };
+    if (path === "/api/me" && method === "GET") return { json: { user: ADA, spaces: [] } };
+    return { status: 500, json: {} };
+  };
+  render(<LoginPage onEnter={vi.fn()} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
+  expect(screen.getByLabelText("Project name")).toBeInTheDocument();
+  expect(screen.getByLabelText("Invite code")).toBeInTheDocument();
+});
+
+test("documents added to a new project show as sheets, each with its own remove button", async () => {
+  localStorage.setItem("cadence.account", "acc-1");
+  server = ({ path, method }) => {
+    if (path === "/api/health") return { json: { ok: true } };
+    if (path === "/api/me" && method === "GET") return { json: { user: { ...ADA, skills: ["figma"] }, spaces: [] } };
+    return { status: 500, json: {} };
+  };
+  const { container } = render(<LoginPage onEnter={vi.fn()} />);
+  await screen.findByLabelText("Project name");
+  const picker = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  await userEvent.upload(picker, [new File(["brief"], "brief.pdf", { type: "application/pdf" }), new File(["notes"], "notes.md", { type: "text/markdown" })]);
+  const shelf = screen.getByRole("list", { name: "Documents added" });
+  expect(shelf).toHaveTextContent("brief.pdf");
+  expect(shelf).toHaveTextContent("notes.md");
+  await userEvent.click(screen.getByRole("button", { name: "Remove brief.pdf" }));
+  expect(screen.getByRole("list", { name: "Documents added" })).not.toHaveTextContent("brief.pdf");
 });
 
 test("log in shows the server's words on a wrong password, then your spaces to open", async () => {
@@ -105,6 +173,7 @@ test("the profile is saved once in the account", async () => {
     return { status: 500, json: {} };
   };
   render(<LoginPage onEnter={vi.fn()} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
   await userEvent.click(await screen.findByRole("button", { name: /My profile/ }));
   await userEvent.type(screen.getByLabelText("Discipline"), "HCI");
   await userEvent.type(screen.getByLabelText(/Skills/), "figma, ux research ,");

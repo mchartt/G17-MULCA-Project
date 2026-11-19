@@ -151,8 +151,12 @@ export function FirstSteps({ state, me, memberCount, inviteCode, charterCard, on
 /** Step 1: the invite link (the code filled in) and the code itself, for Discord or by voice. */
 function TeamStep({ code, alone, onSkip }: { code: string; alone: boolean; onSkip: () => void }) {
   const [copied, setCopied] = useState<"link" | "code" | null>(null);
+  // When the browser refuses the clipboard, the link is shown to copy by hand.
+  const [failed, setFailed] = useState(false);
   const copy = async (what: "link" | "code") => {
-    if (await copyText(what === "link" ? inviteLink(code) : code)) {
+    const ok = await copyText(what === "link" ? inviteLink(code) : code);
+    setFailed(!ok);
+    if (ok) {
       setCopied(what);
       setTimeout(() => setCopied(null), 2000);
     }
@@ -173,6 +177,11 @@ function TeamStep({ code, alone, onSkip }: { code: string; alone: boolean; onSki
         </button>
         {alone && <button className="btn btn--link btn--small" onClick={onSkip}>I'll do it later</button>}
       </div>
+      <p className="muted small" role="status">
+        {copied === "link" && "The invite link is copied."}
+        {copied === "code" && "The invite code is copied."}
+        {failed && <>Your browser did not allow copying. The link is <code>{inviteLink(code)}</code></>}
+      </p>
     </>
   );
 }

@@ -22,6 +22,17 @@ test("alone in a new space: step 1 brings the team in, with the invite link and 
   expect(onProfile).toHaveBeenCalled();
 });
 
+test("copying says so, and shows the link when the browser refuses", async () => {
+  const writeText = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("denied"));
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  render(<FirstSteps state={{}} memberCount={1} {...base} />);
+  await userEvent.click(screen.getByRole("button", { name: "Copy invite link" }));
+  expect(writeText).toHaveBeenCalledWith(`${location.origin}/login?code=K7Q2M9XA`);
+  expect(screen.getByRole("status")).toHaveTextContent("The invite link is copied.");
+  await userEvent.click(screen.getByRole("button", { name: "Copy code" }));
+  expect(screen.getByRole("status")).toHaveTextContent(`${location.origin}/login?code=K7Q2M9XA`);
+});
+
 test("with teammates and a profile, the brief is next; the drop zone opens the assignment dialog", async () => {
   const state = { members: [{ member_id: 1, display_name: "Ada", discipline: "Design" }] };
   render(<FirstSteps state={state} memberCount={3} {...base} />);

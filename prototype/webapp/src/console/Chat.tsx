@@ -115,7 +115,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
           value={draft}
           onChange={(e) => { setDraft(e.target.value); setPicked(0); }}
           onKeyDown={onKey}
-          placeholder={disabled ? "Reconnecting…" : "Message the group, @ to address Cadence or a teammate, / for commands"}
+          placeholder={disabled ? "Reconnecting…" : "Message the group"}
           disabled={disabled}
         />
         <button className="btn btn--primary btn--round" type="submit" aria-label="Send" disabled={disabled || !draft.trim()}><FontAwesomeIcon icon={faPaperPlane} /></button>

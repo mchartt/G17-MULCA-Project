@@ -35,7 +35,7 @@ export function QuickRail({ tasks, onTask, onMilestone, onToday, onProfile, onTo
         <FontAwesomeIcon icon={faCalendarDays} />
         <span aria-hidden="true">Today</span>
         <span className="sr-only">{today.label}</span>
-        {today.count > 0 && <b className="rail__badge" aria-hidden="true">{today.count}</b>}
+        {today.count > 0 && <b className="rail__badge" aria-hidden="true">{today.count > 99 ? "99+" : today.count}</b>}
       </button>
       <button className="rail__btn" aria-label="Your profile" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /><span>Profile</span></button>
       <button className="rail__btn rail__btn--quiet" aria-label="Show the tour again" onClick={onTour}><FontAwesomeIcon icon={faCircleQuestion} /><span>Tour</span></button>

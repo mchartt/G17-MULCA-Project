@@ -58,17 +58,24 @@ function markSeen() {
 
 type Box = { top: number; left: number };
 const CARD_W = 320;
+/** The card never wider than the window, with a 12px margin each side. */
+const cardWidth = () => Math.min(CARD_W, innerWidth - 24);
 const GAP = 14;
 
 /** Where the card goes next to the target, kept inside the window. */
 function place(rect: DOMRect, side: Stop["side"], height: number): Box {
+  const CARD_W = cardWidth();
   let top = rect.top;
   let left = side === "right" ? rect.right + GAP : rect.left - CARD_W - GAP;
   if (side === "above") {
     top = rect.top - height - GAP;
     left = rect.left + rect.width / 2 - CARD_W / 2;
   }
-  if (side === "left" && rect.width > innerWidth / 2) left = rect.left + rect.width / 2 - CARD_W / 2; // a wide target: centre on it
+  if (side === "left" && rect.width > innerWidth / 2) {
+    // A wide target (the rail as a bottom bar on a phone): centre on it, and sit above it, never on top.
+    left = rect.left + rect.width / 2 - CARD_W / 2;
+    if (rect.top > innerHeight / 2) top = rect.top - height - GAP;
+  }
   return {
     top: Math.max(12, Math.min(top, innerHeight - height - 12)),
     left: Math.max(12, Math.min(left, innerWidth - CARD_W - 12)),
@@ -97,7 +104,7 @@ export function Tour({ onClose }: { onClose: () => void }) {
     const target = document.querySelector<HTMLElement>(`[data-tour="${stop.target}"]`);
     target?.classList.add("tour-target");
     const update = () => {
-      if (!target) return setBox({ top: innerHeight / 2 - 100, left: innerWidth / 2 - CARD_W / 2 });
+      if (!target) return setBox({ top: innerHeight / 2 - 100, left: innerWidth / 2 - cardWidth() / 2 });
       setBox(place(target.getBoundingClientRect(), stop.side, card.current?.offsetHeight ?? 180));
     };
     update();
@@ -124,7 +131,7 @@ export function Tour({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="false"
       aria-labelledby="tour-title"
-      style={box ? { top: box.top, left: box.left, width: CARD_W } : { visibility: "hidden" }}
+      style={box ? { top: box.top, left: box.left, width: cardWidth() } : { visibility: "hidden" }}
     >
       <p className="tour__count">{at + 1} of {STOPS.length}</p>
       <h2 id="tour-title" ref={heading} tabIndex={-1}>{stop.title}</h2>

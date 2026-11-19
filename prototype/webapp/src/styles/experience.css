@@ -261,3 +261,67 @@
   .landing .hero__demo { transform: none; }
   .progress { display: none; }
 }
+
+/* ---------- Robustness (19/11, stress.spec.ts): a space after weeks of use ----------
+   Named areas keep every column where it belongs at every width; long words,
+   long lists and long notices stay inside their box. */
+.console { grid-template-areas: "side main panel rail"; }
+.console--wide { grid-template-areas: "side main rail"; }
+.console > .side { grid-area: side; }
+.console > .console__main { grid-area: main; min-width: 0; }
+.console > .console__panel { grid-area: panel; min-width: 0; }
+.console > .rail { grid-area: rail; }
+
+/* Notices: a long answer scrolls inside its banner, the chat keeps its room. */
+.console__notices .banner { max-height: 7.5rem; overflow-y: auto; overflow-wrap: anywhere; }
+.banner--info { display: flex; align-items: flex-start; justify-content: space-between; gap: .4rem 1rem; flex-wrap: nowrap; width: 100%; }
+.banner--info > span { min-width: 0; flex: 1; }
+.banner--info .link-btn { position: sticky; top: 0; flex: none; padding-top: 0; }
+
+/* Cards: the answer row and the Why / Helpful / Not now row wrap instead of spilling. */
+.card__meta, .card__actions, .card__foot { flex-wrap: wrap; }
+.card__meta { row-gap: .3rem; }
+
+/* Buttons and tags never wider than their box; long labels wrap where there is room. */
+.btn { max-width: 100%; }
+.dialog .btn, .card .btn, .page .btn, .form .btn, .panel .btn { white-space: normal; text-align: center; }
+.tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+/* Long words in every list of the pages and the plan panel. */
+.page { grid-template-columns: minmax(0, 1fr); }
+.deps__row, .deps__needs li, .registry__goal, .registry__deliverables li, .registry__decisions li,
+.refl__decisions li, .tasks li, .tasks__title, .tasks__meta, .panel__list li, .askwhy__answer,
+.team__background, .setup__card, .catchup li { overflow-wrap: anywhere; min-width: 0; }
+.askwhy__answer { max-height: 12rem; overflow-y: auto; }
+.task-row__owner, .task-row__due { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.setup__code { flex-wrap: wrap; row-gap: .3rem; }
+.setup__card code { overflow-wrap: anywhere; }
+
+/* The room: the code on its own line, the button under it, never three broken lines. */
+.room .invite { display: grid; grid-template-columns: minmax(0, 1fr); gap: .45rem; padding: .55rem; }
+.room .invite code { letter-spacing: .12em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 .2rem; }
+.room .invite .btn { justify-self: start; }
+
+/* Sidebar rows line up on one baseline: icon column, then text. */
+.members li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: .6rem; }
+.side__group { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+
+/* Rail badge: anchored to the icon's corner, capped at 99+. */
+.rail__btn svg { position: relative; }
+.rail__badge { top: .25rem; right: .35rem; max-width: 2.1rem; }
+
+@media (max-width: 1100px) {
+  .console, .console--wide { grid-template-columns: 15rem minmax(0, 1fr) 4.75rem; grid-template-areas: "side main rail"; height: 100vh; }
+  /* The plan opens as a sheet over the chat, beside the rail, instead of dropping below the page. */
+  .console > .console__panel { position: fixed; top: 0; bottom: 0; right: 4.75rem; width: min(22.5rem, calc(100vw - 6rem)); z-index: 30; background: var(--canvas); border-left: 1px solid var(--line-s); box-shadow: var(--shadow-lift); grid-column: auto; }
+}
+@media (max-width: 760px) {
+  .console, .console--wide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "main" "rail"; height: auto; min-height: 100vh; }
+  .console > .console__panel { right: 0; width: 100vw; bottom: 4.5rem; }
+  .console__main { min-height: 70vh; }
+  /* A compact sidebar: the pages scroll sideways as chips, the rest stays one tap away. */
+  .side { gap: .9rem; }
+  .side__pages { display: flex; overflow-x: auto; gap: .3rem; padding-bottom: .2rem; scrollbar-width: thin; }
+  .side__page { width: auto; white-space: nowrap; flex: none; }
+  .members { display: flex; flex-wrap: wrap; gap: .4rem .9rem; }
+}

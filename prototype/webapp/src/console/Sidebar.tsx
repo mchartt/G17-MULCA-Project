@@ -61,8 +61,10 @@ export function Sidebar({ space, view, onView, onLeave, onDelete, onConnect }: P
           {members.map((m) => (
             <li key={m.id}>
               <span className="avatar avatar--small" style={{ background: dotFor(m.id, space.members) }} aria-hidden="true">{initials(m.name)}</span>
-              {m.name}
-              {m.id === space.me?.id && <span className="muted small"> (you)</span>}
+              <span className="members__name">
+                {m.name}
+                {m.id === space.me?.id && <span className="muted small"> (you)</span>}
+              </span>
             </li>
           ))}
         </ul>

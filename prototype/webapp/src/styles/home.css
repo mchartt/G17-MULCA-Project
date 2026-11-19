@@ -38,40 +38,47 @@
   .brandpanel img { display: none; }
 }
 
-/* ---------- Home: you on the left, your projects on the right ---------- */
-.home { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 16.5rem minmax(0, 1fr); gap: 1.1rem; }
+/* ---------- Home: a slim strip with you, then your projects across the whole width ---------- */
+.home { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .9rem; }
 .me, .projects {
-  min-height: 0; border-radius: 26px; border: 1px solid var(--brand-glass-line); background: rgba(255, 255, 255, .8);
+  min-height: 0; border: 1px solid var(--brand-glass-line); background: rgba(255, 255, 255, .8);
   -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%); box-shadow: inset 0 1px 0 #fff, var(--brand-shadow);
 }
 
-/* You: who is logged in, what Cadence knows about you, your profile, log out. */
-.me { display: flex; flex-direction: column; gap: 1.1rem; padding: 1.3rem; }
-.me__who { display: flex; align-items: center; gap: .8rem; min-width: 0; }
-.me__avatar { display: grid; place-items: center; width: 3rem; height: 3rem; flex: none; border-radius: 50%; background: var(--brand-violet); color: #fff; font-weight: 700; letter-spacing: .02em; }
-.me__id { min-width: 0; }
-.me__name { font-weight: 700; color: var(--brand-night); line-height: 1.25; overflow-wrap: anywhere; }
-.me__email { font-size: var(--t-xs); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.me__facts { margin: 0; display: grid; gap: .7rem; }
-.me__facts div { display: grid; gap: .2rem; }
-.me__facts dt { font-size: var(--t-cap); color: var(--ink3); font-weight: 500; }
-.me__facts dd { margin: 0; font-size: var(--t-sm); color: var(--ink); overflow-wrap: anywhere; }
-.me__skills { display: flex; flex-wrap: wrap; gap: .3rem; }
-.me__skill { padding: .1rem .55rem; border-radius: var(--r-pill); background: var(--brand-mist); color: var(--brand-violet-ink); font-size: var(--t-cap); font-weight: 500; }
-.me__skill--more { background: var(--subtle); color: var(--ink2); }
-.me__empty { font-size: var(--t-xs); color: var(--ink2); padding: .7rem .8rem; border-radius: 14px; background: var(--brand-snow); border: 1px dashed var(--brand-mist); }
-.me__actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.me__privacy { margin-top: auto; justify-content: flex-start; white-space: normal; text-align: left; }
+/* You, in one line: who is logged in, what Cadence knows about you, and the account's three doors. */
+.me { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem 1rem; padding: .7rem .9rem .7rem .8rem; border-radius: 22px; }
+.me__avatar { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; flex: none; border-radius: 50%; background: var(--brand-violet); color: #fff; font-weight: 700; font-size: var(--t-sm); letter-spacing: .02em; }
+.me__id { min-width: 0; max-width: 16rem; }
+.me__name { font-weight: 700; color: var(--brand-night); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me__email { font-size: var(--t-cap); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me__facts { list-style: none; margin: 0; padding: 0 0 0 1rem; border-left: 1px solid var(--line-s); display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; flex: 1 1 14rem; }
+.me__fact { padding: .15rem .6rem; border-radius: var(--r-pill); background: var(--brand-mist); color: var(--brand-violet-ink); font-size: var(--t-cap); font-weight: 500; white-space: nowrap; }
+.me__fact--study { background: var(--surface); border: 1px solid var(--line-s); color: var(--ink); }
+.me__fact--hours, .me__fact--more { background: var(--subtle); color: var(--ink2); }
+.me__empty { flex: 1 1 14rem; justify-content: flex-start; white-space: normal; text-align: left; color: var(--brand-violet-ink); text-decoration: underline; text-underline-offset: 3px; }
+.me__actions { margin-left: auto; display: flex; align-items: center; gap: .3rem 1rem; flex-wrap: wrap; }
 
-/* Your projects: a header, the tiles that fit, the pages, the line to join. */
-.projects { display: flex; flex-direction: column; gap: .9rem; padding: 1.2rem 1.3rem 1.1rem; }
+/* Your projects: the title with the two ways to start beside it, then the tiles that fit, then the pages. */
+.projects { display: flex; flex-direction: column; gap: .9rem; padding: 1.2rem 1.3rem 1rem; border-radius: 26px; }
 .projects__head { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem 1rem; }
 .projects__head h1 { margin-right: auto; font-size: clamp(1.5rem, 2.3vw, 1.9rem); line-height: 1.1; }
 .projects__count { display: inline-grid; place-items: center; min-width: 1.8rem; height: 1.8rem; margin-left: .35rem; padding: 0 .5rem; vertical-align: .2em; border-radius: var(--r-pill); background: var(--brand-mist); color: var(--brand-violet-ink); font-size: var(--t-xs); letter-spacing: 0; }
 .projects__find { position: relative; display: flex; align-items: center; }
 .projects__find svg { position: absolute; left: .8rem; color: var(--ink3); font-size: .8rem; pointer-events: none; }
-.projects__find input { width: min(16rem, 40vw); min-height: 2.5rem; padding: .4rem .8rem .4rem 2.1rem; border-radius: var(--r-pill); border: 1px solid var(--line-s); background: var(--surface); }
+.projects__find input { width: min(14rem, 30vw); min-height: 2.5rem; padding: .4rem .8rem .4rem 2.1rem; border-radius: var(--r-pill); border: 1px solid var(--line-s); background: var(--surface); }
 .projects__find input:focus { outline: none; border-color: var(--brand-violet); box-shadow: 0 0 0 3px rgba(108, 92, 231, .2); }
+
+/* Join with a code, "or", New project: one group, so starting is always in the same place. */
+.projects__start { display: flex; align-items: center; gap: .6rem; }
+.projects__or { font-size: var(--t-xs); color: var(--ink3); }
+.joinbar { position: relative; display: flex; align-items: center; gap: .35rem; padding: .25rem; border-radius: 14px; background: var(--canvas); border: 1px solid var(--line-s); }
+.joinbar input { width: 9.5rem; min-height: 2.2rem; padding: .3rem .7rem; border: 1px solid transparent; border-radius: 10px; background: transparent; text-transform: uppercase; font-size: var(--t-sm); }
+.joinbar input::placeholder { text-transform: none; letter-spacing: 0; font-family: var(--font); color: var(--ink3); opacity: 1; }
+.joinbar input:focus { outline: none; background: var(--surface); border-color: var(--brand-violet); box-shadow: 0 0 0 3px rgba(108, 92, 231, .2); }
+.joinbar .btn { min-height: 2.2rem; padding: 0 .85rem; font-size: var(--t-xs); }
+.joinbar__error { position: absolute; top: calc(100% + .35rem); left: 0; right: 0; z-index: 2; padding: .45rem .7rem; border-radius: 10px; background: var(--er-bg); border: 1px solid var(--er-ln); }
+.joinbar--invited { border-color: var(--brand-violet); box-shadow: 0 0 0 3px rgba(108, 92, 231, .18); background: var(--brand-snow); }
+.projects__invite { margin-top: -.3rem; font-size: var(--t-xs); color: var(--brand-violet-ink); font-weight: 500; text-align: right; }
 
 /* The box gets whatever height is left; Home.tsx counts how many tiles fit in it. */
 .projects__box { --tile-h: 92; flex: 1 1 0; min-height: 92px; padding: 4px; margin: -4px; overflow: hidden; }
@@ -96,46 +103,44 @@
 
 .projects__empty { height: 100%; display: grid; place-content: center; justify-items: center; gap: .5rem; padding: 1.5rem; text-align: center; border-radius: 20px; border: 1.5px dashed var(--brand-mist); background: var(--brand-snow); }
 .projects__empty-title { font-weight: 700; color: var(--brand-night); font-size: var(--t-md); }
-.projects__empty .muted { max-width: 42ch; font-size: var(--t-sm); }
+.projects__empty .muted { max-width: 48ch; font-size: var(--t-sm); }
 
 .projects__foot { display: grid; justify-items: center; gap: .4rem; }
 .projects__foot:empty { display: none; }
 .pager { display: flex; align-items: center; gap: .8rem; }
 .pager__where { font-size: var(--t-xs); color: var(--ink2); font-variant-numeric: tabular-nums; min-width: 6.5rem; text-align: center; }
 
-/* Join with a code: one line at the foot of the projects. */
-.joinline { display: grid; grid-template-columns: max-content minmax(0, 30rem); align-items: center; gap: .3rem 1rem; padding-top: .9rem; border-top: 1px solid var(--line-s); }
-.joinline label { font-weight: 600; font-size: var(--t-sm); color: var(--brand-night); }
-.joinline__row { display: flex; gap: .5rem; }
-.joinline input { flex: 1; min-width: 0; min-height: 2.5rem; padding: .4rem .8rem; border-radius: 12px; border: 1px solid transparent; background: var(--canvas); text-transform: uppercase; }
-.joinline input:focus { outline: none; background: var(--surface); border-color: var(--brand-violet); box-shadow: 0 0 0 3px rgba(108, 92, 231, .2); }
-.joinline > p { grid-column: 2; }
-.joinline--invited { padding: .8rem 1rem; border: 1px solid var(--brand-lavender); border-radius: 16px; background: var(--brand-snow); }
-
+/* Narrower: the start group gets its own row under the title, the code field takes the width. */
 @media (max-width: 900px) {
-  .home { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .me { flex-direction: row; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; padding: .8rem 1rem; border-radius: 20px; }
-  .me__who { flex: 1 1 12rem; }
-  .me__avatar { width: 2.4rem; height: 2.4rem; font-size: var(--t-xs); }
-  .me__facts, .me__empty { display: none; }
-  .me__privacy { margin-top: 0; }
-  .me__actions { gap: .4rem 1rem; }
+  .me__facts { display: none; }
   .projects { padding: 1rem; border-radius: 20px; gap: .7rem; }
   .projects__head h1 { font-size: 1.35rem; }
-  .projects__head .btn--primary { min-height: 2.25rem; padding: 0 .9rem; font-size: var(--t-xs); }
+  .projects__start { order: 3; flex: 1 1 100%; min-width: 0; }
+  .joinbar { flex: 1 1 auto; min-width: 0; }
+  .joinbar input { flex: 1 1 0; width: 0; min-width: 0; }
+  .projects__find { order: 2; }
+  .projects__find input { width: min(14rem, 40vw); }
+  .projects__invite { text-align: left; }
+}
+/* A phone: one line for you, shorter tiles, so a page holds more than one or two. */
+@media (max-width: 600px) {
+  .me { padding: .55rem .7rem; gap: .5rem .7rem; border-radius: 18px; }
+  .me__avatar { width: 2.2rem; height: 2.2rem; font-size: var(--t-xs); }
+  .me__email, .me__empty { display: none; }
+  .me__id { flex: 1 1 0; }
+  .me__actions { gap: .2rem .7rem; }
+  .me__actions .btn--link { font-size: 0; gap: 0; padding: .6rem; }
+  .me__actions .btn--link svg { font-size: .9rem; }
   .projects__find { order: 3; flex: 1 1 100%; }
   .projects__find input { width: 100%; }
-  .joinline { grid-template-columns: minmax(0, 1fr); }
-  .joinline > p { grid-column: 1; }
-}
-/* A phone: shorter tiles, so a page holds more than one or two. */
-@media (max-width: 600px) {
+  .projects__start { order: 4; flex-wrap: wrap; }
+  .joinbar { flex: 1 1 100%; }
+  .projects__or { display: none; }
+  .projects__start .btn--primary { flex: 1 1 100%; }
   .projects__box { --tile-h: 62; min-height: 62px; }
   .tile { padding: .5rem .8rem; gap: .7rem; border-radius: 14px; }
   .tile__mark { width: 2.2rem; height: 2.2rem; border-radius: 10px; font-size: var(--t-xs); }
   .tile__name { -webkit-line-clamp: 1; }
-  .me__email { display: none; }
-  .joinline > p.muted { display: none; }
 }
 /* A short laptop: the sign-in form tightens so it still fits. */
 @media (max-height: 800px) and (min-width: 861px) {

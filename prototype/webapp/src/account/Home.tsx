@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { createMySpace, joinMySpace, openMySpace, type SpaceRef, type User } from "../lib/account";
 import { ApiError, saveToken } from "../lib/api";
 import { faArrowRight, faRightFromBracket, faUserPen } from "../lib/icons";
+import { codeInAddress } from "../lib/invite";
 import { ProfileForm } from "./ProfileForm";
 
 type Props = {
@@ -17,8 +18,8 @@ type Props = {
 /** A logged-in person's home: their spaces, a new space, an invite code, their profile. */
 export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Props) {
   const [project, setProject] = useState("");
-  const [code, setCode] = useState(() => new URLSearchParams(location.search).get("code") ?? "");
-  const invited = new URLSearchParams(location.search).has("code");
+  const [code, setCode] = useState(codeInAddress);
+  const invited = codeInAddress() !== "";
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ where: string; text: string } | null>(null);
   const [editing, setEditing] = useState(false);

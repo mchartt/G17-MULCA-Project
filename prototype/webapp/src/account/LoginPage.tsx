@@ -4,6 +4,7 @@ import { Nav } from "../landing/Nav";
 import { logout, me, type SpaceRef, type User } from "../lib/account";
 import { adapterOnline } from "../lib/api";
 import { faEye, faHandPointer, faLock, faShieldHalved, faWifi } from "../lib/icons";
+import { codeInAddress } from "../lib/invite";
 import { AuthForms } from "./AuthForms";
 import { Home } from "./Home";
 
@@ -42,7 +43,7 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
   const [account, setAccount] = useState<{ user: User; spaces: SpaceRef[] } | null | undefined>(undefined);
 
   // An invite link (/login?code=...) brings a teammate here: the page says so.
-  const invited = new URLSearchParams(location.search).has("code");
+  const invited = codeInAddress() !== "";
 
   const refresh = useCallback(() => me().then(setAccount), []);
 

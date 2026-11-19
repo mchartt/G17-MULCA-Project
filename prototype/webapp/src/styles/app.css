@@ -162,14 +162,20 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 /* ---------- Console ---------- */
 .console { display: grid; grid-template-columns: 16.5rem minmax(0, 1fr) 22.5rem; height: 100vh; background: var(--canvas); font-size: var(--t-sm); line-height: 1.25rem; }
 .console--wide { grid-template-columns: 16.5rem minmax(0, 1fr); }
-.side { background: var(--surface); padding: 1rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; border-right: 1px solid var(--line-s); }
+/* The left rail is a column of sections with one rhythm: .side's gap (1.25rem) between sections, and
+   inside a section a tighter gap of its own. No negative margins: a section that wants to sit closer to
+   its neighbour is grouped with it (.side__head, .side__foot) instead of being pulled. */
+.side { background: var(--surface); padding: 1.25rem 1rem; display: flex; flex-direction: column; gap: 1.25rem; overflow-y: auto; border-right: 1px solid var(--line-s); min-width: 0; }
+.side__head { display: grid; gap: .35rem; }
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 600; letter-spacing: -0.01em; }
 .brand__mark { width: 1rem; height: 1rem; border-radius: 4px; background: var(--ag-solid); }
-.side__group { font-size: var(--t-md); line-height: 1.75rem; margin-top: -.9rem; }
-.side__block h2 { font-size: var(--t-xs); color: var(--ink2); font-weight: 500; margin-bottom: .5rem; }
-.invite { display: flex; align-items: center; gap: .6rem; padding: .4rem .4rem .4rem .75rem; border-radius: var(--r-field); background: var(--subtle); }
-.invite code { font-size: var(--t-sm); letter-spacing: .1em; font-weight: 500; flex: 1; }
-.members { list-style: none; padding: 0; display: grid; gap: .55rem; }
+.side__group { font-size: var(--t-md); line-height: 1.75rem; }
+.side__block { display: grid; gap: .5rem; min-width: 0; }
+.side__block h2 { font-size: var(--t-xs); color: var(--ink2); font-weight: 500; }
+.invite { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem .6rem; padding: .4rem .4rem .4rem .75rem; border-radius: var(--r-field); background: var(--subtle); }
+.invite code { font-size: var(--t-sm); letter-spacing: .1em; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.invite .btn { flex: none; }
+.members { list-style: none; padding: 0; margin: 0; display: grid; gap: .55rem; }
 .members li { display: flex; align-items: center; gap: .6rem; }
 .side__foot { margin-top: auto; display: grid; gap: .4rem; justify-items: start; }
 .console__main { display: flex; flex-direction: column; min-height: 0; }
@@ -240,6 +246,8 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
   .nav nav a:not(.nav__cta) { display: none; }
   .console, .console--wide { grid-template-columns: 1fr; }
   .side { box-shadow: 0 1px 0 var(--line-s); }
+  /* Stacked on top of the page: the four pages sit two by two instead of a tall list. */
+  .side__pages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
@@ -490,8 +498,8 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 
 /* Chat first (U1, 19 Nov): one "Ask Cadence" menu instead of five buttons. */
 .ask { position: relative; }
-.ask__menu { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 20; list-style: none; margin: 0; padding: .35rem; min-width: 17rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .08); display: grid; gap: .1rem; }
-.ask__item { width: 100%; display: grid; grid-template-columns: 1.1rem 1fr; gap: .6rem; align-items: start; text-align: left; padding: .5rem .6rem; border: 0; border-radius: var(--r-field); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.ask__menu { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 20; list-style: none; margin: 0; padding: .35rem; min-width: 17rem; max-width: calc(100vw - 2rem); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .08); display: grid; gap: .1rem; }
+.ask__item { width: 100%; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); gap: .6rem; align-items: start; text-align: left; padding: .5rem .6rem; border: 0; border-radius: var(--r-field); background: none; color: var(--ink); font: inherit; cursor: pointer; }
 .ask__item:hover, .ask__item:focus-visible { background: var(--subtle); outline: none; }
 .ask__item:focus-visible { box-shadow: inset 0 0 0 2px var(--act); }
 .ask__icon { margin-top: .2rem; color: var(--ink2); }
@@ -523,12 +531,18 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .setup__drop:hover { border-color: var(--act); background: var(--act-s); }
 .setup__drop:focus-visible { outline: var(--focus); outline-offset: 2px; }
 .setup__drop svg { color: var(--ink2); }
-.side__settings { margin-top: -.9rem; }
+.side__settings { justify-self: stretch; margin-top: .4rem; padding-top: .75rem; border-top: 1px solid var(--line-s); }
 
-/* Quick actions (19 Nov): "+ New" opens popups; one quiet "Today" line above the chat. */
-.side__new { margin: -.4rem 0 .2rem; }
+/* Quick actions (19 Nov): "+ New" opens a popup in the middle of the screen, then the form; one quiet "Today" line above the chat. */
 .side__new .btn { width: 100%; justify-content: center; }
-.side__new .ask__menu { left: 0; right: auto; }
+.choose { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
+.choose__card { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); column-gap: .75rem; row-gap: .25rem; align-items: start; text-align: left; padding: 1rem; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.choose__card:hover { border-color: var(--act); background: var(--act-s); }
+.choose__card:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.choose__icon { grid-row: 1 / span 2; margin-top: .2rem; color: var(--act); }
+.choose__label { font-weight: 600; font-size: var(--t-base); }
+.choose__about { color: var(--ink2); font-size: var(--t-xs); }
+@media (max-width: 640px) { .choose { grid-template-columns: 1fr; } }
 .form__pair { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .form__pair label { display: block; }
 .form__pair .field-select, .form__pair input { width: 100%; min-height: 2.25rem; }

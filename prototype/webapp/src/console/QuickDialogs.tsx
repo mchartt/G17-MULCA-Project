@@ -1,13 +1,46 @@
 // The quick actions: every creation by hand happens in a popup, and "Today"
 // is one look at what needs a member's eyes now. A member's own action: no
 // card, no model. The server checks every value again.
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useEffect, useId, useState, type FormEvent } from "react";
+import { faFlag, faListCheck } from "../lib/icons";
 import type { MemberId, Person } from "../lib/types";
 import { Dialog } from "./Dialogs";
 import { DoneBox, OwnerSelect } from "./PlanDialogs";
 import { dayLabel, todayView, type MilestoneEdit, type NewTask, type Task, type TaskEdit } from "./plan";
 
 type Create<T> = (value: T) => Promise<string | null>;
+
+export type NewWhat = "task" | "milestone";
+
+const NEW_CHOICES: { what: NewWhat; label: string; about: string; icon: IconDefinition }[] = [
+  { what: "task", label: "Task", about: "A name, an owner, a date, and what it waits on.", icon: faListCheck },
+  { what: "milestone", label: "Milestone", about: "A date the group works towards.", icon: faFlag },
+];
+
+/**
+ * "+ New": what to create, in a popup in the middle of the screen (a menu would
+ * have to fit the narrow side rail). A choice closes it; the caller opens the
+ * form of that choice. Each button's name starts with its label, then one line of help.
+ */
+export function NewDialog({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (what: NewWhat) => void }) {
+  return (
+    <Dialog open={open} title="New" onClose={onClose}>
+      <p className="muted small">What does the group need to add?</p>
+      <div className="choose">
+        {NEW_CHOICES.map((c) => (
+          <button key={c.what} type="button" className="choose__card" onClick={() => onPick(c.what)}>
+            <FontAwesomeIcon icon={c.icon} className="choose__icon" />
+            <span className="choose__label">{c.label}</span>
+            <span className="choose__about">{c.about}</span>
+          </button>
+        ))}
+      </div>
+      <div className="form__actions"><button type="button" className="btn btn--soft" onClick={onClose}>Cancel</button></div>
+    </Dialog>
+  );
+}
 
 /** New task: name, description, owner, date, and the open tasks it waits on. */
 export function NewTaskDialog({ open, tasks, members, onClose, onCreate }: { open: boolean; tasks: Task[]; members: Person[]; onClose: () => void; onCreate: Create<NewTask> }) {

@@ -17,7 +17,7 @@ const report = async (name) => {
 const popup = page.locator("dialog[open]");
 const fromMenu = async (what) => {
   await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByRole("menuitem", { name: new RegExp(`^${what}`) }).click();
+  await popup.getByRole("button", { name: new RegExp(`^${what}`) }).click();
 };
 
 await page.goto("http://127.0.0.1:8090/login");
@@ -28,7 +28,7 @@ await page.getByRole("heading", { name: "Axe pages" }).waitFor();
 await report("chat with the rail");
 
 await page.getByRole("button", { name: "New", exact: true }).click();
-await report("New menu open");
+await report("New popup open");
 await page.keyboard.press("Escape");
 
 await fromMenu("Task");

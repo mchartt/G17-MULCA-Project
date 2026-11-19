@@ -58,7 +58,8 @@ test("Delete this space is no longer next to the invite: it is under Space setti
 test("+ New opens a popup; the task goes out as the usual task command and the popup closes when it is accepted", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   await userEvent.click(screen.getByRole("button", { name: "New" }));
-  await userEvent.click(screen.getByRole("menuitem", { name: /^Task/ }));
+  const chooser = screen.getByRole("dialog", { name: "New" });
+  await userEvent.click(within(chooser).getByRole("button", { name: /^Task/ }));
   const popup = screen.getByRole("dialog", { name: "New task" });
   await userEvent.type(within(popup).getByLabelText("Name"), "Test the API");
   await userEvent.type(within(popup).getByLabelText("Description (optional)"), "Contract tests");
@@ -71,7 +72,7 @@ test("+ New opens a popup; the task goes out as the usual task command and the p
 test("+ New also makes a milestone, in its own popup", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   await userEvent.click(screen.getByRole("button", { name: "New" }));
-  await userEvent.click(screen.getByRole("menuitem", { name: /^Milestone/ }));
+  await userEvent.click(within(screen.getByRole("dialog", { name: "New" })).getByRole("button", { name: /^Milestone/ }));
   const popup = screen.getByRole("dialog", { name: "New milestone" });
   await userEvent.type(within(popup).getByLabelText("Name"), "Prototype ready");
   await userEvent.type(within(popup).getByLabelText("Date (optional)"), "2026-12-01");

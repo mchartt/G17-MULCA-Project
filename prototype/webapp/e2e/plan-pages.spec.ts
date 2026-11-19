@@ -10,7 +10,7 @@ const SHOTS = process.env.SHOTS_DIR;
 
 async function newFromMenu(page, what: "Task" | "Milestone") {
   await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByRole("menuitem", { name: new RegExp(`^${what}`) }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: new RegExp(`^${what}`) }).click();
 }
 
 test("quick actions, pages and dependencies", async ({ page }) => {

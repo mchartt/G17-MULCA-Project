@@ -9,14 +9,13 @@ export type AskItem = { key: string; label: string; about: string; icon: IconDef
  * "Ask Cadence": the on-demand actions (assignment, tasks, check-in, catch up)
  * behind one button, so the first screen has one thing to look at, the chat.
  * Cadence still steps in on its own; this menu is for when the group asks.
- * The same menu, with another label, is "New": what a member creates by hand.
  *
  * Menu button pattern (WAI-ARIA APG): Enter/Space/ArrowDown open it on the
  * first item, arrows move, Escape closes and gives focus back to the button.
  * Each item's name is its visible text, label then one line of help
  * (axe label-content-name-mismatch), so it starts with the label.
  */
-export function AskMenu({ items, label = "Ask Cadence", icon }: { items: AskItem[]; label?: string; icon?: IconDefinition }) {
+export function AskMenu({ items, label = "Ask Cadence" }: { items: AskItem[]; label?: string }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLUListElement>(null);
@@ -79,7 +78,7 @@ export function AskMenu({ items, label = "Ask Cadence", icon }: { items: AskItem
           }
         }}
       >
-        {icon && <FontAwesomeIcon icon={icon} />} {label} <FontAwesomeIcon icon={faChevronDown} />
+        {label} <FontAwesomeIcon icon={faChevronDown} />
       </button>
       {open && (
         <ul id={id} ref={list} className="ask__menu" role="menu" aria-label={label} onKeyDown={onKey}>

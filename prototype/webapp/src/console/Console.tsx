@@ -16,7 +16,7 @@ import { DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from
 import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { todayIso, todayView } from "./plan";
-import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
+import { NewDialog, NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { DependenciesPage, MilestonesPage, ReflectionPage } from "./Pages";
 import { Sidebar, type View } from "./Sidebar";
@@ -42,7 +42,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [panelOpen, setPanelOpen] = useState(false);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "new" | "newtask" | "newmilestone" | "today" | "link" | null>(null);
   // The task the "Link tasks" popup opens on (null: the member chooses).
   const [linkTask, setLinkTask] = useState<string | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
@@ -278,7 +278,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} view={view} onView={setView} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
+      <Sidebar space={space} view={view} onView={setView} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={() => setDialog("new")} />
       <main className="console__main">
         <header className="console__bar">
           <h2 className="console__title">{PAGE_TITLES[view]}</h2>
@@ -383,6 +383,8 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         onClose={() => setDialog(null)}
       />
       <MilestonesDialog open={dialog === "milestones"} milestones={space.state?.milestones ?? []} onMilestone={editMilestone} onClose={() => setDialog(null)} />
+      {/* Choosing swaps this popup for the form: the native close of the chooser must not clear the form's state. */}
+      <NewDialog open={dialog === "new"} onClose={() => setDialog((d) => (d === "new" ? null : d))} onPick={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
       <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />
       <WaitsOnDialog open={dialog === "link"} tasks={space.state?.tasks ?? []} taskId={linkTask} onClose={() => setDialog(null)} onSave={saveWaitsOn} />
       <NewMilestoneDialog open={dialog === "newmilestone"} onClose={() => setDialog(null)} onCreate={createMilestone} />

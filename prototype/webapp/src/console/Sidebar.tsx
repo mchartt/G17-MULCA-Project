@@ -1,13 +1,11 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
-import { faCheck, faComments, faCopy, faDiagramProject, faFlag, faLightbulb, faListCheck, faPlus, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
+import { faCheck, faComments, faCopy, faDiagramProject, faFlag, faLightbulb, faPlus, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
 import { copyText, inviteLink } from "../lib/invite";
-import { AskMenu } from "./AskMenu";
 import { initials } from "./Chat";
 import type { Space } from "./space";
 import { dotFor } from "./space";
 
-export type NewWhat = "task" | "milestone";
 /** The pages of the left rail. The chat is the first and the one a space opens on. */
 export type View = "chat" | "dependencies" | "milestones" | "reflection";
 
@@ -18,7 +16,7 @@ const PAGES: { key: View; label: string; icon: typeof faComments }[] = [
   { key: "reflection", label: "Reflection", icon: faLightbulb },
 ];
 
-type Props = { space: Space; view: View; onView: (view: View) => void; onProfile: () => void; onLeave: () => void; onDelete: () => void; onNew: (what: NewWhat) => void };
+type Props = { space: Space; view: View; onView: (view: View) => void; onProfile: () => void; onLeave: () => void; onDelete: () => void; onNew: () => void };
 
 // A group is small, but the list must never push the rest of the sidebar away.
 const MEMBERS_SHOWN = 6;
@@ -41,19 +39,14 @@ export function Sidebar({ space, view, onView, onProfile, onLeave, onDelete, onN
 
   return (
     <nav className="side" aria-label="Space">
-      <p className="brand"><span className="brand__mark" aria-hidden="true" />Cadence</p>
-      <h1 className="side__group">{space.group?.name}</h1>
+      <div className="side__head">
+        <p className="brand"><span className="brand__mark" aria-hidden="true" />Cadence</p>
+        <h1 className="side__group">{space.group?.name}</h1>
+      </div>
 
-      {/* New = what a member creates by hand, always in a popup. Ask Cadence (by the chat) asks the assistant. */}
+      {/* New = what a member creates by hand, in a popup on screen. Ask Cadence (by the chat) asks the assistant. */}
       <div className="side__new">
-        <AskMenu
-          label="New"
-          icon={faPlus}
-          items={[
-            { key: "task", label: "Task", about: "A name, an owner, a date, and what it waits on.", icon: faListCheck, run: () => onNew("task") },
-            { key: "milestone", label: "Milestone", about: "A date the group works towards.", icon: faFlag, run: () => onNew("milestone") },
-          ]}
-        />
+        <button className="btn btn--soft btn--small" onClick={onNew}><FontAwesomeIcon icon={faPlus} /> New</button>
       </div>
 
       <ul className="side__pages" aria-label="Pages">
@@ -101,12 +94,12 @@ export function Sidebar({ space, view, onView, onProfile, onLeave, onDelete, onN
       <div className="side__foot">
         <button className="btn btn--soft" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> Edit my profile</button>
         <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Back to my spaces</button>
-      </div>
 
-      <details className="side__more side__settings">
-        <summary>Space settings</summary>
-        <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
-      </details>
+        <details className="side__more side__settings">
+          <summary>Space settings</summary>
+          <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
+        </details>
+      </div>
     </nav>
   );
 }

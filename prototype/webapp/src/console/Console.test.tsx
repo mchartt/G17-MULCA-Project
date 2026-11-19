@@ -49,16 +49,15 @@ test("Check-in from the Ask Cadence menu runs the same command as before", async
   expect(await screen.findByText("On track.")).toBeInTheDocument();
 });
 
-test("Delete this space is no longer next to the invite: it is under Space settings", () => {
+test("Delete this space is no longer next to the invite: it is under Project settings", () => {
   render(<Console token="t" onLeave={() => undefined} />);
   const del = screen.getByRole("button", { name: "Delete this space", hidden: true });
-  expect(del.closest("details")).toHaveTextContent("Space settings");
+  expect(del.closest("details")).toHaveTextContent("Project settings");
 });
 
-test("+ New opens a popup; the task goes out as the usual task command and the popup closes when it is accepted", async () => {
+test("the Task quick action opens a popup; the task goes out as the usual task command and the popup closes when it is accepted", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
-  await userEvent.click(screen.getByRole("button", { name: "New" }));
-  await userEvent.click(screen.getByRole("menuitem", { name: /^Task/ }));
+  await userEvent.click(within(screen.getByRole("navigation", { name: "Quick actions" })).getByRole("button", { name: "Create a task" }));
   const popup = screen.getByRole("dialog", { name: "New task" });
   await userEvent.type(within(popup).getByLabelText("Name"), "Test the API");
   await userEvent.type(within(popup).getByLabelText("Description (optional)"), "Contract tests");
@@ -68,10 +67,9 @@ test("+ New opens a popup; the task goes out as the usual task command and the p
   expect(screen.queryByRole("dialog", { name: "New task" })).toBeNull();
 });
 
-test("+ New also makes a milestone, in its own popup", async () => {
+test("the Milestone quick action makes a milestone, in its own popup", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
-  await userEvent.click(screen.getByRole("button", { name: "New" }));
-  await userEvent.click(screen.getByRole("menuitem", { name: /^Milestone/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Create a milestone" }));
   const popup = screen.getByRole("dialog", { name: "New milestone" });
   await userEvent.type(within(popup).getByLabelText("Name"), "Prototype ready");
   await userEvent.type(within(popup).getByLabelText("Date (optional)"), "2026-12-01");
@@ -82,7 +80,7 @@ test("+ New also makes a milestone, in its own popup", async () => {
 test("the left rail opens on the chat; a page replaces the chat and the chat comes back with its own entry", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   const rail = screen.getByRole("list", { name: "Pages" });
-  expect(within(rail).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Chat", "Dependencies", "Milestones", "Reflection"]);
+  expect(within(rail).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Chat", "Tasks", "Dependencies", "Milestones", "Decisions", "Reflection"]);
   expect(within(rail).getByRole("button", { name: "Chat" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("region", { name: "Group chat" })).toBeInTheDocument();
 
@@ -96,9 +94,40 @@ test("the left rail opens on the chat; a page replaces the chat and the chat com
   expect(screen.getByRole("region", { name: "Group chat" })).toBeInTheDocument();
 });
 
-test("a page's New button opens the same popup as the + New menu", async () => {
+test("a page's New button opens the same popup as the Task quick action", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   await userEvent.click(within(screen.getByRole("list", { name: "Pages" })).getByRole("button", { name: "Dependencies" }));
   await userEvent.click(screen.getByRole("button", { name: "New task" }));
   expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
+});
+
+test("the quick actions sit on the right: task, milestone, today, profile, tour", () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  const rail = screen.getByRole("navigation", { name: "Quick actions" });
+  expect(within(rail).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+    "Create a task", "Create a milestone", "Today: nothing due", "Your profile", "Show the tour again",
+  ]);
+});
+
+test("the Decisions page is the plan and decision registry, empty until the group confirms something", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(within(screen.getByRole("list", { name: "Pages" })).getByRole("button", { name: "Decisions" }));
+  const page = screen.getByRole("region", { name: "Decisions" });
+  expect(within(page).getByText(/No plan confirmed yet/)).toBeInTheDocument();
+  expect(within(page).getByText(/No decision recorded yet/)).toBeInTheDocument();
+});
+
+test("the brief written while creating the space goes to Cadence once, as the usual kickoff", async () => {
+  sessionStorage.setItem("cadence.brief:t-brief", "Deliver the prototype by 2 December.");
+  render(<Console token="t-brief" onLeave={() => undefined} />);
+  expect(await screen.findByText(/Cadence read your brief/)).toBeInTheDocument();
+  expect(asked).toContainEqual({ type: "command", command: "kickoff", args: { text: "Deliver the prototype by 2 December." } });
+  expect(sessionStorage.getItem("cadence.brief:t-brief")).toBeNull();
+});
+
+test("Connect Slack or Discord explains the bot and the link command", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(screen.getByRole("button", { name: "Connect Slack or Discord" }));
+  const popup = screen.getByRole("dialog", { name: "Connect Slack or Discord" });
+  expect(within(popup).getByText(/Without the bot installed, the command does nothing/)).toBeInTheDocument();
 });

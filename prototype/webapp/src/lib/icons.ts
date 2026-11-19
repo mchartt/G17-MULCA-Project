@@ -42,4 +42,7 @@ export {
   faPlus,
   faDiagramProject,
   faLightbulb,
+  faGear,
+  faPlug,
+  faBookmark,
 } from "@fortawesome/free-solid-svg-icons";

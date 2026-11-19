@@ -90,7 +90,8 @@ export type ProjectState = {
   /** The language the group chose for Cadence's texts: "en", "it", or "" (it follows the chat). */
   language?: string;
   tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null; description?: string; depends_on?: string[] }[];
-  decisions?: { question: string; choice: string; reason?: string }[];
+  /** decided_by / decided_at: shown when the server sends them (the decision registry page). */
+  decisions?: { question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number }[];
 };
 
 export type Notice = { type: "notice"; ok: boolean; text: string; catchup?: CatchUp };

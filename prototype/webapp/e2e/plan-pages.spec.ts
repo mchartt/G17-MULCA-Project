@@ -9,8 +9,7 @@ import { signUp } from "./account.mjs";
 const SHOTS = process.env.SHOTS_DIR;
 
 async function newFromMenu(page, what: "Task" | "Milestone") {
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByRole("menuitem", { name: new RegExp(`^${what}`) }).click();
+  await page.getByRole("navigation", { name: "Quick actions" }).getByRole("button", { name: `Create a ${what.toLowerCase()}` }).click();
 }
 
 test("quick actions, pages and dependencies", async ({ page }) => {

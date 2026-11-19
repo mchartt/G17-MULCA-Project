@@ -150,3 +150,47 @@ export function DeleteDialog({ open, spaceName, onClose, onDelete }: { open: boo
     </Dialog>
   );
 }
+
+/**
+ * How to bring Cadence into the group's Discord server or Slack workspace.
+ * Honest about the condition: it works only where the Cadence bot is installed.
+ */
+export function ConnectDialog({ open, code, onClose }: { open: boolean; code: string; onClose: () => void }) {
+  const command = `/coordinator link ${code}`;
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* the command stays on screen to copy by hand */
+    }
+  };
+  return (
+    <Dialog open={open} title="Connect Slack or Discord" onClose={onClose}>
+      <div className="connect">
+        <p className="muted">Keep talking where your group already talks. Cadence reads the linked channel too, and the plan, the decisions and the cards are the same everywhere.</p>
+        <ol className="connect__steps">
+          <li>
+            <strong>Install the Cadence bot</strong>
+            <span className="muted small">Whoever manages your Discord server or Slack workspace adds the bot once. Ask your team who has the invite link of the bot.</span>
+          </li>
+          <li>
+            <strong>Link the channel to this space</strong>
+            <span className="muted small">In the channel where the group talks, write:</span>
+            <span className="connect__command"><code>{command}</code><button type="button" className="btn btn--soft btn--small" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button></span>
+          </li>
+          <li>
+            <strong>Talk as usual</strong>
+            <span className="muted small">Messages from the channel show here with a Discord or Slack tag, and Cadence's cards show there too.</span>
+          </li>
+        </ol>
+        <p className="muted small">Without the bot installed, the command does nothing. Nothing is shared until a channel is linked.</p>
+        <div className="form__actions">
+          <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}

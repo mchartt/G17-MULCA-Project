@@ -7,6 +7,7 @@ import { faEye, faHandPointer, faLock, faShieldHalved, faWifi } from "../lib/ico
 import { codeInAddress } from "../lib/invite";
 import { AuthForms } from "./AuthForms";
 import { Home } from "./Home";
+import { profileDone, Welcome } from "./Welcome";
 
 const NOTICE = [
   { icon: faEye, text: "It reads the messages written in your group's space and in the Discord or Slack channel you link to it, so it can notice what needs coordinating." },
@@ -45,7 +46,16 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
   // An invite link (/login?code=...) brings a teammate here: the page says so.
   const invited = codeInAddress() !== "";
 
-  const refresh = useCallback(() => me().then(setAccount), []);
+  // The guided setup, shown to a new account (empty profile, no space) until finished or skipped.
+  const [guided, setGuided] = useState<boolean | null>(null);
+  const refresh = useCallback(
+    () =>
+      me().then((found) => {
+        setAccount(found);
+        setGuided((before) => before ?? (found ? !profileDone(found.user) && found.spaces.length === 0 : null));
+      }),
+    [],
+  );
 
   useEffect(() => {
     void adapterOnline().then(setOnline);
@@ -55,7 +65,26 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
   const signOut = async () => {
     await logout();
     setAccount(null);
+    setGuided(null);
   };
+
+  if (account && guided) {
+    return (
+      <div className="login-page login-page--welcome">
+        <Nav />
+        <main className="entry entry--welcome">
+          <Welcome
+            user={account.user}
+            start="name"
+            disabled={online === false}
+            onUser={(user) => setAccount({ ...account, user })}
+            onEnter={onEnter}
+            onSkip={() => setGuided(false)}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">

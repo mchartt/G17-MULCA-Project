@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles/tokens.css";
 import "./styles/app.css";
+import "./styles/experience.css";
 
 config.autoAddCss = false; // the CSS is imported above, once
 

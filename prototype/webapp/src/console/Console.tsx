@@ -4,6 +4,7 @@ import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
 import { faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faTableColumns } from "../lib/icons";
 import { ADAPTER_URL, calendarLink, deleteSpace, saveToken } from "../lib/api";
+import { takePendingBrief } from "../lib/brief";
 import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
@@ -12,17 +13,19 @@ import { AskMenu } from "./AskMenu";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
-import { DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
+import { ConnectDialog, DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
-import { todayIso, todayView } from "./plan";
+import { todayIso } from "./plan";
 import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
 import { ProjectPanel } from "./ProjectPanel";
-import { DependenciesPage, MilestonesPage, ReflectionPage } from "./Pages";
+import { DecisionsPage, DependenciesPage, MilestonesPage, ReflectionPage, TasksPage } from "./Pages";
+import { QuickRail } from "./QuickRail";
+import { Tour, tourSeen } from "./Tour";
 import { Sidebar, type View } from "./Sidebar";
 import { emptySpace, nameOf, reduce } from "./space";
 
-const PAGE_TITLES: Record<View, string> = { chat: "Group chat", dependencies: "Dependencies", milestones: "Milestones", reflection: "Reflection" };
+const PAGE_TITLES: Record<View, string> = { chat: "Group chat", tasks: "Tasks", dependencies: "Dependencies", milestones: "Milestones", decisions: "Plan and decisions", reflection: "Reflection" };
 
 const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
   connecting: "Connecting to your space…",
@@ -42,7 +45,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [panelOpen, setPanelOpen] = useState(false);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | "link" | "connect" | null>(null);
+  // The guided tour: shown once per space in this browser, and again from the quick actions.
+  const [touring, setTouring] = useState(false);
   // The task the "Link tasks" popup opens on (null: the member chooses).
   const [linkTask, setLinkTask] = useState<string | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
@@ -71,6 +76,28 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   useEffect(() => {
     if (status === "open") void ask({ type: "command", command: "state" });
   }, [status, ask]);
+
+  // The brief written while creating the space (description and documents) goes to Cadence once,
+  // as the usual kickoff: Cadence answers with a card the group confirms.
+  useEffect(() => {
+    if (status !== "open") return;
+    const brief = takePendingBrief(token);
+    if (!brief) return;
+    setNotice("Cadence is reading your project brief…");
+    void ask({ type: "command", command: "kickoff", args: { text: brief } }).then((answer) =>
+      setNotice(
+        answer.ok
+          ? "Cadence read your brief. Its proposal is a card in the chat: read it with your group, then confirm it."
+          : answer.type === "notice" ? answer.text : "Cadence could not read the brief. Paste it again from the setup card.",
+      ),
+    );
+  }, [status, token, ask]);
+
+  // The first space this browser opens shows the tour, once the space is loaded.
+  const room = space.group?.inviteCode ?? "";
+  useEffect(() => {
+    if (room && !tourSeen()) setTouring(true);
+  }, [room]);
 
   // Render's free plan stops a server that gets no request for 15 minutes,
   // and an open chat sends none by itself. A small request every few minutes
@@ -278,12 +305,11 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} view={view} onView={setView} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
+      <Sidebar space={space} view={view} onView={setView} onLeave={leave} onDelete={() => setDialog("delete")} onConnect={() => setDialog("connect")} />
       <main className="console__main">
         <header className="console__bar">
           <h2 className="console__title">{PAGE_TITLES[view]}</h2>
           <div className="console__tools">
-            {(space.state?.tasks?.length ?? 0) > 0 && <TodayChip tasks={space.state?.tasks ?? []} onOpen={() => setDialog("today")} />}
             <AskMenu
               items={[
                 { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: () => setDialog("kickoff") },
@@ -329,6 +355,8 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             />
           </>
         )}
+        {view === "tasks" && <TasksPage tasks={space.state?.tasks ?? []} today={todayIso()} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onNew={() => setDialog("newtask")} />}
+        {view === "decisions" && <DecisionsPage state={space.state} nameOf={(id) => nameOf(id, space)} onPlan={() => setPanelOpen(true)} />}
         {view === "dependencies" && <DependenciesPage tasks={space.state?.tasks ?? []} onNew={() => setDialog("newtask")} onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }} />}
         {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
         {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} />}
@@ -352,6 +380,16 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
           />
         </div>
       )}
+      <QuickRail
+        tasks={space.state?.tasks ?? []}
+        onTask={() => setDialog("newtask")}
+        onMilestone={() => setDialog("newmilestone")}
+        onToday={() => setDialog("today")}
+        onProfile={() => setDialog("profile")}
+        onTour={() => { setView("chat"); setTouring(true); }}
+      />
+      {touring && view === "chat" && <Tour onClose={() => { setTouring(false); document.getElementById("composer-input")?.focus(); }} />}
+      <ConnectDialog open={dialog === "connect"} code={room} onClose={() => setDialog(null)} />
       <KickoffDialog open={dialog === "kickoff"} onClose={() => setDialog(null)} onSend={kickoff} onRead={(file) => readDocument(token, file)} />
       {user ? (
         // Logged in: the profile is the account's, saved once for every space.
@@ -389,17 +427,5 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       <TodayDialog open={dialog === "today"} today={todayIso()} tasks={space.state?.tasks ?? []} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onClose={() => setDialog(null)} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>
-  );
-}
-
-/** One quiet line above the chat: how many tasks are due today or late. It only opens the popup. */
-function TodayChip({ tasks, onOpen }: { tasks: NonNullable<Parameters<typeof todayView>[0]>; onOpen: () => void }) {
-  const view = todayView(tasks, todayIso());
-  const label =
-    view.late.length + view.today.length === 0
-      ? "Today: nothing due"
-      : [view.today.length > 0 && `${view.today.length} due`, view.late.length > 0 && `${view.late.length} late`].filter(Boolean).join(", ").replace(/^/, "Today: ");
-  return (
-    <button className="chip chip--today" onClick={onOpen}>{label}</button>
   );
 }

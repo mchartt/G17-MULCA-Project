@@ -36,6 +36,7 @@ export function AuthForms({ disabled, onSignedIn }: Props) {
 
   return (
     <form className="panel-card form auth" onSubmit={submit}>
+      <p className="auth__hello">{creating ? "Two minutes to set up. Then your group talks, and Cadence keeps track." : "Welcome back."}</p>
       <div className="auth__tabs" role="tablist" aria-label="Account">
         <button type="button" role="tab" aria-selected={creating} className="auth__tab" onClick={() => { setMode("register"); setError(null); }}>Create an account</button>
         <button type="button" role="tab" aria-selected={!creating} className="auth__tab" onClick={() => { setMode("login"); setError(null); }}>Log in</button>
@@ -44,13 +45,13 @@ export function AuthForms({ disabled, onSignedIn }: Props) {
       {creating && (
         <>
           <label htmlFor="a-name">Your name, as your group will see it</label>
-          <input id="a-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required autoComplete="name" />
+          <input id="a-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} required autoComplete="name" placeholder="e.g. Sara Rossi" />
         </>
       )}
       <label htmlFor="a-email">Email</label>
-      <input id="a-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} required autoComplete="email" />
+      <input id="a-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} required autoComplete="email" placeholder="name@university.it" />
       <label htmlFor="a-password">Password{creating ? " (at least 8 characters)" : ""}</label>
-      <input id="a-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={creating ? 8 : 1} maxLength={200} required autoComplete={creating ? "new-password" : "current-password"} />
+      <input id="a-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={creating ? 8 : 1} maxLength={200} required autoComplete={creating ? "new-password" : "current-password"} placeholder={creating ? "At least 8 characters" : "Your password"} />
 
       {creating && (
         <label className="check">

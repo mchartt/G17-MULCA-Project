@@ -18,7 +18,7 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
   const code = (await ada.locator(".invite code").textContent())!.trim();
 
   // The profile: skills as tags, a background in the member's own words.
-  await ada.getByRole("button", { name: "Edit my profile" }).click();
+  await ada.getByRole("button", { name: "Your profile" }).click();
   await ada.locator("#p-discipline").fill("Design");
   await ada.locator("#p-skills").fill("Figma");
   await ada.keyboard.press("Enter");

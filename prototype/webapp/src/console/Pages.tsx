@@ -3,9 +3,10 @@
 // Numbers and lists come from the saved plan only, and say nothing about people.
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faFlag, faPlus, faTrashCan } from "../lib/icons";
-import type { Milestone, ProjectState } from "../lib/types";
+import type { MemberId, Milestone, ProjectState } from "../lib/types";
 import { DependencyGraph } from "./DependencyGraph";
-import { milestoneGroups, planFacts, waitingOn, type MilestoneEdit, type Task } from "./plan";
+import { DoneBox } from "./PlanDialogs";
+import { dayLabel, milestoneGroups, planFacts, waitingOn, type MilestoneEdit, type Task, type TaskEdit } from "./plan";
 
 /** The milestones in three groups: to complete (a date ahead), date passed, date still to set. */
 export function MilestonesPage({ milestones, today, onMilestone, onNew }: { milestones: Milestone[]; today: string; onMilestone: (edit: MilestoneEdit) => Promise<string | null>; onNew: () => void }) {
@@ -139,6 +140,109 @@ export function ReflectionPage({ state, today }: { state: ProjectState | null; t
               </li>
             ))}
           </ul>
+        )}
+      </section>
+    </section>
+  );
+}
+
+/** The tasks in four groups, from what needs attention to what is done. Owners and dates as the plan has them. */
+export function TasksPage({ tasks, today, nameOf, onTask, onNew }: { tasks: Task[]; today: string; nameOf: (id: MemberId) => string | undefined; onTask: (taskId: string, edit: TaskEdit) => void; onNew: () => void }) {
+  const waits = new Set(waitingOn(tasks).filter((r) => r.waiting).map((r) => r.task));
+  const titleOf = new Map(tasks.filter((t) => t.task_id).map((t) => [t.task_id!, t.title]));
+  const sections = [
+    { key: "stuck", title: "Blocked or waiting", about: "Marked blocked, or waiting on a task that is not done.", items: tasks.filter((t) => t.status !== "done" && (t.status === "blocked" || waits.has(t))) },
+    { key: "doing", title: "In progress", about: "Someone is working on it.", items: tasks.filter((t) => t.status === "doing" && !waits.has(t)) },
+    { key: "todo", title: "To do", about: "Not started yet.", items: tasks.filter((t) => (t.status === "todo" || !t.status) && !waits.has(t)) },
+    { key: "done", title: "Done", about: "", items: tasks.filter((t) => t.status === "done") },
+  ].filter((s) => s.items.length > 0);
+
+  return (
+    <section className="page" aria-label="Tasks">
+      <header className="page__head">
+        <p className="muted">Every task of the plan. Cadence suggests owners and dates in the chat; here you change them by hand.</p>
+        <button className="btn btn--primary btn--small" onClick={onNew}><FontAwesomeIcon icon={faPlus} /> New task</button>
+      </header>
+      {sections.length === 0 ? (
+        <p className="muted register__empty">No tasks yet. Say in the chat what needs doing (Cadence offers to note it), or add one with “New task”.</p>
+      ) : (
+        sections.map((s) => (
+          <section key={s.key} className="page__section" aria-labelledby={`tasks-${s.key}`}>
+            <h3 id={`tasks-${s.key}`}>{s.title} <span className="muted small">{s.items.length}</span></h3>
+            {s.about && <p className="muted small">{s.about}</p>}
+            <ul className="register">
+              {s.items.map((t) => {
+                const late = t.status !== "done" && t.due_date && t.due_date < today;
+                return (
+                  <li key={t.task_id ?? t.title} className="register__row task-row">
+                    <DoneBox task={t} onTask={onTask} />
+                    <span className="register__title">
+                      {t.title}
+                      {(t.depends_on ?? []).length > 0 && (
+                        <span className="muted small task-row__waits"> waits on {(t.depends_on ?? []).map((id) => titleOf.get(id)).filter(Boolean).join(", ")}</span>
+                      )}
+                    </span>
+                    <span className="task-row__owner">{t.owner_id ? nameOf(t.owner_id) ?? "a member" : <span className="muted">No owner</span>}</span>
+                    <span className={`task-row__due${late ? " task-row__due--late" : ""}`}>{t.due_date ? `${late ? "Late · " : ""}${dayLabel(t.due_date)}` : <span className="muted">No date</span>}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))
+      )}
+    </section>
+  );
+}
+
+/**
+ * The plan and decision registry: the confirmed goal and deliverables, then
+ * every decision with its reason. Only what a member confirmed is here;
+ * changing it goes through the chat (Cadence proposes a card) or the plan panel.
+ */
+export function DecisionsPage({ state, nameOf, onPlan }: { state: ProjectState | null; nameOf: (id: MemberId) => string | undefined; onPlan: () => void }) {
+  const charter = state?.charter;
+  const decisions = state?.decisions ?? [];
+  return (
+    <section className="page" aria-label="Decisions">
+      <header className="page__head">
+        <p className="muted">What the group agreed, with the reasons. To change something, say it in the chat: Cadence proposes the change as a card.</p>
+        <button className="btn btn--soft btn--small" onClick={onPlan}>Edit the plan</button>
+      </header>
+      <section className="page__section" aria-labelledby="dec-plan">
+        <h3 id="dec-plan">The plan</h3>
+        {charter ? (
+          <div className="registry__plan">
+            <p className="registry__goal">{charter.goal}</p>
+            {(charter.deliverables ?? []).length > 0 && (
+              <ul className="registry__deliverables">{charter.deliverables!.map((d) => <li key={d}>{d}</li>)}</ul>
+            )}
+            {charter.confirmed_by !== undefined && <p className="muted small">Confirmed by {nameOf(charter.confirmed_by) ?? "a member"}.</p>}
+          </div>
+        ) : (
+          <p className="muted register__empty">No plan confirmed yet. Paste the brief (or describe the project in the chat) and Cadence proposes a goal and deliverables to confirm.</p>
+        )}
+      </section>
+      <section className="page__section" aria-labelledby="dec-list">
+        <h3 id="dec-list">Decisions <span className="muted small">{decisions.length}</span></h3>
+        {decisions.length === 0 ? (
+          <p className="muted register__empty">No decision recorded yet. When the group closes a choice on a card, it is kept here with who decided and why.</p>
+        ) : (
+          <ol className="registry__decisions">
+            {[...decisions].reverse().map((d, i) => (
+              <li key={`${i}-${d.question}`}>
+                <p className="refl__q">{d.question}</p>
+                <p><strong>{d.choice}</strong></p>
+                {d.reason && <p className="muted">Why: {d.reason}</p>}
+                {(d.decided_by !== undefined || d.decided_at) && (
+                  <p className="muted small">
+                    {d.decided_by !== undefined && <>Closed by {nameOf(d.decided_by) ?? "a member"}</>}
+                    {d.decided_at ? <> · {new Date(d.decided_at > 1e12 ? d.decided_at : d.decided_at * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</> : null}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
         )}
       </section>
     </section>

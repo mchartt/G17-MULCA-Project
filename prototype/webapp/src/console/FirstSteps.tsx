@@ -165,7 +165,7 @@ function TeamStep({ code, alone, onSkip }: { code: string; alone: boolean; onSki
     <>
       <h4>{alone ? "Bring your team in" : "Invite the rest of the team"}</h4>
       <p>Send the link to your group chat. It opens Cadence with the code already filled in.</p>
-      <p className="setup__code" aria-label={`Invite code ${code}`}>
+      <p className="setup__code" role="img" aria-label={`Invite code ${code}`}>
         {code.split("").map((c, i) => <span key={i} aria-hidden="true">{c}</span>)}
       </p>
       <div className="setup__actions">

@@ -1,10 +1,11 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState, type FormEvent } from "react";
-import { createMySpace, joinMySpace, openMySpace, type SpaceRef, type User } from "../lib/account";
+import { joinMySpace, openMySpace, type SpaceRef, type User } from "../lib/account";
 import { ApiError, saveToken } from "../lib/api";
 import { faArrowRight, faRightFromBracket, faUserPen } from "../lib/icons";
 import { codeInAddress } from "../lib/invite";
 import { ProfileForm } from "./ProfileForm";
+import { ProjectSetup } from "./ProjectSetup";
 
 type Props = {
   user: User;
@@ -15,55 +16,61 @@ type Props = {
   onLogout: () => void;
 };
 
-/** A logged-in person's home: their spaces, a new space, an invite code, their profile. */
-export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Props) {
-  const [project, setProject] = useState("");
+/** Every way in ends the same: a space token, saved, and the console opens. */
+async function openWith(open: () => Promise<{ token: string }>, onEnter: (token: string) => void): Promise<string | null> {
+  try {
+    const { token } = await open();
+    saveToken(token);
+    onEnter(token);
+    return null;
+  } catch (err) {
+    return err instanceof ApiError ? err.message : "Something went wrong. Try again.";
+  }
+}
+
+/** Join a teammate's space with the invite code (filled in when you arrive from an invite link). */
+export function JoinForm({ disabled, onEnter, title }: { disabled: boolean; onEnter: (token: string) => void; title?: string }) {
   const [code, setCode] = useState(codeInAddress);
   const invited = codeInAddress() !== "";
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<{ where: string; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const join = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(await openWith(() => joinMySpace(code), onEnter));
+    setBusy(false);
+  };
+  return (
+    <form className={`panel-card form${invited ? " form--invited" : ""}`} onSubmit={join}>
+      <h3>{title ?? (invited ? "You are invited" : "Join with an invite code")}</h3>
+      <label htmlFor="j-code">Invite code</label>
+      <input id="j-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={20} required className="code-field" spellCheck={false} placeholder="AB12CD" />
+      <p className="muted small">A teammate finds it in the room box of their space, at the bottom left.</p>
+      {error && <p className="form__error" role="alert">{error}</p>}
+      <button className={`btn ${invited ? "btn--primary" : "btn--dark"}`} type="submit" disabled={disabled || busy}>
+        {busy ? "Joining…" : "Join the space"} <FontAwesomeIcon icon={faArrowRight} />
+      </button>
+    </form>
+  );
+}
+
+/** A logged-in person's home: their spaces, a new space, an invite code, their profile. */
+export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Props) {
+  const invited = codeInAddress() !== "";
+  const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState<{ where: number; text: string } | null>(null);
   const [editing, setEditing] = useState(false);
 
-  /** Every way in ends the same: a space token, saved, and the console opens. */
-  async function enter(where: string, open: () => Promise<{ token: string }>) {
-    setBusy(where);
+  async function open(id: number) {
+    setBusy(id);
     setError(null);
-    try {
-      const { token } = await open();
-      saveToken(token);
-      onEnter(token);
-    } catch (err) {
-      setError({ where, text: err instanceof ApiError ? err.message : "Something went wrong. Try again." });
-    } finally {
-      setBusy(null);
-    }
+    const text = await openWith(() => openMySpace(id), onEnter);
+    if (text) setError({ where: id, text });
+    setBusy(null);
   }
 
-  const create = (e: FormEvent) => { e.preventDefault(); void enter("create", () => createMySpace(project)); };
-  const join = (e: FormEvent) => { e.preventDefault(); void enter("join", () => joinMySpace(code)); };
-  const off = disabled || busy !== null;
-  const createForm = (
-    <form key="create" className="panel-card form" onSubmit={create}>
-      <h3>Start a new space</h3>
-      <label htmlFor="c-project">Project name</label>
-      <input id="c-project" value={project} onChange={(e) => setProject(e.target.value)} maxLength={80} required placeholder="AUI group project" />
-      {error?.where === "create" && <p className="form__error" role="alert">{error.text}</p>}
-      <button className="btn btn--primary" type="submit" disabled={off}>
-        {busy === "create" ? "Creating…" : "Create the space"} <FontAwesomeIcon icon={faArrowRight} />
-      </button>
-    </form>
-  );
-  const joinForm = (
-    <form key="join" className={`panel-card form${invited ? " form--invited" : ""}`} onSubmit={join}>
-      <h3>{invited ? "You are invited" : "Join with an invite code"}</h3>
-      <label htmlFor="j-code">Invite code</label>
-      <input id="j-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={20} required className="code-field" spellCheck={false} />
-      {error?.where === "join" && <p className="form__error" role="alert">{error.text}</p>}
-      <button className={`btn ${invited ? "btn--primary" : "btn--dark"}`} type="submit" disabled={off}>
-        {busy === "join" ? "Joining…" : "Join the space"} <FontAwesomeIcon icon={faArrowRight} />
-      </button>
-    </form>
-  );
+  const createForm = <ProjectSetup key="create" title="Start a new project" disabled={disabled} onEnter={onEnter} />;
+  const joinForm = <JoinForm key="join" disabled={disabled} onEnter={onEnter} />;
 
   return (
     <div className="home">
@@ -89,10 +96,10 @@ export function Home({ user, spaces, disabled, onEnter, onUser, onLogout }: Prop
             {spaces.map((s) => (
               <li key={s.id} className="panel-card">
                 <span><strong>{s.name}</strong> <code className="muted">{s.inviteCode}</code></span>
-                <button className="btn btn--primary btn--small" disabled={off} onClick={() => void enter(`open-${s.id}`, () => openMySpace(s.id))}>
-                  {busy === `open-${s.id}` ? "Opening…" : "Open"} <FontAwesomeIcon icon={faArrowRight} />
+                <button className="btn btn--primary btn--small" disabled={disabled || busy !== null} onClick={() => void open(s.id)}>
+                  {busy === s.id ? "Opening…" : "Open"} <FontAwesomeIcon icon={faArrowRight} />
                 </button>
-                {error?.where === `open-${s.id}` && <p className="form__error" role="alert">{error.text}</p>}
+                {error?.where === s.id && <p className="form__error" role="alert">{error.text}</p>}
               </li>
             ))}
           </ul>

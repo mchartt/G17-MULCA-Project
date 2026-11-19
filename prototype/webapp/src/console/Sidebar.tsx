@@ -3,6 +3,7 @@ import { useState } from "react";
 import { faBookmark, faCheck, faComments, faCopy, faDiagramProject, faFlag, faGear, faLightbulb, faListCheck, faPlug, faRightFromBracket } from "../lib/icons";
 import type { MemberId } from "../lib/types";
 import { copyText, inviteLink } from "../lib/invite";
+import { LogoMark } from "../brand/Logo";
 import { initials } from "./Chat";
 import type { Space } from "./space";
 import { dotFor } from "./space";
@@ -43,7 +44,7 @@ export function Sidebar({ space, view, onView, onLeave, onSettings, onMember, on
 
   return (
     <nav className="side" aria-label="Space">
-      <p className="brand"><span className="brand__mark" aria-hidden="true" />Cadence</p>
+      <p className="brand"><LogoMark size={22} />Cadence</p>
       <div className="side__head">
         <h1 className="side__group">{space.group?.name}</h1>
         <button className="icon-btn side__gear" aria-label="Project settings" title="Project settings" onClick={onSettings}>

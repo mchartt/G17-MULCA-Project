@@ -15,6 +15,8 @@ import { FirstSteps } from "./FirstSteps";
 import { DeleteDialog, Dialog, KickoffDialog, ProfileDialog, type Profile } from "./Dialogs";
 import { AgendaDialog, MilestonesDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
+import { todayIso, todayView } from "./plan";
+import { NewMilestoneDialog, NewTaskDialog, TodayDialog } from "./QuickDialogs";
 import { ProjectPanel } from "./ProjectPanel";
 import { Sidebar } from "./Sidebar";
 import { emptySpace, nameOf, reduce } from "./space";
@@ -35,7 +37,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | "newtask" | "newmilestone" | "today" | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
   const socket = useRef<SpaceSocket | null>(null);
@@ -131,8 +133,21 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   };
 
   const addTask = async (task: NewTask) => {
-    const answer = await ask({ type: "command", command: "task", args: { add: task.title, owner: task.owner ?? "", due: task.due ?? "" } });
+    const args: Record<string, unknown> = { add: task.title, owner: task.owner ?? "", due: task.due ?? "" };
+    if (task.description) args.description = task.description;
+    if (task.waitsOn?.length) args.depends_on = task.waitsOn;
+    const answer = await ask({ type: "command", command: "task", args });
     return answer.ok ? null : answer.type === "notice" ? answer.text : "The task was not added.";
+  };
+
+  /** The "New task" popup: it closes only when the server accepted the task. */
+  const createTask = async (task: NewTask) => {
+    const error = await addTask(task);
+    if (!error) {
+      setDialog(null);
+      setNotice(`Task added: “${task.title}”.`);
+    }
+    return error;
   };
 
   const editMilestone = async (edit: MilestoneEdit) => {
@@ -144,6 +159,16 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     }
     const answer = await ask({ type: "command", command: "milestone", args });
     return answer.ok ? null : answer.type === "notice" ? answer.text : "The milestone was not changed.";
+  };
+
+  /** The "New milestone" popup: it closes only when the server accepted the milestone. */
+  const createMilestone = async (edit: MilestoneEdit) => {
+    const error = await editMilestone(edit);
+    if (!error && "add" in edit) {
+      setDialog(null);
+      setNotice(`Milestone added: “${edit.add}”.`);
+    }
+    return error;
   };
 
   const checkin = async () => {
@@ -235,11 +260,12 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   return (
     <div className={`console${panelOpen ? "" : " console--wide"}`}>
       <a href="#composer-input" className="skip">Skip to the message box</a>
-      <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} />
+      <Sidebar space={space} onProfile={() => setDialog("profile")} onLeave={leave} onDelete={() => setDialog("delete")} onNew={(what) => setDialog(what === "task" ? "newtask" : "newmilestone")} />
       <main className="console__main">
         <header className="console__bar">
           <h2 className="console__title">Group chat</h2>
           <div className="console__tools">
+            {(space.state?.tasks?.length ?? 0) > 0 && <TodayChip tasks={space.state?.tasks ?? []} onOpen={() => setDialog("today")} />}
             <AskMenu
               items={[
                 { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: () => setDialog("kickoff") },
@@ -330,7 +356,22 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         onClose={() => setDialog(null)}
       />
       <MilestonesDialog open={dialog === "milestones"} milestones={space.state?.milestones ?? []} onMilestone={editMilestone} onClose={() => setDialog(null)} />
+      <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />
+      <NewMilestoneDialog open={dialog === "newmilestone"} onClose={() => setDialog(null)} onCreate={createMilestone} />
+      <TodayDialog open={dialog === "today"} today={todayIso()} tasks={space.state?.tasks ?? []} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onClose={() => setDialog(null)} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>
+  );
+}
+
+/** One quiet line above the chat: how many tasks are due today or late. It only opens the popup. */
+function TodayChip({ tasks, onOpen }: { tasks: NonNullable<Parameters<typeof todayView>[0]>; onOpen: () => void }) {
+  const view = todayView(tasks, todayIso());
+  const label =
+    view.late.length + view.today.length === 0
+      ? "Today: nothing due"
+      : [view.today.length > 0 && `${view.today.length} due`, view.late.length > 0 && `${view.late.length} late`].filter(Boolean).join(", ").replace(/^/, "Today: ");
+  return (
+    <button className="chip chip--today" onClick={onOpen}>{label}</button>
   );
 }

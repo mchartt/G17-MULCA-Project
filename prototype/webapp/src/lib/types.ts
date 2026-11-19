@@ -89,7 +89,7 @@ export type ProjectState = {
   members?: { member_id?: MemberId; display_name: string; discipline?: string; skills?: string[]; weekly_hours?: number | null; background?: string }[];
   /** The language the group chose for Cadence's texts: "en", "it", or "" (it follows the chat). */
   language?: string;
-  tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null }[];
+  tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null; description?: string; depends_on?: string[] }[];
   decisions?: { question: string; choice: string; reason?: string }[];
 };
 

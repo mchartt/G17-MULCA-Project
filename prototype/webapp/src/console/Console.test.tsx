@@ -20,6 +20,10 @@ vi.mock("../lib/socket", () => ({
 }));
 vi.mock("../lib/account", () => ({ me: async () => null }));
 
+// jsdom has no <dialog> modal: show it as open.
+HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+
 Element.prototype.scrollIntoView = vi.fn();
 const { Console } = await import("./Console");
 
@@ -49,4 +53,28 @@ test("Delete this space is no longer next to the invite: it is under Space setti
   render(<Console token="t" onLeave={() => undefined} />);
   const del = screen.getByRole("button", { name: "Delete this space", hidden: true });
   expect(del.closest("details")).toHaveTextContent("Space settings");
+});
+
+test("+ New opens a popup; the task goes out as the usual task command and the popup closes when it is accepted", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(screen.getByRole("button", { name: "New" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /^Task/ }));
+  const popup = screen.getByRole("dialog", { name: "New task" });
+  await userEvent.type(within(popup).getByLabelText("Name"), "Test the API");
+  await userEvent.type(within(popup).getByLabelText("Description (optional)"), "Contract tests");
+  await userEvent.click(within(popup).getByRole("button", { name: "Add task" }));
+  expect(asked).toContainEqual({ type: "command", command: "task", args: { add: "Test the API", owner: "", due: "", description: "Contract tests" } });
+  expect(await screen.findByText("Task added: “Test the API”.")).toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "New task" })).toBeNull();
+});
+
+test("+ New also makes a milestone, in its own popup", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(screen.getByRole("button", { name: "New" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /^Milestone/ }));
+  const popup = screen.getByRole("dialog", { name: "New milestone" });
+  await userEvent.type(within(popup).getByLabelText("Name"), "Prototype ready");
+  await userEvent.type(within(popup).getByLabelText("Date (optional)"), "2026-12-01");
+  await userEvent.click(within(popup).getByRole("button", { name: "Add milestone" }));
+  expect(asked).toContainEqual({ type: "command", command: "milestone", args: { add: "Prototype ready", due: "2026-12-01" } });
 });

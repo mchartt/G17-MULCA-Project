@@ -1,4 +1,4 @@
-import { agenda, dayLabel, nextMilestones, upNext, type Task } from "./plan";
+import { agenda, dayLabel, nextMilestones, todayView, upNext, type Task } from "./plan";
 
 const task = (title: string, due_date: string | null, status = "todo", owner_id: number | null = 1): Task => ({ task_id: title, title, due_date, status, owner_id });
 
@@ -33,4 +33,14 @@ test("day by day: late first, then each date with its milestone and tasks, then 
 test("a date is read as a calendar day, whatever the time zone", () => {
   expect(dayLabel("2026-11-30")).toBe("Mon 30 Nov");
   expect(dayLabel("not a date")).toBe("not a date");
+});
+
+test("today: open tasks already late (earliest first) and open tasks due today; done, undated and future ones are left out", () => {
+  const view = todayView(
+    [task("Old", "2026-11-10"), task("Older", "2026-11-05"), task("Now", "2026-11-19"), task("Later", "2026-11-20"), task("Free", null), task("Shipped", "2026-11-12", "done")],
+    "2026-11-19",
+  );
+  expect(view.late.map((t) => t.title)).toEqual(["Older", "Old"]);
+  expect(view.today.map((t) => t.title)).toEqual(["Now"]);
+  expect(todayView([], "2026-11-19")).toEqual({ late: [], today: [] });
 });

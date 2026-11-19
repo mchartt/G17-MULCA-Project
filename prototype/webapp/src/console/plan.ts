@@ -5,8 +5,9 @@ import type { MemberId, Milestone, ProjectState } from "../lib/types";
 export type Task = NonNullable<ProjectState["tasks"]>[number];
 
 /** What a member changes on a task by hand. `owner: null` = nobody, `due: null` = no date. */
-export type TaskEdit = { status?: string; owner?: MemberId | null; due?: string | null; title?: string; remove?: true };
-export type NewTask = { title: string; owner: MemberId | null; due: string | null };
+export type TaskEdit = { status?: string; owner?: MemberId | null; due?: string | null; title?: string; description?: string; waitsOn?: string[]; remove?: true };
+/** `waitsOn` holds task ids; `description` and `waitsOn` are optional (the "New task" popup). */
+export type NewTask = { title: string; owner: MemberId | null; due: string | null; description?: string; waitsOn?: string[] };
 export type MilestoneEdit = { add: string; due: string | null } | { milestone: string; title?: string; due?: string | null; remove?: true };
 
 export const STATUSES = ["todo", "doing", "done", "blocked"];
@@ -69,4 +70,13 @@ export function dayLabel(iso: string): string {
 /** Today as YYYY-MM-DD in the member's own time zone. */
 export function todayIso(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+/** What needs a member's eyes today: open tasks already late, and open tasks due today. */
+export function todayView(tasks: Task[], today: string): { late: Task[]; today: Task[] } {
+  const dated = tasks.filter((t) => t.status !== "done" && t.due_date);
+  return {
+    late: dated.filter((t) => t.due_date! < today).sort(byDate),
+    today: dated.filter((t) => t.due_date === today),
+  };
 }

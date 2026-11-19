@@ -1,16 +1,19 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
-import { faCheck, faCopy, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
+import { faCheck, faCopy, faFlag, faListCheck, faPlus, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
+import { AskMenu } from "./AskMenu";
 import { initials } from "./Chat";
 import type { Space } from "./space";
 import { dotFor } from "./space";
 
-type Props = { space: Space; onProfile: () => void; onLeave: () => void; onDelete: () => void };
+export type NewWhat = "task" | "milestone";
+
+type Props = { space: Space; onProfile: () => void; onLeave: () => void; onDelete: () => void; onNew: (what: NewWhat) => void };
 
 // A group is small, but the list must never push the rest of the sidebar away.
 const MEMBERS_SHOWN = 6;
 
-export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
+export function Sidebar({ space, onProfile, onLeave, onDelete, onNew }: Props) {
   const [copied, setCopied] = useState(false);
   const [allMembers, setAllMembers] = useState(false);
   // You first, then the others as they joined.
@@ -32,6 +35,18 @@ export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
     <nav className="side" aria-label="Space">
       <p className="brand"><span className="brand__mark" aria-hidden="true" />Cadence</p>
       <h1 className="side__group">{space.group?.name}</h1>
+
+      {/* New = what a member creates by hand, always in a popup. Ask Cadence (by the chat) asks the assistant. */}
+      <div className="side__new">
+        <AskMenu
+          label="New"
+          icon={faPlus}
+          items={[
+            { key: "task", label: "Task", about: "A name, an owner, a date, and what it waits on.", icon: faListCheck, run: () => onNew("task") },
+            { key: "milestone", label: "Milestone", about: "A date the group works towards.", icon: faFlag, run: () => onNew("milestone") },
+          ]}
+        />
+      </div>
 
       <div className="side__block">
         <h2>Invite code</h2>

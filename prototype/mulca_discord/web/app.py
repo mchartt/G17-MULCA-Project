@@ -12,7 +12,7 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
     POST /api/groups/delete {confirm: group name} + Bearer -> {deleted: true}  delete everything (rule 10)
     WS   /ws           first frame {type:"auth", token}, then:
          -> {type:"message", text}
-         -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why"|"ask"|"catchup"|"language"|"charter", args, requestId}
+         -> {type:"command", command:"profile"|"kickoff"|"state"|"planning"|"checkin"|"task"|"why"|"ask"|"catchup"|"language"|"charter"|"milestone"|"approach", args, requestId}
          -> {type:"click", proposalId, action:"confirm"|"reject"|"take"|"choose"|"not_now"|"helpful", option?, requestId}
          <- hello, message, members, proposal, state, status, reply{requestId, answer}, deleted
 
@@ -65,7 +65,7 @@ class ChatFrame(BaseModel):
 
 class CommandFrame(BaseModel):
     type: Literal["command"]
-    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone", "approach"]
     args: dict = Field(default_factory=dict)
     request_id: str = Field(default="", alias="requestId", max_length=64)
 

@@ -4,6 +4,7 @@
 // card for everyone and the plan. Not now silences instead.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { signUp } from "./account.mjs";
+import { openPlan } from "./console.mjs";
 
 async function space(browser: Browser, project: string): Promise<[Page, Page]> {
   const ada = await (await browser.newContext()).newPage();
@@ -13,6 +14,7 @@ async function space(browser: Browser, project: string): Promise<[Page, Page]> {
   await ada.locator("#c-project").fill(project);
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: project })).toBeVisible();
+  await openPlan(ada);
   const code = (await ada.locator(".invite code").textContent())!.trim();
   const bruno = await (await browser.newContext()).newPage();
   await bruno.goto(`/?code=${code}`);

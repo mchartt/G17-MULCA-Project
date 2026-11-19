@@ -9,6 +9,7 @@ export {
   faCalendarDays,
   faCalendarCheck,
   faCheck,
+  faChevronDown,
   faCircleCheck,
   faCircleQuestion,
   faClipboardCheck,

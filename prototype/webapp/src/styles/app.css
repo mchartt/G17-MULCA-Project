@@ -506,3 +506,18 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .side__more summary { font-size: var(--t-xs); color: var(--ink2); font-weight: 500; cursor: pointer; }
 .side__more[open] summary { margin-bottom: .5rem; }
 .side__more summary:focus-visible { outline: var(--focus); outline-offset: 2px; }
+
+/* Chat first (U1, 19 Nov): one "Ask Cadence" menu instead of five buttons, one hint instead of three steps. */
+.ask { position: relative; }
+.ask__menu { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 20; list-style: none; margin: 0; padding: .35rem; min-width: 17rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .08); display: grid; gap: .1rem; }
+.ask__item { width: 100%; display: grid; grid-template-columns: 1.1rem 1fr; gap: .6rem; align-items: start; text-align: left; padding: .5rem .6rem; border: 0; border-radius: var(--r-field); background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.ask__item:hover, .ask__item:focus-visible { background: var(--subtle); outline: none; }
+.ask__item:focus-visible { box-shadow: inset 0 0 0 2px var(--act); }
+.ask__icon { margin-top: .2rem; color: var(--ink2); }
+.ask__label { display: block; font-weight: 600; font-size: var(--t-xs); }
+.ask__about { display: block; font-size: var(--t-xs); color: var(--ink2); }
+.hint { margin: 1rem 1.5rem 0; padding: .75rem 1rem; display: flex; gap: 1rem; align-items: center; justify-content: space-between; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
+.hint h3 { font-size: var(--t-xs); font-weight: 600; }
+.hint__actions { display: flex; gap: .3rem; align-items: center; flex-shrink: 0; }
+.side__settings { margin-top: -.9rem; }
+@media (max-width: 640px) { .hint { flex-direction: column; align-items: flex-start; } }

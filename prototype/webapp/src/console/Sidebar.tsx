@@ -68,8 +68,12 @@ export function Sidebar({ space, onProfile, onLeave, onDelete }: Props) {
       <div className="side__foot">
         <button className="btn btn--soft" onClick={onProfile}><FontAwesomeIcon icon={faUserPen} /> Edit my profile</button>
         <button className="btn btn--link" onClick={onLeave}><FontAwesomeIcon icon={faRightFromBracket} /> Back to my spaces</button>
-        <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
       </div>
+
+      <details className="side__more side__settings">
+        <summary>Space settings</summary>
+        <button className="btn btn--link btn--danger" onClick={onDelete}><FontAwesomeIcon icon={faTrashCan} /> Delete this space</button>
+      </details>
     </nav>
   );
 }

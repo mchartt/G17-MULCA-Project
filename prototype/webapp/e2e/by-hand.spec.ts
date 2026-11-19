@@ -3,6 +3,7 @@
 // the day-by-day view, a milestone, and a second member who takes a task.
 import { expect, test } from "@playwright/test";
 import { signUp } from "./account.mjs";
+import { askCadence, openPlan } from "./console.mjs";
 
 const SHOTS = process.env.SHOTS_DIR;
 
@@ -13,6 +14,7 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
   await ada.locator("#c-project").fill("Group Hand");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "Group Hand" })).toBeVisible();
+  await openPlan(ada);
   const code = (await ada.locator(".invite code").textContent())!.trim();
 
   // The profile: skills as tags, a background in the member's own words.
@@ -29,7 +31,7 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
   await expect(team).toContainText("Two years of user research at a museum.");
 
   // The assignment from a document: its text is read and stays editable.
-  await ada.getByRole("button", { name: "Add the assignment" }).click();
+  await askCadence(ada, "Paste the assignment");
   await ada.locator("#kickoff-file").setInputFiles({ name: "brief.txt", mimeType: "text/plain", buffer: Buffer.from("Build a coordinator.\nDemo on 2 December.") });
   await expect(ada.locator("#kickoff-text")).toHaveValue("Build a coordinator.\nDemo on 2 December.");
   await expect(ada.locator(".upload")).toContainText("Read from brief.txt");
@@ -43,8 +45,9 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
   await bruno.locator("#j-code").fill(code);
   await bruno.getByRole("button", { name: "Join the space" }).click();
   await expect(bruno.getByRole("heading", { name: "Group Hand" })).toBeVisible();
+  await openPlan(bruno);
 
-  await ada.getByRole("button", { name: "Add the tasks" }).click();
+  await askCadence(ada, "Plan tasks");
   await ada.getByLabel("Task 1", { exact: true }).fill("Interview five students");
   await ada.getByLabel("Owner of task 1").selectOption({ label: "Bruno" });
   await ada.getByRole("button", { name: "Make the plan card" }).click();

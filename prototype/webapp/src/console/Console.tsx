@@ -8,6 +8,7 @@ import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp } from "../lib/types";
+import { AskMenu } from "./AskMenu";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
@@ -23,11 +24,17 @@ const STATUS_TEXT: Partial<Record<SocketStatus, string>> = {
   closed: "Connection lost. Reconnecting…",
 };
 
-/** The three-column console: space on the left, chat in the middle, plan on the right. */
+/**
+ * The console, chat first: the space on the left, the group chat in the
+ * middle. The plan is memory, not the reason to open Cadence, so it starts
+ * closed and opens beside the chat on request ("Plan"). The on-demand
+ * actions live behind one "Ask Cadence" menu (tutor feedback, 18 Nov:
+ * "you can start without showing the plan"; "so much happening at once").
+ */
 export function Console({ token, onLeave }: { token: string; onLeave: () => void }) {
   const [space, dispatch] = useReducer(reduce, emptySpace);
   const [status, setStatus] = useState<SocketStatus>("connecting");
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "milestones" | null>(null);
   // Short answers to commands (check-in "on track", task updates), shown above the chat.
   const [notice, setNotice] = useState<string | null>(null);
@@ -233,13 +240,16 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         <header className="console__bar">
           <h2 className="console__title">Group chat</h2>
           <div className="console__tools">
-            <button className="btn btn--soft btn--small" onClick={() => setDialog("kickoff")}><FontAwesomeIcon icon={faFileLines} /> Paste the assignment</button>
-            <button className="btn btn--soft btn--small" onClick={() => setDialog("planning")}><FontAwesomeIcon icon={faListOl} /> Plan tasks</button>
-            <button className="btn btn--soft btn--small" onClick={() => void checkin()}><FontAwesomeIcon icon={faClipboardCheck} /> Check-in</button>
-            <button className="btn btn--soft btn--small" onClick={() => void catchUp()}><FontAwesomeIcon icon={faClockRotateLeft} /> Catch up</button>
+            <AskMenu
+              items={[
+                { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: () => setDialog("kickoff") },
+                { key: "planning", label: "Plan tasks", about: "List the tasks; Cadence suggests who could take each.", icon: faListOl, run: () => setDialog("planning") },
+                { key: "checkin", label: "Check-in", about: "Compare the plan with the dates and see what slips.", icon: faClipboardCheck, run: () => void checkin() },
+                { key: "catchup", label: "Catch up", about: "What changed while you were away.", icon: faClockRotateLeft, run: () => void catchUp() },
+              ]}
+            />
             <button className="btn btn--soft btn--small" aria-expanded={panelOpen} aria-controls="plan" onClick={() => setPanelOpen(!panelOpen)}>
-              <FontAwesomeIcon icon={faTableColumns} />{" "}
-              {panelOpen ? "Hide plan" : "Show plan"}
+              <FontAwesomeIcon icon={faTableColumns} /> Plan
             </button>
           </div>
           {(space.coordinator === "unavailable" || STATUS_TEXT[status] || notice) && (
@@ -259,9 +269,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         <FirstSteps
           state={space.state}
           me={space.me?.id ?? null}
+          memberCount={space.members.length}
+          inviteCode={space.group?.inviteCode ?? ""}
           onProfile={() => setDialog("profile")}
-          onKickoff={() => setDialog("kickoff")}
-          onPlanning={() => setDialog("planning")}
         />
         <Chat
           space={space}

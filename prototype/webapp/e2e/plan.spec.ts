@@ -2,6 +2,7 @@
 // panel, check-in (findings computed by the server), "why did we decide X?".
 import { expect, test } from "@playwright/test";
 import { signUp } from "./account.mjs";
+import { askCadence, openPlan } from "./console.mjs";
 
 test("planning, task status, check-in and why with source", async ({ browser }) => {
   const ada = await (await browser.newContext()).newPage();
@@ -11,13 +12,14 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   await ada.locator("#c-project").fill("Group M4");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "Group M4" })).toBeVisible();
+  await openPlan(ada);
 
   // Check-in on an empty plan: on track, no card.
-  await ada.getByRole("button", { name: "Check-in" }).click();
+  await askCadence(ada, "Check-in");
   await expect(ada.locator(".banner--info")).toContainText("on track");
 
   // /planning: one card with owners and reasons; nothing in the plan before Confirm.
-  await ada.getByRole("button", { name: "Plan tasks" }).click();
+  await askCadence(ada, "Plan tasks");
   await ada.getByLabel("Task 1", { exact: true }).fill("Server API");
   await ada.getByLabel("Task 2", { exact: true }).fill("UI screens");
   await ada.getByRole("button", { name: "Suggest owners" }).click();
@@ -35,7 +37,7 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   await expect(ada.locator(".panel")).toContainText("blocked");
 
   // Check-in now finds the blocked task and offers options computed from it.
-  await ada.getByRole("button", { name: "Check-in" }).click();
+  await askCadence(ada, "Check-in");
   const check = ada.locator(".card", { hasText: "What is late or at risk" });
   await expect(check).toContainText("Blocked: “UI screens” (Ada).");
   await check.getByRole("button", { name: "Drop it: not essential" }).click();
@@ -58,7 +60,8 @@ test("calendar: a private feed link that a calendar app can read, revocable", as
   await ada.locator("#c-project").fill("Group calendar");
   await ada.getByRole("button", { name: "Create the space" }).click();
   // The charter (fake model) has the milestone "Demo" on 2 Dec 2026.
-  await ada.getByRole("button", { name: "Paste the assignment" }).first().click();
+  await openPlan(ada);
+  await askCadence(ada, "Paste the assignment");
   await ada.getByRole("textbox", { name: "Assignment" }).fill("Deliver by 2 December.");
   await ada.getByRole("button", { name: "Send to Cadence" }).click();
   await ada.locator(".card", { hasText: "Project charter" }).getByRole("button", { name: "Confirm" }).click();

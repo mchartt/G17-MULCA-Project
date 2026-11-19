@@ -12,6 +12,17 @@ const KIND_TITLES: Record<string, string> = {
   plan: "Plan: who does what",
   checkin: "Check-in",
   blocker: "Something is blocked",
+  revisit: "Already decided",
+};
+// Which shared need a proactive card answers (the three needs the tutor named
+// on 18/11: ownership, dependencies, decisions). Shown as a small label, so
+// the group sees what kind of help this is without strategy codes.
+const NEED_LABELS: Record<string, string> = {
+  cs5_owner_and_date: "Ownership",
+  cs2_delegate_simple_task: "Ownership",
+  cs7_blockers_dependencies: "Dependency",
+  cs3_close_decision: "Decision",
+  cs3_reopened_decision: "Decision",
 };
 const STATUS_WORDS: Record<string, string> = {
   pending: "Waiting for a member to confirm",
@@ -25,7 +36,8 @@ const STRATEGY_WHY: Record<string, string> = {
   cs5_owner_and_date: "An action the group agreed on had no owner or no date.",
   cs2_delegate_simple_task: "Several of you were discussing a task one person can do alone.",
   cs3_close_decision: "The same question had two or more options and no decision.",
-  cs7_blockers_dependencies: "Someone is stuck or waiting on other work, and a deadline is at risk.",
+  cs7_blockers_dependencies: "Some work seems to wait on other work that is not ready, and a date is at risk.",
+  cs3_reopened_decision: "A choice the group already made, with a reason, was being discussed again.",
   // Preview only (src/preview/): MUCA-Server has no such strategy yet.
   cs14_find_a_time: "The group needed a meeting before a deadline and nobody proposed a time.",
 };
@@ -53,9 +65,11 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
   const [thanks, setThanks] = useState<string | null>(null);
   const whyId = useId();
   const { payload, status, kind } = proposal;
-  const title = givenTitle ?? KIND_TITLES[kind] ?? "Proposal";
+  const possible = kind === "blocker" && payload.certainty === "possible";
+  const title = givenTitle ?? (possible ? "Possible dependency" : KIND_TITLES[kind]) ?? "Proposal";
   const context = payload.context;
   const pending = status === "pending";
+  const need = context ? NEED_LABELS[context.strategy_id] : undefined;
 
   async function answer(click: Click) {
     setBusy(true);
@@ -77,6 +91,8 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
       <header className="card__head">
         <span className="card__from"><FontAwesomeIcon icon={faCompass} /> {agentName}</span>
         <h3 id={`card-${proposal.proposal_id}`} className="card__title">{title}</h3>
+        {need && <span className="card__need">{need}</span>}
+        {possible && <span className="card__tentative" title="Cadence inferred this from the chat and the plan: confirm it or say no.">Not confirmed yet</span>}
       </header>
       {proposal.rationale && <p className="card__why">{proposal.rationale}</p>}
       <CardBody proposal={proposal} memberName={memberName} />
@@ -92,7 +108,7 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
         </section>
       )}
       <footer className="card__foot">
-        <p className="card__status" role="status">{STATUS_WORDS[status] ?? status}</p>
+        <p className="card__status" role="status">{statusLine(proposal, memberName)}</p>
         {pending && (
           <div className="card__actions">
             <Answers proposal={proposal} busy={busy} answer={answer} />
@@ -163,11 +179,34 @@ function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (i
     );
   }
   if (kind === "blocker") {
+    const possible = payload.certainty === "possible";
+    const waitsOn = typeof payload.depends_on_title === "string" ? payload.depends_on_title : "";
+    const ways = Array.isArray(payload.ways_forward) ? (payload.ways_forward as string[]) : [];
     return (
       <>
         <Field label="Task">{payload.title}</Field>
+        {waitsOn && <Field label={possible ? "May wait on" : "Waits on"}>{waitsOn}</Field>}
         {payload.question && <Field label="Question">{payload.question}</Field>}
         {payload.helper_id ? <Field label="Who could help">{memberName(payload.helper_id)}</Field> : null}
+        {ways.length > 0 && (
+          <div className="card__field">
+            <h4>Possible ways forward <span className="muted">· ideas, nothing changes by itself</span></h4>
+            <ul className="card__ways">{ways.map((w) => <li key={w}>{w}</li>)}</ul>
+          </div>
+        )}
+      </>
+    );
+  }
+  if (kind === "revisit") {
+    const newPoint = typeof payload.new_point === "string" ? payload.new_point : "";
+    const reason = typeof payload.reason === "string" ? payload.reason : "";
+    return (
+      <>
+        <Field label="Question">{payload.question}</Field>
+        <Field label="The group chose">{String(payload.choice ?? "")}</Field>
+        {reason && <Field label="Because">{reason}</Field>}
+        <Field label="What seems new">{newPoint || "Nothing new so far: the same arguments as before."}</Field>
+        <p className="card__ask">Has anything changed? Keep it, or reopen the question.</p>
       </>
     );
   }
@@ -213,6 +252,16 @@ function Answers({ proposal, busy, answer }: { proposal: Proposal; busy: boolean
   const { kind, payload } = proposal;
   const reject = <button className="btn btn--soft" disabled={busy} onClick={() => answer({ action: "reject" })}><FontAwesomeIcon icon={faXmark} /> Reject</button>;
   const take = <button className="btn btn--primary" disabled={busy} onClick={() => answer({ action: "take" })}><FontAwesomeIcon icon={faHandshake} /> I'll take it</button>;
+  if (kind === "revisit") {
+    // Keep / Reopen it are the two options the server labelled; Not now is below.
+    return (
+      <>
+        {(payload.options ?? []).map((o, n) => (
+          <button key={o.label} className={`btn ${n === 0 ? "btn--primary" : "btn--soft"}`} disabled={busy} onClick={() => answer({ action: "choose", option: n })}>{o.label}</button>
+        ))}
+      </>
+    );
+  }
   if (kind === "decision" || kind === "checkin") {
     return (
       <>
@@ -225,6 +274,15 @@ function Answers({ proposal, busy, answer }: { proposal: Proposal; busy: boolean
   }
   if (kind === "delegation") return <>{take}{reject}</>;
   if (kind === "blocker") {
+    if (payload.certainty === "possible") {
+      // Nothing is recorded unless someone confirms the dependency is real.
+      return (
+        <>
+          <button className="btn btn--primary" disabled={busy} onClick={() => answer({ action: "confirm" })}><FontAwesomeIcon icon={faCheck} /> Yes, it depends</button>
+          <button className="btn btn--soft" disabled={busy} onClick={() => answer({ action: "reject" })}><FontAwesomeIcon icon={faXmark} /> No, it doesn't</button>
+        </>
+      );
+    }
     return (
       <>
         <button className="btn btn--primary" disabled={busy} onClick={() => answer({ action: "confirm" })}><FontAwesomeIcon icon={faCheck} /> Mark as blocked</button>
@@ -247,6 +305,15 @@ function Answers({ proposal, busy, answer }: { proposal: Proposal; busy: boolean
       {reject}
     </>
   );
+}
+
+/** The status under a card, with who answered it once someone did (the outcome is visible to everyone). */
+function statusLine(proposal: Proposal, memberName: (id: MemberId) => string): string {
+  const who = proposal.resolved_by != null ? memberName(proposal.resolved_by) : null;
+  if (who && proposal.status === "applied") return `Confirmed by ${who}`;
+  if (who && proposal.status === "rejected") return `Turned down by ${who}`;
+  if (who && proposal.status === "snoozed") return `Not now (${who}): silenced on this topic for 30 minutes`;
+  return STATUS_WORDS[proposal.status] ?? proposal.status;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

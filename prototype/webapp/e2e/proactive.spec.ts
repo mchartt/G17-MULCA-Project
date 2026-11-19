@@ -49,7 +49,8 @@ test("CS2: a simple task becomes a card; Why? explains it; I'll take it puts it 
 
   // Nothing in the plan yet; Bruno takes it, both see it closed and in the plan.
   await bruno.locator(".card", { hasText: "One person can do this" }).getByRole("button", { name: "I'll take it" }).click();
-  await expect(card.getByRole("status")).toHaveText("Confirmed");
+  // The outcome says who, on both screens (U3).
+  await expect(card.getByRole("status")).toHaveText("Confirmed by Bruno");
   await expect(card.getByRole("button", { name: "I'll take it" })).toHaveCount(0);
   await expect(ada.locator(".panel")).toContainText("Fix fonts and margins of the report");
   await expect(ada.locator(".panel")).toContainText("Bruno");
@@ -57,7 +58,7 @@ test("CS2: a simple task becomes a card; Why? explains it; I'll take it puts it 
   // Helpful: feedback only, counted by the server, the card stays confirmed.
   await card.getByRole("button", { name: "Helpful" }).click();
   await expect(card.locator(".card__thanks")).toHaveText("Thanks: noted as helpful (1 member so far).");
-  await expect(card.locator(".card__status")).toHaveText("Confirmed");
+  await expect(card.locator(".card__status")).toHaveText("Confirmed by Bruno");
 });
 
 test("CS3: the decision card has one button per option; the choice goes to the decision log", async ({ browser }) => {
@@ -66,7 +67,7 @@ test("CS3: the decision card has one button per option; the choice goes to the d
   const card = bruno.locator(".card", { hasText: "Close the decision" });
   await expect(card).toContainText("Which usability test do we run?");
   await card.getByRole("button", { name: "Think-aloud" }).click();
-  await expect(ada.locator(".card", { hasText: "Close the decision" }).getByRole("status")).toHaveText("Confirmed");
+  await expect(ada.locator(".card", { hasText: "Close the decision" }).getByRole("status")).toHaveText("Confirmed by Bruno");
   await expect(ada.locator(".panel")).toContainText("Think-aloud");
 });
 
@@ -75,6 +76,6 @@ test("Not now closes the card as silenced for 30 minutes and changes nothing", a
   await say(ada, "Which font do we use?");
   const card = ada.locator(".card", { hasText: "One person can do this" });
   await card.getByRole("button", { name: "Not now" }).click();
-  await expect(card.getByRole("status")).toHaveText("Not now: silenced on this topic for 30 minutes");
+  await expect(card.getByRole("status")).toHaveText("Not now (Ada): silenced on this topic for 30 minutes");
   await expect(ada.locator(".panel")).not.toContainText("Fix fonts and margins of the report");
 });

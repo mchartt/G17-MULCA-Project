@@ -52,6 +52,8 @@ export type Proposal = {
   status: ProposalStatus;
   rationale?: string;
   expires_at?: number | null;
+  /** Who answered the card (applied, rejected, snoozed), so the outcome says who. */
+  resolved_by?: MemberId | null;
   names?: Names;
   payload: {
     goal?: string;
@@ -69,6 +71,13 @@ export type Proposal = {
     items?: { title: string; owner_id?: MemberId | null; reason?: string; due_date?: string | null }[];
     findings?: string[];
     helper_id?: MemberId | null;
+    // CS7 v2 (blocker) and K3 (revisit)
+    certainty?: "blocked" | "possible";
+    depends_on_title?: string;
+    ways_forward?: string[];
+    choice?: string;
+    reason?: string;
+    new_point?: string;
     [key: string]: unknown;
   };
 };

@@ -45,7 +45,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   // Nothing changed yet; the first click applies it everywhere.
   await expect(ada.locator(".panel")).toContainText("No goal yet");
   await card.getByRole("button", { name: "Confirm" }).click();
-  await expect(bruno.locator(".card", { hasText: "Project charter" }).getByRole("status")).toHaveText("Confirmed");
+  await expect(bruno.locator(".card", { hasText: "Project charter" }).getByRole("status")).toHaveText(/^Confirmed by /);
   await expect(bruno.locator(".panel__goal")).toHaveText("Ship the coordinator.");
   await expect(bruno.locator(".panel")).toContainText("Confirmed by Ada");
 });

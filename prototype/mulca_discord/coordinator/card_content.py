@@ -37,17 +37,39 @@ KIND_TITLES = {
     "plan": "Plan: who does what",
     "checkin": "Check-in",
     "blocker": "Something is blocked",
+    "revisit": "Already decided",
 }
+# The three shared needs (ownership, dependencies, decisions), as a short label.
+NEED_LABELS = {
+    "cs5_owner_and_date": "Ownership",
+    "cs2_delegate_simple_task": "Ownership",
+    "cs7_blockers_dependencies": "Dependency",
+    "cs3_close_decision": "Decision",
+    "cs3_reopened_decision": "Decision",
+}
+# Kinds whose answers are one button per option in payload["options"].
+OPTION_KINDS = ("decision", "checkin", "revisit")
 # Plain names of the strategies, for "Why?" (spec S5, S2, S3).
 STRATEGY_NAMES = {
     "cs5_owner_and_date": "Owner and date (CS5): an agreed action had no owner or no date.",
     "cs2_delegate_simple_task": "Delegate simple tasks (CS2): several of you were discussing a task one person can do alone.",
     "cs3_close_decision": "Close the decision (CS3): the same question had two or more options and no decision.",
-    "cs7_blockers_dependencies": "Blockers (CS7): someone is stuck or waiting on other work, and a deadline is at risk.",
+    "cs7_blockers_dependencies": "Blockers and dependencies (CS7): some work seems to wait on other work that is not ready, and a date is at risk.",
+    "cs3_reopened_decision": "Already decided (CS3): a choice the group made, with a reason, was being discussed again.",
 }
-PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker")
+PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker", "revisit")
 # The "about this card" buttons, on a second row so the answers come first.
 ABOUT_THE_CARD = ("why", "helpful", "not_now")
+
+def card_title(kind: str | None, payload: dict) -> str:
+    """The card's title; a CS7 card the group has not confirmed says so."""
+    if kind == "blocker" and payload.get("certainty") == "possible":
+        title = "Possible dependency (not confirmed yet)"
+    else:
+        title = KIND_TITLES.get(kind or "", "Proposal")
+    need = NEED_LABELS.get((payload.get("context") or {}).get("strategy_id", ""))
+    return f"{title} · {need}" if need else title
+
 
 def card_fields(kind: str | None, payload: dict, who: Who) -> list[tuple[str, str]]:
     """
@@ -103,11 +125,22 @@ def card_fields(kind: str | None, payload: dict, who: Who) -> list[tuple[str, st
             ("Options", "\n".join(f"**{n}.** {o.get('label')}" for n, o in enumerate(payload.get("options", []), start=1)) or "—"),
         ]
     if kind == "blocker":
+        possible = payload.get("certainty") == "possible"
         fields = [("Task", payload.get("title", ""))]
+        if payload.get("depends_on_title"):
+            fields.append(("May wait on" if possible else "Waits on", payload["depends_on_title"]))
         if payload.get("question"):
             fields.append(("Question", payload["question"]))
         if payload.get("helper_id"):
             fields.append(("Who could help", who(payload["helper_id"])))
+        if payload.get("ways_forward"):
+            fields.append(("Possible ways forward (ideas, nothing changes by itself)", _bullets(payload["ways_forward"])))
+        return fields
+    if kind == "revisit":
+        fields = [("Question", payload.get("question", "")), ("The group chose", payload.get("choice", ""))]
+        if payload.get("reason"):
+            fields.append(("Because", payload["reason"]))
+        fields.append(("What seems new", payload.get("new_point") or "Nothing new so far: the same arguments as before."))
         return fields
     return []
 
@@ -122,6 +155,7 @@ def actions_for(kind: str | None, payload: dict) -> list[str]:
         "checkin": ["reject"],
         "plan": ["confirm", "reject"],
         "blocker": ["confirm", "reject"],
+        "revisit": [],
     }.get(kind, ["confirm", "reject"])
     if kind in PROACTIVE_KINDS:
         actions += ["why", "helpful", "not_now"]

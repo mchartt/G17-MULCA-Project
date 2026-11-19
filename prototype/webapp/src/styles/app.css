@@ -165,6 +165,11 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .card__evidence { list-style: none; padding: 0; margin-top: .5rem; display: grid; gap: .4rem; }
 .card__evidence li { padding-left: .7rem; border-left: 3px solid var(--ag-ln); }
 .card__speaker { font-weight: 600; margin-right: .3rem; }
+/* What kind of help a proactive card is (Ownership, Dependency, Decision), and an inferred, unconfirmed one. */
+.card__need { margin-left: auto; font-size: var(--t-xs); font-weight: 500; color: var(--ag-fg); border: 1px solid var(--ag-ln); border-radius: 999px; padding: 0 .55rem; line-height: 1.35rem; }
+.card__tentative { font-size: var(--t-xs); font-weight: 500; color: var(--ink2); border: 1px dashed var(--line-x); border-radius: 999px; padding: 0 .55rem; line-height: 1.35rem; }
+.card__ways { padding-left: 1.1rem; display: grid; gap: .2rem; }
+.card__ask { margin-top: .75rem; color: var(--ink); }
 
 /* ---------- Console ---------- */
 .console { display: grid; grid-template-columns: 16.5rem minmax(0, 1fr) 22.5rem; height: 100vh; background: var(--canvas); font-size: var(--t-sm); line-height: 1.25rem; }

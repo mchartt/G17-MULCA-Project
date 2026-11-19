@@ -35,11 +35,13 @@ import discord
 from .card_content import (  # noqa: F401  (re-exported: tests and bridge.py import them from here)
     ABOUT_THE_CARD,
     KIND_TITLES,
+    OPTION_KINDS,
     PROACTIVE_KINDS,
     STATUS_WORDS,
     STRATEGY_NAMES,
     actions_for,
     card_fields,
+    card_title,
     clip,
     why_text,
 )
@@ -77,7 +79,7 @@ def proposal_embed(proposal: dict) -> discord.Embed:
     kind = proposal.get("kind")
     payload = proposal.get("payload", {})
     embed = discord.Embed(
-        title=f"Coordinator · {KIND_TITLES.get(kind, 'Proposal')}",
+        title=f"Coordinator · {card_title(kind, payload)}",
         description=f"*{proposal.get('rationale') or 'Proposal from the coordinator.'}*",
         colour=STATUS_COLOURS.get(status, discord.Colour.blurple()),
     )
@@ -99,7 +101,7 @@ def card_view(proposal: dict) -> discord.ui.View | None:
     payload = proposal.get("payload", {})
     proposal_id = proposal["proposal_id"]
     view = discord.ui.View(timeout=None)
-    if kind in ("decision", "checkin"):
+    if kind in OPTION_KINDS:
         for n, option in enumerate(payload.get("options", [])[:3]):
             view.add_item(CardButton(f"choose{n}", proposal_id, label=option.get("label", f"Option {n + 1}")))
     actions = actions_for(kind, payload)

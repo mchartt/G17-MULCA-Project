@@ -41,7 +41,7 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   const check = ada.locator(".card", { hasText: "What is late or at risk" });
   await expect(check).toContainText("Blocked: “UI screens” (Ada).");
   await check.getByRole("button", { name: "Drop it: not essential" }).click();
-  await expect(check.getByRole("status")).toHaveText("Confirmed");
+  await expect(check.getByRole("status")).toHaveText("Confirmed by Ada");
 
   // A decision (CS3 on the fake stack), then "why?" cites it.
   await ada.getByLabel("Message to the group").fill("Think-aloud or SUS?");

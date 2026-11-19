@@ -35,5 +35,5 @@ test("an old invite link (/?code=...) opens the login page and keeps the code", 
   render(<App />);
   expect(location.pathname).toBe("/login");
   expect(location.search).toBe("?code=ABCDEFGH23");
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Open your group's space.");
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Join your group's space.");
 });

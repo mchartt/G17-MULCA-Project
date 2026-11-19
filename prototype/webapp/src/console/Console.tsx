@@ -317,7 +317,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
               me={space.me?.id ?? null}
               memberCount={space.members.length}
               inviteCode={space.group?.inviteCode ?? ""}
+              charterCard={Object.values(space.proposals).find((p) => p.kind === "charter" && p.status === "pending")?.proposal_id ?? null}
               onProfile={() => setDialog("profile")}
+              onBrief={() => setDialog("kickoff")}
             />
             <Chat
               space={space}

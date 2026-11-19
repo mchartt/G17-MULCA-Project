@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useState } from "react";
 import { faCheck, faComments, faCopy, faDiagramProject, faFlag, faLightbulb, faListCheck, faPlus, faRightFromBracket, faTrashCan, faUserPen } from "../lib/icons";
+import { copyText, inviteLink } from "../lib/invite";
 import { AskMenu } from "./AskMenu";
 import { initials } from "./Chat";
 import type { Space } from "./space";
@@ -30,13 +31,11 @@ export function Sidebar({ space, view, onView, onProfile, onLeave, onDelete, onN
   const members = allMembers ? ordered : ordered.slice(0, MEMBERS_SHOWN);
   const code = space.group?.inviteCode ?? "";
 
+  // The link opens the login page with the code filled in: one click for a teammate.
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(code);
+    if (await copyText(inviteLink(code))) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* the code stays visible to copy by hand */
     }
   }
 
@@ -71,9 +70,9 @@ export function Sidebar({ space, view, onView, onProfile, onLeave, onDelete, onN
         <h2>Invite code</h2>
         <div className="invite">
           <code>{code}</code>
-          <button className="btn btn--soft btn--small" onClick={copy}><FontAwesomeIcon icon={copied ? faCheck : faCopy} /> {copied ? "Copied" : "Copy"}</button>
+          <button className="btn btn--soft btn--small" onClick={copy}><FontAwesomeIcon icon={copied ? faCheck : faCopy} /> {copied ? "Copied" : "Copy link"}</button>
         </div>
-        <p className="muted small">Share it with your group. Anyone with the code can join.</p>
+        <p className="muted small">Send the link to your group: it opens Cadence with the code filled in. Anyone with the code can join.</p>
       </div>
 
       <details className="side__block side__more">

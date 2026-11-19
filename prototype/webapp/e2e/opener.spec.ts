@@ -14,6 +14,7 @@ test("after the charter Cadence asks how you plan the work, and the answer becom
   const ada = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await ada.goto("/login");
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("Group Opener");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "Group Opener" })).toBeVisible();

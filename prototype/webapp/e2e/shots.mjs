@@ -22,6 +22,7 @@ await page.screenshot({ path: `${out}/rule.png` });
 await page.evaluate(() => document.querySelector("#enter").scrollIntoView());
 await page.screenshot({ path: `${out}/entry.png` });
 await signUp(page, "Ada");
+await page.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
 await page.locator("#c-project").fill("AUI group 17");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.waitForTimeout(1200);

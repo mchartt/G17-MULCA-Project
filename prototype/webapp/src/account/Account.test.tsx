@@ -1,6 +1,7 @@
 // The account screens against a fake adapter: every fetch is answered by `server`.
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { CatchUpDialog } from "../console/CatchUpDialog";
 import { emptySpace, nameOf, reduce } from "../console/space";
 import { LoginPage } from "./LoginPage";
@@ -8,6 +9,15 @@ import { savedAccount } from "../lib/account";
 import { savedToken } from "../lib/api";
 
 const ADA = { id: 1, email: "ada@example.org", displayName: "Ada", discipline: "", skills: [], weeklyHours: null };
+
+// jsdom has no <dialog> modal: show it as open.
+HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+
+/** The login page as App mounts it: /login is the home, /login/new the setup desk. */
+function Page({ onEnter = vi.fn(), start = "/login" }: { onEnter?: (token: string) => void; start?: string }) {
+  const [path, setPath] = useState(start);
+  return <LoginPage path={path} onNavigate={setPath} onEnter={onEnter} />;
+}
 
 type Call = { method: string; path: string; body?: Record<string, unknown>; token?: string };
 let calls: Call[];
@@ -32,7 +42,7 @@ beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
 });
 
-test("create an account, then the guided setup: profile, ready, a project with its description", async () => {
+test("create an account, then the guided setup: profile, ready, a project on the setup desk", async () => {
   const onEnter = vi.fn();
   let spaces: unknown[] = [];
   server = ({ method, path, token, body }) => {
@@ -46,7 +56,7 @@ test("create an account, then the guided setup: profile, ready, a project with i
     }
     return { status: 500, json: {} };
   };
-  render(<LoginPage onEnter={onEnter} />);
+  render(<Page onEnter={onEnter} />);
 
   // The box must be ticked before an account is made.
   await userEvent.type(await screen.findByLabelText(/Your name/), "Ada");
@@ -72,6 +82,7 @@ test("create an account, then the guided setup: profile, ready, a project with i
   expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({ displayName: "Ada", discipline: "HCI", skills: ["figma"] });
 
   await userEvent.click(screen.getByRole("button", { name: /Create a project/ }));
+  expect(screen.getByRole("heading", { name: "Set up a new project" })).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Project name"), "Team 17");
   await userEvent.type(screen.getByLabelText("What is the project about?"), "AUI prototype, demo on 2 December.");
   await userEvent.click(screen.getByRole("button", { name: /Create the space/ }));
@@ -91,7 +102,7 @@ test("invited, a new account finishes the profile and finds Join first, with the
     if (path === "/api/me" && method === "PUT") return { json: { user: { ...ADA, ...body } } };
     return { status: 500, json: {} };
   };
-  render(<LoginPage onEnter={vi.fn()} />);
+  render(<Page />);
   await userEvent.click(await screen.findByRole("button", { name: /Continue/ }));
   await userEvent.click(screen.getByRole("button", { name: /Continue/ }));
   await userEvent.click(screen.getByRole("button", { name: /Save my profile/ }));
@@ -104,17 +115,24 @@ test("invited, a new account finishes the profile and finds Join first, with the
   history.replaceState(null, "", "/");
 });
 
-test("the guided setup can be skipped: the home with create and join is there", async () => {
+test("the guided setup can be skipped: the home has New project and the join line; the desk comes and goes", async () => {
   localStorage.setItem("cadence.account", "acc-1");
   server = ({ path, method }) => {
     if (path === "/api/health") return { json: { ok: true } };
     if (path === "/api/me" && method === "GET") return { json: { user: ADA, spaces: [] } };
     return { status: 500, json: {} };
   };
-  render(<LoginPage onEnter={vi.fn()} />);
+  render(<Page />);
   await userEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
-  expect(screen.getByLabelText("Project name")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /Your projects/ })).toBeInTheDocument();
+  expect(screen.getByText("No projects yet.")).toBeInTheDocument();
   expect(screen.getByLabelText("Invite code")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Project name")).toBeNull();
+
+  await userEvent.click(screen.getByRole("button", { name: /New project/ }));
+  expect(screen.getByLabelText("Project name")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /Your projects/ }));
+  expect(screen.getByRole("button", { name: /New project/ })).toBeInTheDocument();
 });
 
 test("documents added to a new project show as sheets, each with its own remove button", async () => {
@@ -124,7 +142,7 @@ test("documents added to a new project show as sheets, each with its own remove 
     if (path === "/api/me" && method === "GET") return { json: { user: { ...ADA, skills: ["figma"] }, spaces: [] } };
     return { status: 500, json: {} };
   };
-  const { container } = render(<LoginPage onEnter={vi.fn()} />);
+  const { container } = render(<Page start="/login/new" />);
   await screen.findByLabelText("Project name");
   const picker = container.querySelector<HTMLInputElement>('input[type="file"]')!;
   await userEvent.upload(picker, [new File(["brief"], "brief.pdf", { type: "application/pdf" }), new File(["notes"], "notes.md", { type: "text/markdown" })]);
@@ -146,7 +164,7 @@ test("log in shows the server's words on a wrong password, then your spaces to o
     if (path === "/api/logout") return { json: { ok: true } };
     return { status: 500, json: {} };
   };
-  render(<LoginPage onEnter={onEnter} />);
+  render(<Page onEnter={onEnter} />);
 
   await userEvent.click(await screen.findByRole("tab", { name: "Log in" }));
   await userEvent.type(screen.getByLabelText("Email"), "ada@example.org");
@@ -172,15 +190,57 @@ test("the profile is saved once in the account", async () => {
     if (path === "/api/me" && method === "PUT") return { json: { user: { ...ADA, ...body } } };
     return { status: 500, json: {} };
   };
-  render(<LoginPage onEnter={vi.fn()} />);
+  render(<Page />);
   await userEvent.click(await screen.findByRole("button", { name: "Skip for now" }));
   await userEvent.click(await screen.findByRole("button", { name: /My profile/ }));
+  expect(screen.getByRole("dialog", { name: "My profile" })).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Discipline"), "HCI");
   await userEvent.type(screen.getByLabelText(/Skills/), "figma, ux research ,");
   await userEvent.type(screen.getByLabelText(/Hours per week/), "6");
   await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
   expect(await screen.findByRole("status")).toHaveTextContent("Profile saved");
   expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ displayName: "Ada", discipline: "HCI", skills: ["figma", "ux research"], weeklyHours: 6, background: "" });
+});
+
+test("many projects come a page at a time, with a filter, never as one long list", async () => {
+  localStorage.setItem("cadence.account", "acc-1");
+  const spaces = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, name: `Project ${String.fromCharCode(65 + i)}`, inviteCode: `CODE${i}` }));
+  server = ({ path, method }) => {
+    if (path === "/api/health") return { json: { ok: true } };
+    if (path === "/api/me" && method === "GET") return { json: { user: { ...ADA, skills: ["figma"] }, spaces } };
+    return { status: 500, json: {} };
+  };
+  render(<Page />);
+  // Without a measured box (jsdom) six tiles fit: three columns by two rows.
+  const list = await screen.findByRole("list", { name: "Projects" });
+  expect(within(list).getAllByRole("button")).toHaveLength(6);
+  expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+  expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open Project G" })).toBeInTheDocument();
+
+  await userEvent.type(screen.getByLabelText("Find a project"), "project n");
+  expect(within(screen.getByRole("list", { name: "Projects" })).getAllByRole("button")).toHaveLength(1);
+  expect(screen.queryByRole("navigation", { name: "Pages of projects" })).toBeNull();
+  await userEvent.clear(screen.getByLabelText("Find a project"));
+  await userEvent.type(screen.getByLabelText("Find a project"), "nothing like it");
+  expect(screen.getByText(/No project matches/)).toBeInTheDocument();
+});
+
+test("the privacy notice opens from the home, and from the nav's Privacy link", async () => {
+  history.replaceState(null, "", "/login#privacy");
+  localStorage.setItem("cadence.account", "acc-1");
+  server = ({ path, method }) => {
+    if (path === "/api/health") return { json: { ok: true } };
+    if (path === "/api/me" && method === "GET") return { json: { user: { ...ADA, skills: ["figma"] }, spaces: [] } };
+    return { status: 500, json: {} };
+  };
+  render(<Page />);
+  const notice = await screen.findByRole("dialog", { name: "What Cadence reads and keeps" });
+  expect(notice).toHaveTextContent("Azure OpenAI");
+  history.replaceState(null, "", "/");
 });
 
 test("catch up lists what was decided and said in the other channel", () => {

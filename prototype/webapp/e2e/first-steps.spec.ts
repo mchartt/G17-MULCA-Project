@@ -13,6 +13,7 @@ test("first steps, team, language and an edited goal", async ({ browser }) => {
   const ada = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await ada.goto("/login");
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("Group Steps");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "Group Steps" })).toBeVisible();

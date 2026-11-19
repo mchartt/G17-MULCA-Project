@@ -7,6 +7,7 @@ import { faEye, faHandPointer, faLock, faShieldHalved, faWifi } from "../lib/ico
 import { codeInAddress } from "../lib/invite";
 import { AuthForms } from "./AuthForms";
 import { Home } from "./Home";
+import { ProjectDesk } from "./ProjectDesk";
 import { profileDone, Welcome } from "./Welcome";
 
 const NOTICE = [
@@ -16,11 +17,11 @@ const NOTICE = [
   { icon: faHandPointer, text: "It never scores or ranks people, and nothing in the plan changes until a member confirms it." },
 ];
 
-/** What Cadence reads and keeps. Shown next to the forms, before anyone signs up. */
-function PrivacyNotice() {
+/** What Cadence reads and keeps: beside the sign-up form, and behind a button on the home. */
+export function PrivacyNotice({ id, heading = true }: { id?: string; heading?: boolean }) {
   return (
-    <div id="privacy" className="notice">
-      <h2>What Cadence reads and keeps</h2>
+    <div id={id} className="notice">
+      {heading && <h2>What Cadence reads and keeps</h2>}
       <ul>
         {NOTICE.map((n) => (
           <li key={n.text}>
@@ -33,27 +34,43 @@ function PrivacyNotice() {
   );
 }
 
-/** Beside the sign-up form: what the group gets, with a photo of a group at work. */
+/** Beside the sign-up form: a group at work, one line on what Cadence does, and the privacy notice. */
 function BrandPanel() {
   return (
     <aside className="brandpanel" aria-labelledby="brandpanel-title">
       <img src="/brand/group-at-laptop.webp" width={1672} height={941} alt="Three students around a laptop, working on their group project." decoding="async" />
       <h2 id="brandpanel-title">Cadence connects your tasks, your plan and your decisions.</h2>
-      <ul>
-        <li>It reads the group chat and steps in only when something slips.</li>
-        <li>Every suggestion comes with its reason and the messages behind it.</li>
-        <li>Nothing changes until one of you confirms.</li>
-      </ul>
+      <PrivacyNotice id="privacy" />
     </aside>
   );
 }
 
+function Offline() {
+  return (
+    <div className="offline" role="status">
+      <FontAwesomeIcon icon={faWifi} />
+      <p>
+        This online version shows Cadence's design. Group spaces run on the coordinator server, which is started for the demo
+        and for user tests: accounts and spaces work there.
+      </p>
+    </div>
+  );
+}
+
+type Props = {
+  /** /login (the home) or /login/new (the setup desk). */
+  path: string;
+  onNavigate: (path: string) => void;
+  onEnter: (token: string) => void;
+};
+
 /**
  * The way in (UC1), on its own page (/login): log in or create an account,
- * with the privacy notice beside it. Logged in, you see your spaces and can
- * start or join one; an invite link (/login?code=...) fills in the code.
+ * with the privacy notice beside it. Logged in, the home lists your projects
+ * and lets you join one with a code; a new project is set up on its own page,
+ * the desk (/login/new). An invite link (/login?code=...) fills in the code.
  */
-export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
+export function LoginPage({ path, onNavigate, onEnter }: Props) {
   const [online, setOnline] = useState<boolean | null>(null);
   // undefined: still asking the server who is logged in on this browser.
   const [account, setAccount] = useState<{ user: User; spaces: SpaceRef[] } | null | undefined>(undefined);
@@ -83,6 +100,25 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
     setGuided(null);
   };
 
+  // The setup desk: the guided setup is over once someone chooses to create a project.
+  const openDesk = () => {
+    setGuided(false);
+    onNavigate("/login/new");
+  };
+  const offline = online === false;
+
+  if (account && path.startsWith("/login/new")) {
+    return (
+      <div className="login-page login-page--fit">
+        <Nav />
+        <main className="desk-page" aria-labelledby="desk-title">
+          {offline && <Offline />}
+          <ProjectDesk disabled={offline} onEnter={onEnter} onBack={() => onNavigate("/login")} />
+        </main>
+      </div>
+    );
+  }
+
   if (account && guided) {
     return (
       <div className="login-page login-page--welcome">
@@ -91,9 +127,10 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
           <Welcome
             user={account.user}
             start="name"
-            disabled={online === false}
+            disabled={offline}
             onUser={(user) => setAccount({ ...account, user })}
             onEnter={onEnter}
+            onCreate={openDesk}
             onSkip={() => setGuided(false)}
           />
         </main>
@@ -101,41 +138,37 @@ export function LoginPage({ onEnter }: { onEnter: (token: string) => void }) {
     );
   }
 
+  if (account) {
+    return (
+      <div className="login-page login-page--fit">
+        <Nav />
+        <main className="home-page" aria-labelledby="home-title">
+          {offline && <Offline />}
+          <Home
+            user={account.user}
+            spaces={account.spaces}
+            disabled={offline}
+            onEnter={onEnter}
+            onNew={openDesk}
+            onUser={(user) => setAccount({ ...account, user })}
+            onLogout={() => void signOut()}
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="login-page">
+    <div className="login-page login-page--fit">
       <Nav />
-      <main id="enter" className="entry" aria-labelledby="entry-title">
-        <h1 id="entry-title">{account ? "Your spaces." : invited ? "Join your group's space." : "Open your group's space."}</h1>
-        {invited && !account && <p className="entry__lead">You have an invite. Create an account or log in, and the code is already filled in.</p>}
-
-        {online === false && (
-          <div className="offline" role="status">
-            <FontAwesomeIcon icon={faWifi} />
-            <p>
-              This online version shows Cadence's design. Group spaces run on the coordinator server, which is started for the demo
-              and for user tests: accounts and spaces work there.
-            </p>
-          </div>
-        )}
-
-        <div className="entry__layout">
-          <div className="entry__main">
-            {account === null && <AuthForms disabled={online === false} onSignedIn={() => void refresh()} />}
-            {account === null && <PrivacyNotice />}
-            {account && (
-              <Home
-                user={account.user}
-                spaces={account.spaces}
-                disabled={online === false}
-                onEnter={onEnter}
-                onUser={(user) => setAccount({ ...account, user })}
-                onLogout={() => void signOut()}
-              />
-            )}
-          </div>
-          {/* Signing in: what Cadence does, beside the form. Logged in: what it keeps, beside your spaces. */}
-          {account === null ? <BrandPanel /> : <PrivacyNotice />}
+      <main id="enter" className="entry entry--signin" aria-labelledby="entry-title">
+        <div className="entry__main">
+          <h1 id="entry-title">{invited ? "Join your group's space." : "Open your group's space."}</h1>
+          {invited && <p className="entry__lead">You have an invite. Create an account or log in, and the code is already filled in.</p>}
+          {offline && <Offline />}
+          {account === null && <AuthForms disabled={offline} onSignedIn={() => void refresh()} />}
         </div>
+        <BrandPanel />
       </main>
     </div>
   );

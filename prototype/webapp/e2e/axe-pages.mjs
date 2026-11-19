@@ -21,6 +21,7 @@ const fromMenu = async (what) => {
 
 await page.goto("http://127.0.0.1:8090/login");
 await signUp(page, "Ada");
+await page.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
 await page.locator("#c-project").fill("Axe pages");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.getByRole("heading", { name: "Axe pages" }).waitFor();

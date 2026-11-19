@@ -32,9 +32,10 @@ await page.locator("#p-skills").fill("User research, prototyping");
 await page.locator("#p-hours").fill("6");
 await page.getByRole("button", { name: "Save profile" }).click();
 await page.getByRole("status").filter({ hasText: "Profile saved" }).waitFor();
-await report("account-profile", "#enter");
+await report("account-profile", "dialog[open]");
 await page.getByRole("button", { name: "Close" }).click();
 
+await page.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
 await page.locator("#c-project").fill("AUI group 17");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.getByRole("button", { name: "Catch up" }).click();
@@ -42,8 +43,11 @@ await page.getByText("/coordinator link").first().waitFor();
 await report("console-catch-up");
 await page.getByRole("button", { name: "Done" }).click();
 await page.getByRole("button", { name: "Back to my spaces" }).click();
-await page.getByRole("heading", { name: "Your spaces" }).scrollIntoViewIfNeeded();
-await report("account-home", "#enter");
+await page.getByRole("heading", { name: /Your projects/ }).waitFor();
+await report("account-home");
+await page.getByRole("button", { name: "New project" }).click();
+await page.getByRole("heading", { name: "Set up a new project" }).waitFor();
+await report("account-desk");
 
 await browser.close();
 process.exit(failures ? 1 : 0);

@@ -9,6 +9,7 @@ async function create(browser: Browser, project: string): Promise<Page> {
   await ada.goto("/");
   await ada.getByRole("link", { name: "Open your space" }).click();
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill(project);
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: project })).toBeVisible();

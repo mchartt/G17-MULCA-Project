@@ -34,6 +34,7 @@ try {
   const ada = await person("Ada");
   const bruno = await person("Bruno");
   const chiara = await person("Chiara");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill(`Live ${scenario}`);
   await ada.getByRole("button", { name: "Create the space" }).click();
   await ada.getByRole("heading", { name: `Live ${scenario}` }).waitFor();

@@ -12,9 +12,9 @@ export async function signUp(page, name) {
   await page.getByLabel("I have read this and I agree").check();
   await page.getByRole("button", { name: "Create my account" }).click();
   // Logged in: the guided setup opens. These tests skip it (first-steps.spec walks it)
-  // and have seen the console tour, so the home with "Start a new project" is there.
+  // and have seen the console tour, so the home with "New project" and the join line is there.
   await page.getByRole("button", { name: "Skip for now" }).click();
-  await page.locator("#c-project").waitFor();
+  await page.getByRole("button", { name: "New project" }).waitFor();
   await page.evaluate(() => localStorage.setItem("cadence:tour", "done"));
   return email;
 }

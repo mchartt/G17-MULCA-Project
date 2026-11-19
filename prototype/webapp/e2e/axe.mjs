@@ -13,6 +13,7 @@ await page.goto("http://127.0.0.1:8090/");
 await page.waitForTimeout(1500);
 await report("landing");
 await signUp(page, "Ada");
+await page.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
 await page.locator("#c-project").fill("AUI group 17");
 await page.getByRole("button", { name: "Create the space" }).click();
 await page.waitForTimeout(1200);

@@ -90,13 +90,6 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .login-page .entry { max-width: 72rem; padding-top: calc(52px + clamp(2.5rem, 7vw, 5rem)); }
 .entry h1 { font-size: var(--t-xl); line-height: 1.1; }
 .entry__lead { margin-top: .6rem; color: var(--ink2); font-size: var(--t-sm); }
-.entry__layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 25rem); gap: 1.5rem; align-items: start; margin-top: 1.5rem; }
-.entry__layout .notice, .entry__layout .auth { margin-top: 0; }
-.entry__layout .notice { position: sticky; top: calc(52px + 1.5rem); }
-@media (max-width: 860px) {
-  .entry__layout { grid-template-columns: 1fr; }
-  .entry__layout .notice { position: static; }
-}
 .offline { display: flex; gap: .9rem; align-items: flex-start; margin-top: 1.5rem; padding: 1.1rem 1.3rem; border-radius: var(--r-card); background: var(--wn-bg); color: var(--wn); max-width: 46rem; }
 .offline svg { margin-top: .25rem; }
 .notice { margin-top: 1.5rem; padding: 1.8rem 2rem; border-radius: var(--r-dialog); background: var(--canvas); max-width: 46rem; scroll-margin-top: 80px; }
@@ -106,7 +99,6 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .notice__icon { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 10px; background: var(--surface); color: var(--ag-solid); font-size: .82rem; flex: none; }
 .check { display: flex; gap: .65rem; align-items: center; margin-top: 1.4rem; font-weight: 500; cursor: pointer; }
 .check input { width: 1.25rem; height: 1.25rem; accent-color: var(--act); }
-.entry__forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
 .form { display: grid; gap: .45rem; align-content: start; }
 .panel-card.form { padding: 1.9rem; }
 .form h3 { font-size: var(--t-md); margin-bottom: .6rem; }
@@ -351,15 +343,6 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .auth__tab[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-soft); }
 .form .auth__tab { margin-top: 0; justify-self: stretch; }
 .form__ok { color: var(--act-h); font-size: var(--t-xs); }
-.home { margin-top: 1.5rem; display: grid; gap: 1.4rem; }
-.home__who { display: flex; flex-wrap: wrap; gap: .8rem 1.5rem; align-items: center; justify-content: space-between; }
-.home__actions { display: flex; gap: 1rem; align-items: center; }
-.home__profile { padding: 1.9rem; max-width: 34rem; }
-.home__profile h3, .home__spaces h3 { font-size: var(--t-md); margin-bottom: .6rem; }
-.home__spaces ul { list-style: none; padding: 0; display: grid; gap: .7rem; }
-.home__spaces li { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; justify-content: space-between; padding: 1rem 1.3rem; }
-.home__spaces code { margin-left: .5rem; letter-spacing: .08em; font-size: var(--t-xs); }
-.home .entry__forms { margin-top: 0; }
 .form--invited { border-color: var(--act); box-shadow: 0 0 0 1px var(--act); }
 .side__command { display: block; margin: .5rem 0; padding: .55rem .7rem; border-radius: 10px; background: var(--canvas); font-size: var(--t-xs); overflow-wrap: anywhere; user-select: all; }
 .catchup { display: grid; gap: 1rem; }

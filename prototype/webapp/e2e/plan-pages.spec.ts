@@ -16,6 +16,7 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/login");
   await signUp(page, "Ada");
+  await page.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await page.locator("#c-project").fill("Group Pages");
   await page.getByRole("button", { name: "Create the space" }).click();
   await expect(page.getByRole("heading", { name: "Group Pages" })).toBeVisible();

@@ -40,6 +40,7 @@ test("a busy space stays inside its columns at every width", async ({ browser })
   const ada = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await ada.goto("/login");
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("A group project with a rather long name that keeps going on and on");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await ada.locator(".invite code").waitFor();
@@ -84,6 +85,7 @@ test("Project settings renames the space for every member, and a member's profil
   const ada = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await ada.goto("/login");
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("Group settings");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await ada.locator(".invite code").waitFor();

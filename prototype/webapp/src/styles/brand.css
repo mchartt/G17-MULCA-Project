@@ -251,28 +251,17 @@
 /* The same grey and doodles as the chat, so the way in already looks like the space. */
 .login-page { background: radial-gradient(48rem 30rem at 92% -5%, rgba(167, 139, 250, .2), transparent 70%), var(--doodles) 0 0 / 320px 320px, var(--chat-bg); }
 .login-page h1 { color: var(--brand-night); font-weight: 700; letter-spacing: -0.035em; }
-.login-page .entry__layout:has(.brandpanel) { grid-template-columns: minmax(0, 30rem) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4rem); }
 .login-page .entry__main { display: grid; gap: 1.2rem; align-content: start; min-width: 0; }
 .login-page .auth { max-width: none; border-radius: 26px; border: 1px solid var(--brand-glass-line); background: rgba(255, 255, 255, .78);
   -webkit-backdrop-filter: blur(20px) saturate(170%); backdrop-filter: blur(20px) saturate(170%); box-shadow: inset 0 1px 0 #fff, var(--brand-shadow-lift); }
 .login-page .auth__tab[aria-selected="true"] { color: var(--brand-violet-ink); }
 .login-page .form input:focus, .login-page .form textarea:focus { border-color: var(--brand-violet); box-shadow: 0 0 0 3px rgba(108, 92, 231, .2); }
 .login-page .auth .btn--primary { justify-self: stretch; min-height: 2.9rem; }
-.login-page .entry__main .notice { position: static; max-width: none; border-radius: 22px; }
 .login-page .notice__icon { color: var(--brand-violet-ink); }
-.brandpanel { position: sticky; top: calc(52px + 1.5rem); display: grid; gap: 1rem; min-width: 0; }
 .brandpanel img { width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; object-position: 55% 40%; border-radius: 28px; box-shadow: var(--brand-shadow-lift); animation: come-into-focus 1200ms var(--ease) both; }
 @keyframes come-into-focus { from { opacity: 0; filter: blur(16px); transform: scale(1.04); } to { opacity: 1; filter: none; } }
 @media (prefers-reduced-motion: reduce) { .brandpanel img { animation: none; } }
 .brandpanel h2 { font-size: clamp(1.4rem, 2.3vw, 1.9rem); line-height: 1.15; letter-spacing: -0.03em; color: var(--brand-night); max-width: 26ch; }
-.brandpanel ul { list-style: none; padding: 0; display: grid; gap: .55rem; }
-.brandpanel li { position: relative; padding-left: 1.6rem; color: #4A4766; }
-.brandpanel li::before { content: ""; position: absolute; left: 0; top: .3em; width: 1rem; height: 1rem; border-radius: 50%;
-  background: var(--brand-violet) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 8.2l2.2 2.2 4.8-5' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% no-repeat; }
-@media (max-width: 860px) {
-  .login-page .entry__layout:has(.brandpanel) { grid-template-columns: minmax(0, 1fr); }
-  .brandpanel { position: static; }
-}
 
 /* ---------- Guided setup: slides, progress, the first "you're in" ---------- */
 .login-page--welcome .welcome__progress li.is-current { color: var(--brand-violet-ink); border-color: var(--brand-violet); background: var(--brand-mist); }
@@ -296,13 +285,9 @@
 .login-page--welcome .choice__icon { background: var(--brand-mist); color: var(--brand-violet-ink); }
 .login-page--welcome .welcome__check { color: var(--brand-violet); }
 
-/* Creating the project: the sheets gather into one stack while the space is made. */
-.shelf--sending .doc { transform: translateX(calc(var(--i, 0) * -9.2rem)) translateY(calc(var(--i, 0) * -4px)) rotate(calc(var(--i, 0) * 3deg)) scale(.92); transition: transform 600ms cubic-bezier(.34, 1.56, .64, 1); }
-.shelf--sending .doc__remove { opacity: 0; }
 .btn--ready:disabled { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .welcome__stage--forward, .welcome__stage--back { animation: none; }
   .welcome__in path, .check-draw path { animation: none; stroke-dashoffset: 0; }
-  .shelf--sending .doc { transform: none; }
 }

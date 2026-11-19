@@ -11,6 +11,7 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
   await ada.getByRole("link", { name: "Open your space" }).click();
 
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("AUI group 17");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "AUI group 17" })).toBeVisible();

@@ -9,6 +9,7 @@ import "./styles/tokens.css";
 import "./styles/app.css";
 import "./styles/experience.css";
 import "./styles/brand.css";
+import "./styles/home.css";
 
 config.autoAddCss = false; // the CSS is imported above, once
 

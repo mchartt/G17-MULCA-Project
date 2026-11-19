@@ -6,14 +6,13 @@ import { ApiError } from "../lib/api";
 import { faArrowLeft, faArrowRight, faCircleCheck, faPlus, faUsers } from "../lib/icons";
 import { codeInAddress } from "../lib/invite";
 import { JoinForm } from "./Home";
-import { ProjectSetup } from "./ProjectSetup";
 
 /** The steps, in order. The first three are the profile, saved at the end of "skills". */
-export type WelcomeStep = "name" | "background" | "skills" | "ready" | "create" | "join";
+export type WelcomeStep = "name" | "background" | "skills" | "ready" | "join";
 const PROFILE: WelcomeStep[] = ["name", "background", "skills"];
 /** Every screen in order: sets the direction of the slide and how full the progress bar is. */
-const ORDER: WelcomeStep[] = ["name", "background", "skills", "ready", "create", "join"];
-const FILLED: Record<WelcomeStep, number> = { name: 0.12, background: 0.32, skills: 0.52, ready: 0.75, create: 1, join: 1 };
+const ORDER: WelcomeStep[] = ["name", "background", "skills", "ready", "join"];
+const FILLED: Record<WelcomeStep, number> = { name: 0.12, background: 0.32, skills: 0.52, ready: 0.75, join: 1 };
 
 /** A profile counts as filled once it says something Cadence can use to suggest owners. */
 export const profileDone = (user: User) => !!user.discipline.trim() || user.skills.length > 0 || !!user.background?.trim();
@@ -24,6 +23,8 @@ type Props = {
   disabled: boolean;
   onUser: (user: User) => void;
   onEnter: (spaceToken: string) => void;
+  /** Create a project: the setup desk, a page of its own (/login/new). */
+  onCreate: () => void;
   /** Leave the guided setup for the plain home (spaces, create, join). */
   onSkip: () => void;
 };
@@ -32,10 +33,10 @@ type Props = {
  * The first minutes after signing up, one question per screen (tutor, 18 Nov:
  * "the first screen should ask me about my profile or to set up a project,
  * then the option to invite team members"). Profile → "your profile is set
- * up" → create or join a project. Every step can be skipped and changed
+ * up" → create a project (on the setup desk) or join one. Every step can be skipped and changed
  * later from "Your profile".
  */
-export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Props) {
+export function Welcome({ user, start, disabled, onUser, onEnter, onCreate, onSkip }: Props) {
   const [step, setStep] = useState<WelcomeStep>(start);
   const [name, setName] = useState(user.displayName);
   const [discipline, setDiscipline] = useState(user.discipline);
@@ -57,7 +58,7 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
   useEffect(() => heading.current?.focus(), [step]);
 
   const index = PROFILE.indexOf(step);
-  const back = (): WelcomeStep | null => (index > 0 ? PROFILE[index - 1]! : step === "create" || step === "join" ? "ready" : null);
+  const back = (): WelcomeStep | null => (index > 0 ? PROFILE[index - 1]! : step === "join" ? "ready" : null);
 
   async function next(e: FormEvent) {
     e.preventDefault();
@@ -76,7 +77,7 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
 
   const invited = codeInAddress() !== "";
   const createChoice = (
-    <button key="create" className="choice" onClick={() => setStep("create")}>
+    <button key="create" className="choice" onClick={onCreate}>
       <span className="choice__icon"><FontAwesomeIcon icon={faPlus} /></span>
       <strong>Create a project</strong>
       <span className="muted small">Name it, describe it, add the brief. Then invite your team.</span>
@@ -150,13 +151,9 @@ export function Welcome({ user, start, disabled, onUser, onEnter, onSkip }: Prop
   } else {
     body = (
       <>
-        {title(step === "create" ? "Tell Cadence about your project." : "Join your team.")}
-        <p className="welcome__lead">
-          {step === "create"
-            ? "Cadence reads this once to propose the goal, the deliverables and the milestones. You confirm them in the chat."
-            : "Paste the invite code a teammate sent you."}
-        </p>
-        {step === "create" ? <ProjectSetup disabled={disabled} onEnter={onEnter} /> : <JoinForm title="Invite code" disabled={disabled} onEnter={onEnter} />}
+        {title("Join your team.")}
+        <p className="welcome__lead">Paste the invite code a teammate sent you.</p>
+        <JoinForm title="Invite code" disabled={disabled} onEnter={onEnter} />
         <div className="welcome__nav">
           <button type="button" className="btn btn--soft" onClick={() => setStep("ready")}><FontAwesomeIcon icon={faArrowLeft} /> Back</button>
         </div>

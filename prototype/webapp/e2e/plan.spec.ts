@@ -9,6 +9,7 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   await ada.goto("/");
   await ada.getByRole("link", { name: "Open your space" }).click();
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("Group M4");
   await ada.getByRole("button", { name: "Create the space" }).click();
   await expect(ada.getByRole("heading", { name: "Group M4" })).toBeVisible();
@@ -57,6 +58,7 @@ test("calendar: a private feed link that a calendar app can read, revocable", as
   await ada.goto("/");
   await ada.getByRole("link", { name: "Open your space" }).click();
   await signUp(ada, "Ada");
+  await ada.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
   await ada.locator("#c-project").fill("Group calendar");
   await ada.getByRole("button", { name: "Create the space" }).click();
   // The charter (fake model) has the milestone "Demo" on 2 Dec 2026.

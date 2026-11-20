@@ -382,8 +382,9 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
     await hub.post_message(member, "@Cadence say hello to the group")
     await hub.post_message(member, "Cadence, ciao")
     # Right after Cadence answered: a message that does not name it is offered to
-    # Cadence only, as "maybe" (it may stay silent). Not forwarded to the lab's
-    # agent too: in the 20/11 test space it answered a second time.
+    # Cadence as "maybe" (it may stay silent) AND kept in the group's normal chat
+    # (user_text): the plan opener and the CS3/CS7 judge must hear it. The lab's
+    # agent answering it a second time (20/11) is stopped on MUCA-Server (R10).
     await hub.post_message(member, "no mention here")
     await asyncio.sleep(0.05)
     assert asked == [
@@ -391,7 +392,7 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
         ("ask", {"question": "ciao"}),
         ("ask", {"question": "no mention here", "maybe": True}),
     ]
-    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("anyone here?", False)]
+    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("anyone here?", False), ("no mention here", False)]
     members_said = [m.text for m in hub.store.history(group.id) if m.text != "Hello everyone!"]
     assert members_said == ["anyone here?", "@Cadence say hello to the group", "Cadence, ciao", "no mention here"]
 

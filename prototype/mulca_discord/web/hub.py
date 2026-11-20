@@ -292,7 +292,7 @@ class WebHub:
             # and CS3/CS7 never saw these lines (a pending card opens this window).
             # The double reply seen on 20/11 (the lab's agent answering too) is
             # stopped on the server: R10, the ask claims the text first.
-            await self._offer_follow_up(member, text[:MAX_QUESTION_CHARS])
+            asyncio.create_task(self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True))
 
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
@@ -309,19 +309,10 @@ class WebHub:
             logger.exception("MUCA-Server unreachable; message kept in the web chat only")
             await self.broadcast(member.group_id, {"type": "status", "coordinator": "unavailable"})
 
-    async def _offer_follow_up(self, member: Member, question: str) -> None:
-        """Send the maybe-ask now (so its claim reaches the server before the user_text), answer in the background."""
-        sent = asyncio.Event()
-        asyncio.create_task(self._answer_in_chat(member, question, maybe=True, sent=sent))
-        try:
-            await asyncio.wait_for(sent.wait(), 5)
-        except asyncio.TimeoutError:
-            logger.warning("follow-up for group %s not sent within 5 s", member.group_id)
-
-    async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False, sent: asyncio.Event | None = None) -> None:
+    async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False) -> None:
         """Cadence's answer, posted in the chat for the whole group; a "maybe" left unanswered posts nothing."""
         if maybe:
-            await self._post_answer(member, question, maybe=True, sent=sent)
+            await self._post_answer(member, question, maybe=True)
             return
         # A sure call: everyone sees Cadence is working on it ("Cadence is thinking…"),
         # cleared once the answer is in the chat (or on failure). Not for a "maybe",
@@ -332,10 +323,10 @@ class WebHub:
         finally:
             await self.broadcast(member.group_id, {"type": "typing", "on": False})
 
-    async def _post_answer(self, member: Member, question: str, *, maybe: bool, sent: asyncio.Event | None = None) -> None:
+    async def _post_answer(self, member: Member, question: str, *, maybe: bool) -> None:
         args = {"question": question, **({"maybe": True} if maybe else {})}
         try:
-            answer = await self.command(member, "ask", args, sent=sent)
+            answer = await self.command(member, "ask", args)
         except Exception:
             if maybe:
                 logger.exception("follow-up offered to Cadence failed")
@@ -418,7 +409,7 @@ class WebHub:
         self.store.delete_group(group.id)
         return True
 
-    async def command(self, member: Member, command: str, args: dict | None = None, *, sent: asyncio.Event | None = None) -> dict:
+    async def command(self, member: Member, command: str, args: dict | None = None) -> dict:
         request_id = uuid.uuid4().hex
         return await self._ask(
             member,
@@ -431,7 +422,6 @@ class WebHub:
                 channel="web",
                 request_id=request_id,
             ),
-            sent=sent,
         )
 
     async def click(self, member: Member, proposal_id: str, action: str, *, option: int | None = None) -> dict:
@@ -450,7 +440,7 @@ class WebHub:
             ),
         )
 
-    async def _ask(self, member: Member, request_id: str, message, *, sent: asyncio.Event | None = None) -> dict:
+    async def _ask(self, member: Member, request_id: str, message) -> dict:
         future = asyncio.get_running_loop().create_future()
         self._waiting[request_id] = future
 
@@ -458,8 +448,6 @@ class WebHub:
             # The server checks members against this roster: send it first.
             await client.send_participants(self.roster(member.group_id), modality="text")
             await client.send_coordinator(message)
-            if sent is not None:
-                sent.set()
 
         try:
             await self._run(member.group_id, action)

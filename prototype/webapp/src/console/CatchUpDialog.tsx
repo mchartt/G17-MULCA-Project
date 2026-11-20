@@ -1,16 +1,31 @@
+import { useId, useState } from "react";
 import type { CatchUp, CatchUpChannel, MemberId } from "../lib/types";
+import { Capped } from "./Capped";
 import { Dialog } from "./Dialogs";
 
 const CHANNEL_NAMES: Record<string, string> = { web: "the web space", discord: "Discord", slack: "Slack" };
 const time = (unix: number) => new Date(unix * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const day = (unix: number) => new Date(unix * 1000).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 
-type Props = { open: boolean; summary: string; catchup: CatchUp | null; inviteCode: string; nameOf: (id?: MemberId | null) => string | undefined; onClose: () => void };
+type Props = {
+  open: boolean;
+  summary: string;
+  catchup: CatchUp | null;
+  inviteCode: string;
+  nameOf: (id?: MemberId | null) => string | undefined;
+  /** Load the catch-up again from a day (YYYY-MM-DD), or from the last visit (null). */
+  onSince: (day: string | null) => void;
+  onClose: () => void;
+};
 
+/** The raw messages of one place, closed by default: the recap above is what to read first. */
 function Messages({ place, title }: { place: CatchUpChannel; title: string }) {
   return (
-    <section aria-label={title}>
-      <h3>{title}</h3>
-      {place.total > place.messages.length && <p className="muted small">{place.total - place.messages.length} earlier messages not shown.</p>}
+    <details className="catchup__place">
+      <summary>
+        {title} <span className="muted small">{place.total} message{place.total === 1 ? "" : "s"}</span>
+      </summary>
+      {place.total > place.messages.length && <p className="muted small">The last {place.messages.length} are shown.</p>}
       <ul className="catchup__messages">
         {place.messages.map((m, i) => (
           <li key={i}>
@@ -18,58 +33,91 @@ function Messages({ place, title }: { place: CatchUpChannel; title: string }) {
           </li>
         ))}
       </ul>
-    </section>
+    </details>
   );
 }
 
 /**
- * "What did I miss?" (CS12): the decisions taken and the messages written in
- * the group's other channels since this member's last catch-up. Everything
- * shown comes from the decision log and the channels' own history: the
- * coordinator writes no summary of its own here, so nothing is invented.
+ * "What did I miss?" (CS12), since the member's last visit or a day they
+ * choose. First a short recap (the topics, summed up by Cadence from those
+ * messages only, and labelled so), then the facts: decisions from the log,
+ * tasks done and added from the plan, and the messages themselves.
  */
-export function CatchUpDialog({ open, summary, catchup, inviteCode, nameOf, onClose }: Props) {
+export function CatchUpDialog({ open, summary, catchup, inviteCode, nameOf, onSince, onClose }: Props) {
+  const id = useId();
+  const [from, setFrom] = useState<string>("");
+
+  const loading = !summary;
+  const topics = catchup?.topics ?? [];
+  const done = catchup?.tasks_done ?? [];
+  const added = catchup?.tasks_added ?? [];
+  const places = [
+    ...(catchup?.here && catchup.here.messages.length ? [{ place: catchup.here, title: "In this chat" }] : []),
+    ...(catchup?.elsewhere ?? []).filter((p) => p.messages.length > 0).map((p) => ({ place: p, title: `On ${CHANNEL_NAMES[p.channel] ?? p.channel}` })),
+  ];
+  const owner = (ownerId?: MemberId | null) => (ownerId ? <span className="muted"> · {nameOf(ownerId) ?? "a member"}</span> : null);
+
   return (
     <Dialog open={open} title="Catch up" onClose={onClose}>
-      <div className="catchup">
-        <p role="status">{summary || "Asking the coordinator…"}</p>
+      <div className="catchup" aria-busy={loading}>
+        <div className="catchup__from" role="group" aria-labelledby={`${id}-from`}>
+          <span id={`${id}-from`} className="small">From</span>
+          <button type="button" className="chip" aria-pressed={!from} onClick={() => { setFrom(""); onSince(null); }}>
+            Your last visit
+          </button>
+          <label className="catchup__day">
+            <span className="sr-only">A day of your choice</span>
+            <input type="date" value={from} max={new Date().toISOString().slice(0, 10)} onChange={(e) => { setFrom(e.target.value); if (e.target.value) onSince(e.target.value); }} />
+          </label>
+        </div>
+        {catchup?.since !== undefined && !loading && <p className="muted small">Since {day(catchup.since)}.</p>}
+
+        <p role="status" className="catchup__line">{loading ? "Cadence is reading what happened…" : summary}</p>
 
         {catchup && !catchup.linked && (
-          <p className="muted">
+          <p className="muted small">
             To link a channel, write <code>/coordinator link {inviteCode}</code> in your group's Discord or Slack channel.
           </p>
         )}
 
+        {topics.length > 0 && (
+          <section className="catchup__brief" aria-labelledby={`${id}-brief`}>
+            <h3 id={`${id}-brief`}>In brief</h3>
+            <ul>
+              {topics.map((t) => <li key={t.title}><strong>{t.title}</strong>: {t.summary}</li>)}
+            </ul>
+            <p className="catchup__by small">Summed up by Cadence from these messages only. The facts below come from the plan and the decision log.</p>
+          </section>
+        )}
+
         {catchup && catchup.decisions.length > 0 && (
-          <section aria-labelledby="catchup-decisions">
-            <h3 id="catchup-decisions">Decided while you were away</h3>
-            <ul className="catchup__decisions">
-              {catchup.decisions.map((d) => (
-                <li key={`${d.question}-${d.decided_at}`}>
-                  <strong>{d.choice}</strong>
-                  <span className="muted"> · {d.question}</span>
-                  {d.reason && <p className="muted small">{d.reason}</p>}
-                </li>
-              ))}
-            </ul>
+          <section aria-labelledby={`${id}-decisions`}>
+            <h3 id={`${id}-decisions`}>Decided <span className="count">{catchup.decisions.length}</span></h3>
+            <Capped className="catchup__facts" limit={3} title="Decided" items={catchup.decisions} render={(d) => (
+              <li key={`${d.question}-${d.decided_at}`}>
+                <strong>{d.choice}</strong> <span className="muted">· {d.question}</span>
+                {d.reason && <p className="muted small">{d.reason}</p>}
+              </li>
+            )} />
           </section>
         )}
 
-        {catchup && ((catchup.tasks_done?.length ?? 0) > 0 || (catchup.tasks_added?.length ?? 0) > 0) && (
-          <section aria-labelledby="catchup-tasks">
-            <h3 id="catchup-tasks">In the plan</h3>
-            <ul className="catchup__decisions">
-              {catchup.tasks_done?.map((t) => <li key={`d-${t.task_id}`}><strong>Done:</strong> {t.title}{t.owner_id ? <span className="muted"> · {nameOf(t.owner_id) ?? "a member"}</span> : null}</li>)}
-              {catchup.tasks_added?.map((t) => <li key={`a-${t.task_id}`}><strong>New:</strong> {t.title}{t.owner_id ? <span className="muted"> · {nameOf(t.owner_id) ?? "a member"}</span> : null}</li>)}
-            </ul>
+        {(done.length > 0 || added.length > 0) && (
+          <section aria-labelledby={`${id}-plan`}>
+            <h3 id={`${id}-plan`}>In the plan</h3>
+            <Capped className="catchup__facts" limit={4} title="In the plan" items={[...done.map((t) => ({ t, done: true })), ...added.map((t) => ({ t, done: false }))]} render={({ t, done: finished }) => (
+              <li key={`${finished ? "d" : "a"}-${t.task_id}`}>
+                <span className={`tag${finished ? " tag--on" : ""}`}>{finished ? "Done" : "New"}</span> {t.title}{owner(t.owner_id)}
+              </li>
+            )} />
           </section>
         )}
 
-        {catchup?.here && catchup.here.messages.length > 0 && <Messages place={catchup.here} title="In this chat" />}
-
-        {catchup?.elsewhere.filter((place) => place.messages.length > 0).map((place) => (
-          <Messages key={place.channel} place={place} title={`On ${CHANNEL_NAMES[place.channel] ?? place.channel}`} />
-        ))}
+        {places.length > 0 && (
+          <section aria-label="Messages">
+            {places.map(({ place, title }) => <Messages key={title} place={place} title={title} />)}
+          </section>
+        )}
 
         <div className="form__actions">
           <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>

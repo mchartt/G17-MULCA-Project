@@ -1,5 +1,5 @@
 // The account screens against a fake adapter: every fetch is answered by `server`.
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { CatchUpDialog } from "../console/CatchUpDialog";
@@ -254,6 +254,7 @@ test("catch up lists what was decided and said in the other channel", () => {
       open
       inviteCode="AB12CD"
       onClose={vi.fn()}
+      onSince={vi.fn()}
       summary="Since your last catch-up: 1 decision, 2 messages on Discord."
       catchup={{
         since: 0, until: 100, linked: true,
@@ -263,13 +264,28 @@ test("catch up lists what was decided and said in the other channel", () => {
     />,
   );
   expect(screen.getByText("Tuesday 17:00")).toBeInTheDocument();
-  expect(screen.getByText("On Discord")).toBeInTheDocument();
-  expect(screen.getByText("3 earlier messages not shown.")).toBeInTheDocument();
+  expect(screen.getByText(/^On Discord/)).toBeInTheDocument();
+  expect(screen.getByText("The last 2 are shown.")).toBeInTheDocument();
   expect(screen.getByText(/Lab on Tuesday\?/)).toBeInTheDocument();
 });
 
+test("catch up opens with Cadence's recap in brief, and can start from a chosen day", async () => {
+  const onSince = vi.fn();
+  render(
+    <CatchUpDialog nameOf={() => undefined} open inviteCode="AB12CD" onClose={vi.fn()} onSince={onSince} summary="Since your last catch-up: 4 messages here."
+      catchup={{ since: 0, until: 1, linked: true, decisions: [], elsewhere: [], topics: [{ title: "RASD data", summary: "Matías sends the data on Friday." }] }} />,
+  );
+  const brief = screen.getByRole("region", { name: "In brief" });
+  expect(brief.querySelector("strong")).toHaveTextContent("RASD data");
+  expect(brief).toHaveTextContent("Summed up by Cadence from these messages only.");
+  fireEvent.change(screen.getByLabelText("A day of your choice"), { target: { value: "2026-11-17" } });
+  expect(onSince).toHaveBeenCalledWith("2026-11-17");
+  fireEvent.click(screen.getByRole("button", { name: "Your last visit" }));
+  expect(onSince).toHaveBeenLastCalledWith(null);
+});
+
 test("a group that is not linked is told how to link a channel", () => {
-  render(<CatchUpDialog nameOf={() => undefined} open inviteCode="AB12CD" onClose={vi.fn()} summary="Not linked yet." catchup={{ since: 0, until: 1, linked: false, decisions: [], elsewhere: [] }} />);
+  render(<CatchUpDialog nameOf={() => undefined} open inviteCode="AB12CD" onClose={vi.fn()} onSince={vi.fn()} summary="Not linked yet." catchup={{ since: 0, until: 1, linked: false, decisions: [], elsewhere: [] }} />);
   expect(screen.getByText("/coordinator link AB12CD")).toBeInTheDocument();
 });
 

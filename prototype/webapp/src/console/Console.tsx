@@ -10,6 +10,7 @@ import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
 import type { Answer, CatchUp, Reflection } from "../lib/types";
 import { CatchUpDialog } from "./CatchUpDialog";
+import { Toast } from "./Toast";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
 import { ConnectDialog, DeleteDialog, Dialog, KickoffDialog, MemberDialog, ProfileDialog, ProjectSettingsDialog, type Profile } from "./Dialogs";
@@ -202,6 +203,14 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     return null;
   };
 
+  /** Drawn on the board: `to` now waits on `from` too (the server refuses a loop and says why). */
+  const connect = async (from: string, to: string) => {
+    const waiting = space.state?.tasks?.find((t) => t.task_id === to);
+    if (!waiting || waiting.depends_on?.includes(from)) return;
+    const error = await saveWaitsOn(to, [...(waiting.depends_on ?? []), from]);
+    if (error) setNotice(error);
+  };
+
   const addTask = async (task: NewTask) => {
     const args: Record<string, unknown> = { add: task.title, owner: task.owner ?? "", due: task.due ?? "" };
     if (task.description) args.description = task.description;
@@ -247,10 +256,13 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     setNotice(answer.type === "notice" ? answer.text : null);
   };
 
-  const catchUp = async () => {
+  /** The catch-up since the last visit, or since a day the member picks (YYYY-MM-DD, from its midnight). */
+  const catchUp = async (fromDay: string | null = null) => {
     setCaught({ summary: "", catchup: null });
     setDialog("catchup");
-    const answer = await ask({ type: "command", command: "catchup", args: { peek: true } });
+    const args: Record<string, unknown> = { peek: true, recap: true };
+    if (fromDay) args.since = new Date(`${fromDay}T00:00:00`).getTime() / 1000;
+    const answer = await ask({ type: "command", command: "catchup", args });
     setCaught(answer.type === "notice" ? { summary: answer.text, catchup: answer.catchup ?? null } : { summary: "No answer.", catchup: null });
   };
 
@@ -445,17 +457,12 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
               <FontAwesomeIcon icon={faBolt} /> Quick access
             </button>
           </div>
-          {(space.coordinator === "unavailable" || STATUS_TEXT[status] || notice) && (
+          {(space.coordinator === "unavailable" || STATUS_TEXT[status]) && (
             <div className="console__notices">
               {space.coordinator === "unavailable" && (
                 <p className="banner banner--warn" role="status">Cadence is not available right now. The chat still works.</p>
               )}
               {STATUS_TEXT[status] && <p className="banner" role="status">{STATUS_TEXT[status]}</p>}
-              {notice && (
-                <p className="banner banner--info" role="status">
-                  <span>{notice}</span> <button className="link-btn" onClick={() => setNotice(null)}>Dismiss</button>
-                </p>
-              )}
             </div>
           )}
         </header>
@@ -498,10 +505,13 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             nameOf={(id) => nameOf(id, space)}
             onNew={() => setDialog("newtask")}
             onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }}
+            onConnect={(from, to) => void connect(from, to)}
             onAnswer={(proposalId, action) => void ask({ type: "click", proposalId, action })}
           />
         )}
         {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
+        {/* Inside the main column: it never covers the rail, the Quick access panel or the message box. */}
+        {notice && <Toast key={notice} text={notice} onClose={() => setNotice(null)} />}
         {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} nameOf={(id) => nameOf(id, space)} onLoad={loadReflection} />}
       </main>
       {quickOpen && (
@@ -547,7 +557,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       ) : (
         <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
       )}
-      <CatchUpDialog open={dialog === "catchup"} summary={caught.summary} catchup={caught.catchup} inviteCode={space.group?.inviteCode ?? ""} nameOf={(id) => nameOf(id, space)} onClose={closeCatchUp} />
+      <CatchUpDialog key={dialog === "catchup" ? "open" : "closed"} open={dialog === "catchup"} summary={caught.summary} catchup={caught.catchup} inviteCode={space.group?.inviteCode ?? ""} nameOf={(id) => nameOf(id, space)} onSince={(d) => void catchUp(d)} onClose={closeCatchUp} />
       <OwnersDialog open={dialog === "owners"} tasks={tasks} onClose={() => setDialog(null)} onFind={findOwners} />
       <PlanningDialog open={dialog === "planning"} members={space.members} onClose={() => setDialog(null)} onSend={planningList} />
       <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />

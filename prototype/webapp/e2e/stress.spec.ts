@@ -26,7 +26,7 @@ async function noOverflow(page: Page, where: string) {
   });
   expect(report, `overflow on ${where}`).toEqual([]);
   // A long notice never takes more than a few lines of the screen.
-  const tallest = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll<HTMLElement>(".console__notices .banner")].map((b) => b.getBoundingClientRect().height)));
+  const tallest = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll<HTMLElement>(".console__notices .banner, .toast")].map((b) => b.getBoundingClientRect().height)));
   expect(tallest, `notice height on ${where}`).toBeLessThanOrEqual(130);
 }
 

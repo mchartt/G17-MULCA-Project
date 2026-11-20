@@ -158,7 +158,7 @@ test("Find owners and New task open their own popup; Find owners asks for one ca
 test("Catch up only peeks when it opens, and marks it seen when it closes", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   await userEvent.click(screen.getByRole("button", { name: /^Catch up/ }));
-  expect(asked).toContainEqual({ type: "command", command: "catchup", args: { peek: true } });
+  expect(asked).toContainEqual({ type: "command", command: "catchup", args: { peek: true, recap: true } });
   await userEvent.click(within(screen.getByRole("dialog", { name: "Catch up" })).getByRole("button", { name: "Done" }));
   expect(asked).toContainEqual({ type: "command", command: "catchup", args: { seen: true } });
 });

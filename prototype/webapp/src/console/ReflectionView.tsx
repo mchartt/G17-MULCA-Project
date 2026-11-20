@@ -3,6 +3,7 @@
 // command); only "What you talked about" is written by Cadence, from the
 // week's chat. Everything is about the group, never about one person: no
 // per-member counts (the privacy promise: Cadence never scores or ranks people).
+import { Capped } from "./Capped";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState } from "react";
 import { faChevronLeft, faChevronRight } from "../lib/icons";
@@ -93,11 +94,8 @@ export function ReflectionPage({ today, onLoad }: Props) {
             <section className="panel-card reflect" aria-labelledby="r-topics">
               <h3 id="r-topics">What you talked about</h3>
               {shown.topics.length ? (
-                <ul className="topics">
-                  {shown.topics.map((t) => (
-                    <li key={t.title}><strong>{t.title}</strong><p className="muted">{t.summary}</p></li>
-                  ))}
-                </ul>
+                <Capped className="topics" limit={2} title="What you talked about" items={shown.topics}
+                  render={(t) => <li key={t.title}><strong>{t.title}</strong><p className="muted topics__summary">{t.summary}</p></li>} />
               ) : (
                 <p className="muted small">Not enough chat this week for Cadence to sum up.</p>
               )}
@@ -106,11 +104,11 @@ export function ReflectionPage({ today, onLoad }: Props) {
 
             <section className="panel-card reflect" aria-labelledby="r-done">
               <h3 id="r-done">Done this week</h3>
-              {shown.done.length ? <ul className="reflect__list">{shown.done.map((t) => <li key={t.task_id}>{t.title}</li>)}</ul> : <p className="muted small">Nothing finished this week.</p>}
+              {shown.done.length ? <Capped className="reflect__list" limit={4} title="Done this week" items={shown.done} render={(t) => <li key={t.task_id}>{t.title}</li>} /> : <p className="muted small">Nothing finished this week.</p>}
               {shown.added.length > 0 && (
                 <>
                   <h4>New tasks</h4>
-                  <ul className="reflect__list">{shown.added.map((t) => <li key={t.task_id}>{t.title}</li>)}</ul>
+                  <Capped className="reflect__list" limit={4} title="New tasks this week" items={shown.added} render={(t) => <li key={t.task_id}>{t.title}</li>} />
                 </>
               )}
             </section>
@@ -118,23 +116,22 @@ export function ReflectionPage({ today, onLoad }: Props) {
             <section className="panel-card reflect" aria-labelledby="r-decided">
               <h3 id="r-decided">Decided</h3>
               {shown.decisions.length ? (
-                <ul className="reflect__list">
-                  {shown.decisions.map((d) => <li key={d.decision_id}><strong>{d.choice}</strong> <span className="muted">· {d.question}</span></li>)}
-                </ul>
+                <Capped className="reflect__list" limit={4} title="Decided this week" items={shown.decisions}
+                  render={(d) => <li key={d.decision_id}><strong>{d.choice}</strong> <span className="muted">· {d.question}</span></li>} />
               ) : <p className="muted small">No decision this week.</p>}
             </section>
 
             <section className="panel-card reflect" aria-labelledby="r-slipped">
               <h3 id="r-slipped">What slipped</h3>
               {shown.slipped.length ? (
-                <ul className="reflect__list">{shown.slipped.map((t) => <li key={t.task_id}>{t.title} <span className="due due--late">{t.due_date ? dayLabel(t.due_date) : ""}</span></li>)}</ul>
+                <Capped className="reflect__list" limit={4} title="What slipped" items={shown.slipped} render={(t) => <li key={t.task_id}>{t.title} <span className="due due--late">{t.due_date ? dayLabel(t.due_date) : ""}</span></li>} />
               ) : <p className="muted small">Nothing slipped.</p>}
             </section>
 
             <section className="panel-card reflect" aria-labelledby="r-next">
               <h3 id="r-next">Coming up</h3>
               {shown.upcoming.length ? (
-                <ul className="reflect__list">{shown.upcoming.map((m) => <li key={m.milestone_id}>{m.title} <span className="due">{dayLabel(m.due_date)}</span></li>)}</ul>
+                <Capped className="reflect__list" limit={4} title="Coming up" items={shown.upcoming} render={(m) => <li key={m.milestone_id}>{m.title} <span className="due">{dayLabel(m.due_date)}</span></li>} />
               ) : <p className="muted small">No milestone in the next two weeks.</p>}
             </section>
 

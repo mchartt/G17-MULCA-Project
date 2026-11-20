@@ -113,6 +113,15 @@ RECAP_SCHEMA = _strict(
     },
 )
 
+RECAP_SCHEMA = _strict(
+    "catch_up_recap",
+    {
+        "overview": {"type": "string"},
+        "topics": _items({"title": {"type": "string"}, "summary": {"type": "string"}}),
+        "open": {"type": "array", "items": {"type": "string"}},
+    },
+)
+
 TOPICS_SCHEMA = _strict(
     "week_topics",
     {"topics": _items({"title": {"type": "string"}, "summary": {"type": "string"}})},

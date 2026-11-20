@@ -7,11 +7,12 @@
 // keyboard and for screen readers.
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { faCheck, faLink, faMinus, faPlus, faUpRightAndDownLeftFromCenter } from "../lib/icons";
+import { faCheck, faCircleCheck, faLink, faMinus, faPlus, faUpRightAndDownLeftFromCenter } from "../lib/icons";
 import type { MemberId, Proposal } from "../lib/types";
 import { Capped } from "./Capped";
 import { layoutDependencies } from "./graph";
-import { waitingOn, type Task } from "./plan";
+import { finishedLongAgo, waitingOn, type Task } from "./plan";
+import { useNow } from "./useNow";
 
 const NOTE_W = 184;
 const NOTE_H = 112;
@@ -81,7 +82,12 @@ type Props = {
   onAnswer: (proposalId: string, action: "confirm" | "not_now") => void;
 };
 
-export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onConnect, onAnswer }: Props) {
+export function DependenciesPage({ tasks: allTasks, proposals, nameOf, onNew, onLink, onConnect, onAnswer }: Props) {
+  // A task finished more than an hour ago leaves the board and the list (Matteo, 20/11); a switch shows them again.
+  const now = useNow();
+  const [showFinished, setShowFinished] = useState(false);
+  const finished = allTasks.filter((t) => t.task_id && finishedLongAgo(t, now));
+  const tasks = showFinished ? allTasks : allTasks.filter((t) => !finished.includes(t));
   const withIds = tasks.filter((t) => t.task_id);
   const ideas = suggestions(proposals).filter((s) => withIds.some((t) => t.task_id === s.from) && withIds.some((t) => t.task_id === s.to));
   const rows = waitingOn(tasks);
@@ -93,6 +99,11 @@ export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onCo
         <p className="muted">When a task needs another one finished first, it waits on it. Drag a note to move it; drag its dot onto another note to link them; click an arrow to change it.</p>
         <div className="page__actions">
           {withIds.length > 1 && <button className="btn btn--soft btn--small" onClick={() => onLink(null)}><FontAwesomeIcon icon={faLink} /> Link tasks</button>}
+          {finished.length > 0 && (
+            <button className="btn btn--ghost btn--small" aria-pressed={showFinished} onClick={() => setShowFinished(!showFinished)}>
+              <FontAwesomeIcon icon={faCircleCheck} /> {showFinished ? "Hide finished" : `Show finished (${finished.length})`}
+            </button>
+          )}
           <button className="btn btn--primary btn--small" onClick={onNew}><FontAwesomeIcon icon={faPlus} /> New task</button>
         </div>
       </header>
@@ -325,7 +336,7 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
                 <span className="note__title">{t.title}</span>
                 <span className="note__foot">
                   <span>{owner ?? "No owner"}</span>
-                  <span>{status === "waiting" ? "Waiting" : STATUS_NAMES[t.status] ?? t.status}</span>
+                  <span>{status === "done" && <FontAwesomeIcon icon={faCircleCheck} className="note__done" />} {status === "waiting" ? "Waiting" : STATUS_NAMES[t.status] ?? t.status}</span>
                 </span>
                 <span className="sr-only">Change what it waits on</span>
               </button>

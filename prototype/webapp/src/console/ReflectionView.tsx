@@ -6,7 +6,8 @@
 import { Capped } from "./Capped";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState } from "react";
-import { faChevronLeft, faChevronRight } from "../lib/icons";
+import { faBookmark, faChevronLeft, faChevronRight, faCircleCheck, faComments, faFlag } from "../lib/icons";
+import { ChannelBars, PlanStatus, ProgressRing, WeekByDay } from "./ReflectionCharts";
 import type { MemberId, ProjectState, Reflection } from "../lib/types";
 import { dayLabel } from "./plan";
 
@@ -32,7 +33,7 @@ type Props = {
   onLoad: (week: string) => Promise<Reflection | string>;
 };
 
-export function ReflectionPage({ today, onLoad }: Props) {
+export function ReflectionPage({ state, today, onLoad }: Props) {
   const [week, setWeek] = useState(() => mondayOf(today));
   const [data, setData] = useState<Reflection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +61,6 @@ export function ReflectionPage({ today, onLoad }: Props) {
 
   const shown = data && data.week === week ? data : null;
   const messages = shown?.talk.reduce((sum, t) => sum + t.messages, 0) ?? 0;
-  const progress = shown && shown.progress.total ? Math.round((shown.progress.done / shown.progress.total) * 100) : 0;
 
   return (
     <section className="page reflection-page" aria-label="Reflection" aria-busy={loading}>
@@ -79,16 +79,25 @@ export function ReflectionPage({ today, onLoad }: Props) {
       {shown && (
         <>
           <ul className="stats" aria-label="The week in numbers">
-            <li className="stat"><span className="stat__value">{shown.done.length}</span><span className="stat__label">tasks done</span></li>
-            <li className="stat"><span className="stat__value">{shown.decisions.length}</span><span className="stat__label">decisions</span></li>
-            <li className={`stat${shown.slipped.length ? " stat--warn" : ""}`}><span className="stat__value">{shown.slipped.length}</span><span className="stat__label">slipped</span></li>
-            <li className="stat"><span className="stat__value">{messages}</span><span className="stat__label">messages</span></li>
-            <li className="stat stat--wide">
-              <span className="stat__value">{progress}%</span>
-              <span className="stat__label">of the plan done ({shown.progress.done} of {shown.progress.total})</span>
-              <span className="meter meter--wide" role="progressbar" aria-label="Plan progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }} /></span>
-            </li>
+            <li className="stat stat--done"><span className="stat__icon" aria-hidden="true"><FontAwesomeIcon icon={faCircleCheck} /></span><span className="stat__value">{shown.done.length}</span><span className="stat__label">tasks done</span></li>
+            <li className="stat stat--decided"><span className="stat__icon" aria-hidden="true"><FontAwesomeIcon icon={faBookmark} /></span><span className="stat__value">{shown.decisions.length}</span><span className="stat__label">decisions</span></li>
+            <li className={`stat stat--slipped${shown.slipped.length ? " stat--warn" : ""}`}><span className="stat__icon" aria-hidden="true"><FontAwesomeIcon icon={faFlag} /></span><span className="stat__value">{shown.slipped.length}</span><span className="stat__label">slipped</span></li>
+            <li className="stat stat--talk"><span className="stat__icon" aria-hidden="true"><FontAwesomeIcon icon={faComments} /></span><span className="stat__value">{messages}</span><span className="stat__label">messages</span></li>
+            <li className="stat stat--wide"><ProgressRing done={shown.progress.done} total={shown.progress.total} /></li>
           </ul>
+
+          <div className="reflection__charts">
+            {shown.days && shown.days.length === 7 && (
+              <section className="panel-card reflect" aria-labelledby="r-days">
+                <h3 id="r-days">Day by day</h3>
+                <WeekByDay days={shown.days} today={today} />
+              </section>
+            )}
+            <section className="panel-card reflect" aria-labelledby="r-plan">
+              <h3 id="r-plan">The plan right now</h3>
+              <PlanStatus tasks={(state?.tasks ?? []).filter((t) => t.task_id)} />
+            </section>
+          </div>
 
           <div className="reflection__grid">
             <section className="panel-card reflect" aria-labelledby="r-topics">
@@ -137,9 +146,7 @@ export function ReflectionPage({ today, onLoad }: Props) {
 
             <section className="panel-card reflect" aria-labelledby="r-where">
               <h3 id="r-where">Where you talked</h3>
-              <ul className="reflect__list">
-                {shown.talk.map((t) => <li key={t.channel}>{CHANNELS[t.channel] ?? t.channel} <span className="muted">{t.messages} message{t.messages === 1 ? "" : "s"}</span></li>)}
-              </ul>
+              <ChannelBars talk={shown.talk} names={CHANNELS} />
             </section>
           </div>
         </>

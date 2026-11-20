@@ -4,7 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Keyb
 import { faCompass, faPaperPlane } from "../lib/icons";
 import type { Answer, Click, Person } from "../lib/types";
 import { mentionParts, parseSlash, suggest } from "../lib/slash";
+import { finishedLongAgo } from "./plan";
 import { ProposalCard } from "./ProposalCard";
+import { useNow } from "./useNow";
 import { dotFor, nameOf, type Space } from "./space";
 
 const CHANNEL_NAMES: Record<string, string> = { web: "Web", discord: "Discord", slack: "Slack", calendar: "Calendar" };
@@ -28,6 +30,13 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
   const [picked, setPicked] = useState(0);
   const pick = hints[Math.min(picked, hints.length - 1)];
   const end = useRef<HTMLDivElement>(null);
+  // A card about a task finished more than an hour ago leaves the chat (the Tasks page keeps the task).
+  const now = useNow();
+  const finished = new Set((space.state?.tasks ?? []).filter((t) => t.task_id && finishedLongAgo(t, now)).map((t) => t.task_id!));
+  const aboutOldDoneTask = (p: { payload: Record<string, unknown> }) => {
+    const id = p.payload?.task_id;
+    return typeof id === "string" && finished.has(id);
+  };
   // The box is one line and grows with what is typed (up to its max-height in the CSS).
   useLayoutEffect(() => {
     const el = input.current;
@@ -90,7 +99,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
         )}
         {space.timeline.map((item) =>
           item.kind === "proposal" ? (
-            space.proposals[item.id] && (
+            space.proposals[item.id] && !aboutOldDoneTask(space.proposals[item.id]) && (
               <ProposalCard
                 key={`p-${item.id}`}
                 proposal={space.proposals[item.id]}

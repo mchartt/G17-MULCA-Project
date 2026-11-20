@@ -43,11 +43,11 @@ test("two members: create, join, kickoff card, confirm, plan", async ({ browser 
 
   // Nothing changed yet; the first click applies it everywhere.
   await showPage(ada, "Decisions");
-  await expect(ada.getByRole("region", { name: "Decisions", exact: true })).toContainText("No plan confirmed yet");
+  await expect(ada.getByRole("region", { name: "Plan and decisions", exact: true })).toContainText("No goal yet");
   await showPage(ada, "Chat");
   await card.getByRole("button", { name: "Confirm" }).click();
   await expect(bruno.locator(".card", { hasText: "Project charter" }).getByRole("status")).toHaveText(/^Confirmed by /);
   await showPage(bruno, "Decisions");
-  await expect(bruno.locator(".registry__goal")).toHaveText("Ship the coordinator.");
-  await expect(bruno.getByRole("region", { name: "Decisions", exact: true })).toContainText("Confirmed by Ada");
+  await expect(bruno.locator(".goal-card__text")).toHaveText("Ship the coordinator.");
+  await expect(bruno.getByRole("region", { name: "Plan and decisions", exact: true })).toContainText("Confirmed by Ada");
 });

@@ -77,12 +77,32 @@ class CalendarFeeds:
         names = {m.id: m.display_name for m in self._store.members(group_id)}
         return ics(group.name, group.id, state, names)
 
+    def file_for(self, group_id: int, member_id: int) -> str:
+        """
+        "Add to my calendar" (Matteo, 20/11): a one-time .ics file to import in
+        Outlook, Google or Apple Calendar, with the project's dated milestones
+        and the dated tasks this member owns. Built from the last saved state.
+        """
+        group = self._store.group(group_id)
+        row = self._db.execute("SELECT state_json FROM web_state WHERE group_id = ?", (group_id,)).fetchone()
+        state = json.loads(row[0]) if row else {}
+        names = {m.id: m.display_name for m in self._store.members(group_id)}
+        return ics(group.name, group.id, state, names, owner=member_id)
 
-def ics(group_name: str, group_id: int, state: dict, names: dict[int, str], now: datetime | None = None) -> str:
+
+def ics(
+    group_name: str,
+    group_id: int,
+    state: dict,
+    names: dict[int, str],
+    now: datetime | None = None,
+    owner: int | None = None,
+) -> str:
     """
     RFC 5545 text: one all-day event per milestone with a date and per task
-    with a due date that is not done. Lines end with CRLF and are folded at
-    75 characters, as the standard asks.
+    with a due date that is not done (with `owner`: only that member's
+    tasks). Lines end with CRLF and are folded at 75 characters, as the
+    standard asks.
     """
     stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
     lines = [
@@ -98,10 +118,10 @@ def ics(group_name: str, group_id: int, state: dict, names: dict[int, str], now:
             lines += _event(f"milestone-{m.get('milestone_id', m['title'])}-{group_id}", stamp, m["due_date"],
                             f"Milestone: {m['title']}", f"Project milestone of {group_name}.")
     for t in state.get("tasks") or []:
-        if t.get("due_date") and t.get("status") != "done":
-            owner = names.get(t.get("owner_id")) or _profile_name(state, t.get("owner_id")) or "no owner yet"
+        if t.get("due_date") and t.get("status") != "done" and (owner is None or t.get("owner_id") == owner):
+            who = names.get(t.get("owner_id")) or _profile_name(state, t.get("owner_id")) or "no owner yet"
             lines += _event(f"task-{t.get('task_id', t['title'])}-{group_id}", stamp, t["due_date"],
-                            f"Task: {t['title']} ({owner})", f"Status: {t.get('status', 'todo')}. Owner: {owner}.")
+                            f"Task: {t['title']} ({who})", f"Status: {t.get('status', 'todo')}. Owner: {who}.")
     lines.append("END:VCALENDAR")
     return "".join(_fold(line) + "\r\n" for line in lines)
 

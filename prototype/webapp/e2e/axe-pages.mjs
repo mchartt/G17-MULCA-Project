@@ -40,13 +40,11 @@ await popup.getByLabel("Due date").fill("2020-01-01");
 await popup.getByLabel("Build the API").check();
 await report("New task popup (with waits on)");
 await popup.getByRole("button", { name: "Add task" }).click();
-await page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today/ }).click();
-await report("Today popup");
-await popup.getByRole("button", { name: "Close" }).click();
-
 const rail = page.getByRole("list", { name: "Pages" });
+await rail.getByRole("button", { name: "Tasks" }).click();
+await report("Tasks page");
 await rail.getByRole("button", { name: "Dependencies" }).click();
-await report("Dependencies page with the graph");
+await report("Dependencies page with the board");
 await page.getByRole("button", { name: "Link tasks" }).click();
 await report("Link tasks popup");
 await popup.getByRole("button", { name: "Cancel" }).click();

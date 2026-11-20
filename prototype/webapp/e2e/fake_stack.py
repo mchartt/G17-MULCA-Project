@@ -107,6 +107,20 @@ def scripted(name: str, user: str) -> dict:
             "open_points": [],
             "options": [],
         }
+    if name == "project_answer":
+        # Cadence's answer (ask), SCRIPTED: no ids cited; silence when offered a "maybe" follow-up.
+        if "<note>" in user:
+            return {"answer": "", "task_ids": [], "milestone_ids": [], "decision_ids": [], "documents": []}
+        question = user.split("<question>")[1].split("</question>")[0].strip()
+        return {"answer": f"SCRIPTED answer to: {question}", "task_ids": [], "milestone_ids": [], "decision_ids": [], "documents": []}
+    if name == "likely_dependencies":
+        # Dependency suggestion, SCRIPTED: a new task named "Test ..." waits on the first other open task.
+        new = re.findall(r"task_id (\w+): (.*?) \|", user.split("<new>")[1].split("</new>")[0])
+        rest = re.findall(r"task_id (\w+):", user.split("<plan>")[1])
+        links = [{"task_id": t, "waits_on": rest[0], "reason": "Testing needs it built first."} for t, title in new if title.startswith("Test") and rest]
+        return {"links": links[:1], "rationale": "Stepping in because a new task seems to need another one first."}
+    if name == "week_topics":
+        return {"topics": [{"title": "SCRIPTED topic", "summary": "The group talked about the plan (scripted, offline stack)."}]}
     if name == "decision_answer":
         ids = re.findall(r"- id (\w+):", user.split("<decisions>")[1])
         return {"answer": "The group chose it in the decision card.", "decision_ids": ids[:1]}

@@ -17,11 +17,18 @@ export function composeBrief(description: string, documents: BriefDocument[]): s
   return parts.filter(Boolean).join("\n\n");
 }
 
+/**
+ * What the console sends as the kickoff: the composed text (for the charter
+ * draft) and, kept apart, the description and each document, which Cadence
+ * keeps as project context (Project settings > Documents).
+ */
+export type PendingBrief = { text: string; description?: string; documents?: { name: string; text: string }[] };
+
 /** false when the browser refused to keep it (storage full or blocked): the caller says so. */
-export function savePendingBrief(spaceToken: string, text: string): boolean {
+export function savePendingBrief(spaceToken: string, text: string, parts: Omit<PendingBrief, "text"> = {}): boolean {
   if (!text.trim()) return true;
   try {
-    sessionStorage.setItem(KEY + spaceToken, text);
+    sessionStorage.setItem(KEY + spaceToken, JSON.stringify({ text, ...parts }));
     return true;
   } catch {
     return false; // the member can paste the brief from the setup card
@@ -29,11 +36,17 @@ export function savePendingBrief(spaceToken: string, text: string): boolean {
 }
 
 /** The brief waiting for this space, removed as it is read (sent once). */
-export function takePendingBrief(spaceToken: string): string | null {
+export function takePendingBrief(spaceToken: string): PendingBrief | null {
   try {
-    const text = sessionStorage.getItem(KEY + spaceToken);
+    const raw = sessionStorage.getItem(KEY + spaceToken);
     sessionStorage.removeItem(KEY + spaceToken);
-    return text;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as PendingBrief;
+      return typeof parsed?.text === "string" ? parsed : { text: raw };
+    } catch {
+      return { text: raw }; // kept by an older version: plain text
+    }
   } catch {
     return null;
   }

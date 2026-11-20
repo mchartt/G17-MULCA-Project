@@ -16,11 +16,11 @@ async function create(browser: Browser, project: string): Promise<Page> {
   return ada;
 }
 
-test("@coordinator why, typed in the chat, is answered by Cadence from the decision log", async ({ browser }) => {
+test("@coordinator why, typed in the chat, is answered by Cadence (SCRIPTED on the offline stack)", async ({ browser }) => {
   const ada = await create(browser, "Group why");
   await ada.getByLabel("Message to the group").fill("@coordinator why did we pick SUS?");
   await ada.keyboard.press("Enter");
-  await expect(ada.locator(".chat")).toContainText("No decision has been recorded yet.");
+  await expect(ada.locator(".chat")).toContainText("SCRIPTED answer to: why did we pick SUS?");
 });
 
 test("Delete space: only after typing the name; every member is sent back to the start", async ({ browser }) => {

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { DOCUMENT_TYPES } from "../lib/documents";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlug, faTrashCan, faUserPen } from "../lib/icons";
-import type { MemberId } from "../lib/types";
+import { faFileLines, faPlug, faPlus, faTrashCan, faUserPen } from "../lib/icons";
+import type { MemberId, ProjectDocument } from "../lib/types";
 import { initials } from "./Chat";
 import { profileFacts, type MemberProfile } from "./space";
 import { TagInput, withPending } from "./TagInput";
@@ -243,12 +243,86 @@ export function ConnectDialog({ open, code, onClose }: { open: boolean; code: st
 }
 
 
+const size = (chars: number) => (chars < 1000 ? `${chars} characters` : `${Math.round(chars / 100) / 10}k characters`);
+const added = (unix: number) => new Date(unix * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+/**
+ * Project settings > Documents: what Cadence reads when it answers (the
+ * assignment, notes, the setup desk's description). A file is read once and
+ * only its text is kept; removing it means Cadence no longer reads it.
+ */
+function DocumentsSection({ documents, onAdd, onRemove }: { documents: ProjectDocument[]; onAdd: (file: File) => Promise<string | null>; onRemove: (id: string) => Promise<string | null> }) {
+  const picker = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  async function add(files: FileList | null) {
+    if (!files?.length) return;
+    setError(null);
+    for (const file of Array.from(files)) {
+      setBusy(`Reading ${file.name}…`);
+      const problem = await onAdd(file);
+      if (problem) {
+        setError(`${file.name}: ${problem}`);
+        break;
+      }
+    }
+    setBusy(null);
+  }
+
+  async function remove(id: string) {
+    setBusy("Removing…");
+    setError(await onRemove(id));
+    setConfirming(null);
+    setBusy(null);
+  }
+
+  return (
+    <section className="settings__section" aria-labelledby="settings-docs">
+      <h3 id="settings-docs">Documents Cadence reads</h3>
+      <p className="muted small">Cadence reads their text when it answers your questions. Files are read once; only their text is kept, until you remove it.</p>
+      {documents.length === 0 ? (
+        <p className="muted small">No documents yet.</p>
+      ) : (
+        <ul className="docs-list" aria-label="Documents">
+          {documents.map((d) => (
+            <li key={d.document_id} className="docs-list__item">
+              <FontAwesomeIcon icon={faFileLines} aria-hidden="true" />
+              <span className="docs-list__name" title={d.name}>{d.name}</span>
+              <span className="muted small">{size(d.chars)} · {added(d.added_at)}</span>
+              {confirming === d.document_id ? (
+                <span className="docs-list__confirm">
+                  <button type="button" className="btn btn--soft btn--small" onClick={() => setConfirming(null)}>Keep</button>
+                  <button type="button" className="btn btn--danger btn--small" disabled={busy !== null} onClick={() => void remove(d.document_id)}>Remove</button>
+                </span>
+              ) : (
+                <button type="button" className="link-btn" aria-label={`Remove ${d.name}`} onClick={() => setConfirming(d.document_id)}>Remove</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" className="btn btn--soft btn--small" disabled={busy !== null} onClick={() => picker.current?.click()}>
+        <FontAwesomeIcon icon={faPlus} /> Add a document
+      </button>
+      <input ref={picker} className="sr-only" type="file" multiple accept={DOCUMENT_TYPES} tabIndex={-1} aria-hidden="true" onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
+      {busy && <p className="muted small" role="status">{busy}</p>}
+      {error && <p className="form__error" role="alert">{error}</p>}
+    </section>
+  );
+}
+
 type SettingsProps = {
   open: boolean;
   name: string;
   goal: string;
   deliverables: string[];
   language: string;
+  /** The documents Cadence reads as context (Matteo, 20/11: editable from the settings). */
+  documents: ProjectDocument[];
+  onAddDocument: (file: File) => Promise<string | null>;
+  onRemoveDocument: (documentId: string) => Promise<string | null>;
   onRename: (name: string) => Promise<string | null>;
   onCharter: (goal: string, deliverables: string[]) => Promise<string | null>;
   onLanguage: (language: string) => void;
@@ -262,7 +336,7 @@ type SettingsProps = {
  * member's own action (saved at once); the goal and deliverables change the
  * plan, so they become a card the group confirms, like every plan change.
  */
-export function ProjectSettingsDialog({ open, name, goal, deliverables, language, onRename, onCharter, onLanguage, onConnect, onDelete, onClose }: SettingsProps) {
+export function ProjectSettingsDialog({ open, name, goal, deliverables, language, documents, onAddDocument, onRemoveDocument, onRename, onCharter, onLanguage, onConnect, onDelete, onClose }: SettingsProps) {
   const [draft, setDraft] = useState(name);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -312,6 +386,8 @@ export function ProjectSettingsDialog({ open, name, goal, deliverables, language
             </>
           )}
         </section>
+
+        <DocumentsSection documents={documents} onAdd={onAddDocument} onRemove={onRemoveDocument} />
 
         <section className="settings__section settings__inline">
           <label htmlFor="settings-language-select">Cadence writes in</label>

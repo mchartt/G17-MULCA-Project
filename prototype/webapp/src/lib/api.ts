@@ -91,6 +91,13 @@ export async function renameSpace(token: string, name: string): Promise<string |
 }
 
 /** M5: a new private calendar feed link for my group (the previous one stops working). */
+/** "Add to my calendar": a one-time .ics file (milestones + my tasks), saved by the browser. */
+export async function calendarFile(token: string): Promise<Blob> {
+  const res = await fetch(`${ADAPTER_URL}/api/calendar/file`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new ApiError("The calendar file could not be made. Try again in a moment.");
+  return res.blob();
+}
+
 export async function calendarLink(token: string): Promise<string> {
   const res = await fetch(`${ADAPTER_URL}/api/calendar`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new ApiError("The calendar link could not be created. Try again in a moment.");

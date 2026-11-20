@@ -28,13 +28,17 @@ await page.keyboard.press("Enter");
 await page.locator(".card", { hasText: "One person can do this" }).getByRole("button", { name: "Why?" }).click();
 await page.waitForTimeout(800);
 await report("console with proactive card and Why? open");
-// M4: planning dialog, plan card confirmed (status selects), decision + Ask why.
-await page.getByRole("button", { name: "Plan tasks" }).click();
-await page.getByLabel("Task 1", { exact: true }).fill("Server API");
-await page.getByLabel("Task 2", { exact: true }).fill("UI screens");
+// M4: two tasks, Find owners, plan card confirmed.
+for (const title of ["Server API", "UI screens"]) {
+  await page.getByRole("button", { name: /^New task/ }).click();
+  await page.getByRole("dialog", { name: "New task" }).getByLabel("Name").fill(title);
+  await page.getByRole("dialog", { name: "New task" }).getByRole("button", { name: "Add task" }).click();
+  await page.getByRole("dialog", { name: "New task" }).waitFor({ state: "hidden" });
+}
+await page.getByRole("button", { name: /^Find owners/ }).click();
 await page.waitForTimeout(800); // let the dialog finish fading in
-await report("planning dialog open");
-await page.getByRole("button", { name: "Suggest owners" }).click();
+await report("Find owners dialog open");
+await page.getByRole("button", { name: "Ask Cadence to propose owners" }).click();
 await page.locator(".card", { hasText: "Plan: who does what" }).getByRole("button", { name: "Confirm" }).click();
 // (A CS3 card would be vetoed here: R3/R4, the CS2 card was posted minutes ago.)
 await page.waitForTimeout(1200);

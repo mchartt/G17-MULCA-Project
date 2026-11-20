@@ -193,15 +193,21 @@ async def test_the_client_hands_coordinator_events_to_its_hook():
 # ----------------------------------------------------------------------
 
 
+# A question to Cadence (the "ask" command) gets this answer.
+ASK_ANSWER = {"answer": "Nobody owns the slides yet.", "task_ids": [], "milestone_ids": [], "decision_ids": [], "documents": []}
+
+
 class FakeChat:
-    """The model: always answers with CHARTER."""
+    """The model: answers a question to Cadence with ASK_ANSWER, anything else with CHARTER."""
 
     def __init__(self) -> None:
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     async def _create(self, **kwargs):
+        schema = kwargs.get("response_format", {}).get("json_schema", {}).get("name")
+        answer = ASK_ANSWER if schema == "project_answer" else CHARTER
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(CHARTER)))],
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(answer)))],
             usage=None,
         )
 

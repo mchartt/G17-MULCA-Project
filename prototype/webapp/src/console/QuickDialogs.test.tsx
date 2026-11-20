@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
-import { NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
+import { NewMilestoneDialog, NewTaskDialog, OwnersDialog, WaitsOnDialog } from "./QuickDialogs";
 
 // jsdom has no <dialog> modal: show it as open.
 HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
@@ -80,26 +80,27 @@ test("new milestone: a name and an optional date; the date can be left for later
   expect(onCreate).toHaveBeenLastCalledWith({ add: "Report", due: "2026-12-01" });
 });
 
-test("today: what is late and what is due today, with who has it; open tasks without a date are not shown", () => {
+test("find owners: lists the open tasks nobody owns and asks Cadence for one card", async () => {
   const list = [
-    ...tasks,
-    { task_id: "d", title: "User test", status: "todo", owner_id: 2, due_date: "2026-11-19" },
-    { task_id: "e", title: "Report", status: "todo", owner_id: 1, due_date: "2026-12-01" },
+    { task_id: "a", title: "Build the API", status: "todo", owner_id: null, due_date: "2026-11-24" },
+    { task_id: "b", title: "Slides", status: "doing", owner_id: 2, due_date: null },
+    { task_id: "c", title: "Old thing", status: "done", owner_id: null, due_date: null },
   ];
-  const nameOf = (id?: number | string | null) => members.find((m) => m.id === id)?.name;
-  render(<TodayDialog open today="2026-11-19" tasks={list} nameOf={nameOf} onTask={vi.fn()} onClose={vi.fn()} />);
-  const late = screen.getByRole("region", { name: "Late" });
-  expect(within(late).getByText("Server API")).toBeInTheDocument();
-  const today = screen.getByRole("region", { name: "Due today" });
-  expect(within(today).getByText("User test")).toBeInTheDocument();
-  expect(within(today).getByText("Bruno")).toBeInTheDocument();
-  expect(screen.queryByText("Report")).toBeNull();
-  expect(screen.queryByText("Slides")).toBeNull();
+  const onFind = vi.fn().mockResolvedValue("Cadence is busy.");
+  render(<OwnersDialog open tasks={list} onClose={vi.fn()} onFind={onFind} />);
+  const shown = screen.getByRole("list", { name: "Tasks with no owner" });
+  expect(within(shown).getByText("Build the API")).toBeInTheDocument();
+  expect(within(shown).queryByText("Slides")).toBeNull();
+  expect(within(shown).queryByText("Old thing")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Ask Cadence to propose owners" }));
+  expect(onFind).toHaveBeenCalled();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Cadence is busy.");
 });
 
-test("today: nothing due says so", () => {
-  render(<TodayDialog open today="2026-11-19" tasks={tasks.slice(1)} nameOf={() => undefined} onTask={vi.fn()} onClose={vi.fn()} />);
-  expect(screen.getByText("Nothing is due today and nothing is late.")).toBeInTheDocument();
+test("find owners: every task owned says so and asks nothing", () => {
+  render(<OwnersDialog open tasks={[{ task_id: "b", title: "Slides", status: "todo", owner_id: 2 }]} onClose={vi.fn()} onFind={vi.fn()} />);
+  expect(screen.getByText("Every open task already has an owner.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /propose owners/ })).toBeNull();
 });
 
 const linked = [

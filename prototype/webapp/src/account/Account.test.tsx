@@ -90,7 +90,11 @@ test("create an account, then the guided setup: profile, ready, a project on the
   expect(calls.find((c) => c.path === "/api/groups")).toMatchObject({ body: { groupName: "Team 17" }, token: "acc-1" });
   expect(savedToken()).toBe("space-1");
   // The description waits for the console, which sends it to Cadence as the brief.
-  expect(sessionStorage.getItem("cadence.brief:space-1")).toBe("AUI prototype, demo on 2 December.");
+  expect(JSON.parse(sessionStorage.getItem("cadence.brief:space-1")!)).toEqual({
+    text: "AUI prototype, demo on 2 December.",
+    description: "AUI prototype, demo on 2 December.",
+    documents: [],
+  });
 });
 
 test("invited, a new account finishes the profile and finds Join first, with the code filled in", async () => {
@@ -246,6 +250,7 @@ test("the privacy notice opens from the home, and from the nav's Privacy link", 
 test("catch up lists what was decided and said in the other channel", () => {
   render(
     <CatchUpDialog
+      nameOf={() => undefined}
       open
       inviteCode="AB12CD"
       onClose={vi.fn()}
@@ -264,7 +269,7 @@ test("catch up lists what was decided and said in the other channel", () => {
 });
 
 test("a group that is not linked is told how to link a channel", () => {
-  render(<CatchUpDialog open inviteCode="AB12CD" onClose={vi.fn()} summary="Not linked yet." catchup={{ since: 0, until: 1, linked: false, decisions: [], elsewhere: [] }} />);
+  render(<CatchUpDialog nameOf={() => undefined} open inviteCode="AB12CD" onClose={vi.fn()} summary="Not linked yet." catchup={{ since: 0, until: 1, linked: false, decisions: [], elsewhere: [] }} />);
   expect(screen.getByText("/coordinator link AB12CD")).toBeInTheDocument();
 });
 

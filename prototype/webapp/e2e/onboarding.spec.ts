@@ -95,15 +95,15 @@ test("landing, guided setup, a project with a document, the tour and the registr
   await shot(page, "12-console-brief-card");
   await charter.getByRole("button", { name: "Confirm" }).click();
 
-  // Ask Cadence directly, as the tour says (answered from the decision log, no model needed).
+  // Ask Cadence directly, as the tour says (SCRIPTED answer on the offline stack).
   await page.getByLabel("Message to the group").fill("@coordinator why did we choose React?");
   await page.keyboard.press("Enter");
-  await expect(page.locator(".chat")).toContainText("No decision has been recorded yet.");
+  await expect(page.locator(".chat")).toContainText("SCRIPTED answer to: why did we choose React?");
   await shot(page, "13-console-chat");
 
   // The registry: the confirmed plan.
   await page.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Decisions" }).click();
-  await expect(page.getByRole("region", { name: "Decisions", exact: true })).not.toContainText("No plan confirmed yet");
+  await expect(page.getByRole("region", { name: "Plan and decisions", exact: true })).not.toContainText("No goal yet");
   await shot(page, "14-decisions");
   await page.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Tasks" }).click();
   await shot(page, "15-tasks");

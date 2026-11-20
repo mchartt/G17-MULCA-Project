@@ -2,24 +2,24 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ProfileForm } from "../account/ProfileForm";
 import { me, type User } from "../lib/account";
-import { faBolt, faCalendarCheck, faCalendarDay, faCalendarWeek, faCircleQuestion, faClipboardCheck, faClockRotateLeft, faFileLines, faListOl, faPeopleGroup, faPenToSquare, faRotate, faScaleBalanced, faUserPen } from "../lib/icons";
-import { ADAPTER_URL, calendarLink, deleteSpace, renameSpace, saveToken } from "../lib/api";
+import { faBolt, faCalendarCheck, faCircleQuestion, faClipboardCheck, faClockRotateLeft, faFileLines, faPlus, faUserPen, faUsers } from "../lib/icons";
+import { ADAPTER_URL, calendarFile, deleteSpace, renameSpace, saveToken } from "../lib/api";
 import { takePendingBrief } from "../lib/brief";
 import { readDocument } from "../lib/documents";
 import { parseSlash } from "../lib/slash";
 import { SpaceSocket, type SocketStatus } from "../lib/socket";
-import type { Answer, CatchUp } from "../lib/types";
+import type { Answer, CatchUp, Reflection } from "../lib/types";
 import { CatchUpDialog } from "./CatchUpDialog";
 import { Chat } from "./Chat";
 import { FirstSteps } from "./FirstSteps";
 import { ConnectDialog, DeleteDialog, Dialog, KickoffDialog, MemberDialog, ProfileDialog, ProjectSettingsDialog, type Profile } from "./Dialogs";
 import type { MemberId } from "../lib/types";
-import { AgendaDialog, PlanningDialog, TaskRegisterDialog } from "./PlanDialogs";
+import { PlanningDialog } from "./PlanDialogs";
 import type { MilestoneEdit, NewTask, TaskEdit } from "./plan";
 import { todayIso } from "./plan";
-import { AskWhyDialog, CalendarDialog, NewMilestoneDialog, NewTaskDialog, TodayDialog, WaitsOnDialog } from "./QuickDialogs";
+import { NewMilestoneDialog, NewTaskDialog, OwnersDialog, WaitsOnDialog } from "./QuickDialogs";
 import { DecisionsPage, DependenciesPage, MilestonesPage, ReflectionPage, TasksPage } from "./Pages";
-import { capBadge, QuickPanel, todaySummary, type QuickGroup } from "./QuickPanel";
+import { QuickPanel, type QuickGroup } from "./QuickPanel";
 import { Tour, tourSeen } from "./Tour";
 import { Sidebar, type View } from "./Sidebar";
 import { dotFor, emptySpace, nameOf, profileOf, reduce } from "./space";
@@ -67,7 +67,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   const quickButton = useRef<HTMLButtonElement>(null);
   // The page beside the chat: the chat is where a space opens.
   const [view, setView] = useState<View>("chat");
-  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "delete" | "catchup" | "tasks" | "agenda" | "newtask" | "newmilestone" | "today" | "askwhy" | "calendar" | "link" | "connect" | "settings" | "member" | null>(null);
+  const [dialog, setDialog] = useState<"kickoff" | "profile" | "planning" | "owners" | "delete" | "catchup" | "newtask" | "newmilestone" | "link" | "connect" | "settings" | "member" | null>(null);
   // The teammate whose profile popup is open.
   const [memberId, setMemberId] = useState<MemberId | null>(null);
   // The guided tour: shown once per space in this browser, and again from the quick actions.
@@ -108,7 +108,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     const brief = takePendingBrief(token);
     if (!brief) return;
     setNotice("Cadence is reading your project brief…");
-    void ask({ type: "command", command: "kickoff", args: { text: brief } }).then((answer) =>
+    void ask({ type: "command", command: "kickoff", args: { ...brief } }).then((answer) =>
       setNotice(
         answer.ok
           ? "Cadence read your brief. Its proposal is a card in the chat: read it with your group, then confirm it."
@@ -187,6 +187,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     if (edit.title !== undefined) args.title = edit.title;
     if (edit.description !== undefined) args.description = edit.description;
     if (edit.waitsOn !== undefined) args.depends_on = edit.waitsOn;
+    if (edit.progress !== undefined) args.progress = edit.progress;
     if (edit.remove) args.remove = true;
     const answer = await ask({ type: "command", command: "task", args });
     if (!answer.ok && answer.type === "notice") setNotice(answer.text);
@@ -246,17 +247,67 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     setNotice(answer.type === "notice" ? answer.text : null);
   };
 
-  /** "Plan together": Cadence asks the group how it wants to plan the work, then sums the answers up in a card. */
-  const planTogether = async () => {
-    const answer = await ask({ type: "command", command: "approach" });
-    setNotice(answer.type === "notice" ? answer.text : null);
-  };
-
   const catchUp = async () => {
     setCaught({ summary: "", catchup: null });
     setDialog("catchup");
-    const answer = await ask({ type: "command", command: "catchup" });
+    const answer = await ask({ type: "command", command: "catchup", args: { peek: true } });
     setCaught(answer.type === "notice" ? { summary: answer.text, catchup: answer.catchup ?? null } : { summary: "No answer.", catchup: null });
+  };
+
+  /** Closing the catch-up: the next one starts from now (opening it only peeks). */
+  const closeCatchUp = () => {
+    setDialog(null);
+    void ask({ type: "command", command: "catchup", args: { seen: true } });
+  };
+
+  /** Find owners: Cadence proposes an owner for every open task with none, as one card. */
+  const findOwners = async () => {
+    const answer = await ask({ type: "command", command: "planning", args: { owners: true } });
+    if (!answer.ok) return answer.type === "notice" ? answer.text : "Cadence could not suggest owners.";
+    setDialog(null);
+    if (answer.type === "notice") setNotice(answer.text);
+    return null;
+  };
+
+  /** Add to my calendar: a .ics file the browser saves, to import in Outlook, Google or Apple Calendar. */
+  const downloadCalendar = async () => {
+    try {
+      const file = await calendarFile(token);
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(space.group?.name ?? "cadence").replace(/[^\w-]+/g, "-").toLowerCase()}.ics`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setNotice("Calendar file saved. Open it, or import it in Outlook, Google or Apple Calendar: it has the milestones and your tasks.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The calendar file could not be made.");
+    }
+  };
+
+  /** Project settings > Documents: a file is read once here, its text kept by Cadence as project context. */
+  const addDocument = async (file: File) => {
+    try {
+      const read = await readDocument(token, file);
+      const answer = await ask({ type: "command", command: "document", args: { add: { name: read.name, text: read.text } } });
+      return answer.ok ? null : answer.type === "notice" ? answer.text : "The document was not added.";
+    } catch (error) {
+      return error instanceof Error ? error.message : "The document could not be read.";
+    }
+  };
+
+  const removeDocument = async (documentId: string) => {
+    const answer = await ask({ type: "command", command: "document", args: { remove: documentId } });
+    return answer.ok ? null : answer.type === "notice" ? answer.text : "The document was not removed.";
+  };
+
+  /** The Reflection page asks for one week (a day in it); Cadence may sum up the topics, so it can take a moment. */
+  const loadReflection = async (week: string): Promise<Reflection | string> => {
+    const answer = await ask({ type: "command", command: "reflection", args: { week } });
+    if (answer.type === "notice" && answer.reflection) return answer.reflection;
+    return answer.type === "notice" && answer.text ? answer.text : "Cadence could not look at this week.";
   };
 
   const taskStatus = async (task: string, status: string) => {
@@ -265,7 +316,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
   };
 
   const why = async (question: string) => {
-    const answer = await ask({ type: "command", command: "why", args: { question } });
+    const answer = await ask({ type: "command", command: "ask", args: { question } });
     return answer.type === "notice" ? answer.text : "No answer.";
   };
 
@@ -351,45 +402,27 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     quickButton.current?.focus();
   };
   const tasks = space.state?.tasks ?? [];
-  const today = todaySummary(tasks);
+  const ownerless = tasks.filter((t) => !t.owner_id && t.status !== "done").length;
+  // Matteo, 20/11: only the actions that matter and work, nothing repeated from the pages.
   const quick: QuickGroup[] = [
     {
-      key: "ask",
+      key: "cadence",
       title: "Ask Cadence",
-      note: "Cadence steps in on its own. These are for when you want it to.",
+      note: "Cadence steps in on its own. These are for when you want it now.",
       tone: "cadence",
       entries: [
-        { key: "approach", label: "Plan together", about: "Cadence asks how you want to work, then sums up your answers.", icon: faPeopleGroup, run: go(() => void planTogether()) },
-        { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: go(() => setDialog("kickoff")) },
-        { key: "planning", label: "Plan tasks", about: "List the tasks; Cadence suggests who could take each.", icon: faListOl, run: go(() => setDialog("planning")) },
+        { key: "catchup", label: "Catch up", about: "What changed while you were away: chat, decisions, tasks.", icon: faClockRotateLeft, run: go(() => void catchUp()) },
         { key: "checkin", label: "Check-in", about: "Compare the plan with the dates and see what slips.", icon: faClipboardCheck, run: go(() => void checkin()) },
-        { key: "catchup", label: "Catch up", about: "What changed while you were away.", icon: faClockRotateLeft, run: go(() => void catchUp()) },
+        { key: "kickoff", label: "Paste the assignment", about: "Cadence proposes the goal, deliverables and milestones.", icon: faFileLines, run: go(() => setDialog("kickoff")) },
+        { key: "owners", label: "Find owners", about: "Shows every task with no owner; Cadence proposes who could take each.", icon: faUsers, badge: ownerless || undefined, run: go(() => setDialog("owners")) },
       ],
     },
     {
-      key: "dates",
-      title: "Your dates",
+      key: "plan",
+      title: "Your plan",
       entries: [
-        { key: "today", label: "Today", about: today.about, icon: faCalendarDay, badge: today.count, run: go(() => setDialog("today")) },
-        { key: "agenda", label: "Day by day", about: "Every open task and milestone by date, late first.", icon: faCalendarWeek, run: go(() => setDialog("agenda")) },
-        { key: "tasks", label: "Edit tasks", about: "Change the owner, date or status of any task.", icon: faPenToSquare, run: go(() => setDialog("tasks")) },
-        { key: "calendar", label: "Add to my calendar", about: "A private link for Google Calendar or Outlook.", icon: faCalendarCheck, run: go(() => setDialog("calendar")) },
-      ],
-    },
-    {
-      key: "memory",
-      title: "Project memory",
-      entries: [
-        { key: "why", label: "Ask why", about: "Why did the group decide something? Answered from the log.", icon: faScaleBalanced, run: go(() => setDialog("askwhy")) },
-        { key: "refresh", label: "Refresh the plan", about: "Reload the plan if something looks out of date.", icon: faRotate, run: go(() => void ask({ type: "command", command: "state" })) },
-      ],
-    },
-    {
-      key: "you",
-      title: "You",
-      entries: [
-        { key: "profile", label: "Your profile", about: "Skills and background: Cadence suggests owners from them.", icon: faUserPen, run: go(() => setDialog("profile")) },
-        { key: "tour", label: "Show the tour", about: "The quick walk-through of this screen.", icon: faCircleQuestion, run: go(() => { setView("chat"); setTouring(true); }) },
+        { key: "newtask", label: "New task", about: "Add a task; Cadence checks whether it waits on another one.", icon: faPlus, run: go(() => setDialog("newtask")) },
+        { key: "calendar", label: "Add to my calendar", about: "A file for Outlook, Google or Apple Calendar: milestones and your tasks.", icon: faCalendarCheck, run: go(() => void downloadCalendar()) },
       ],
     },
   ];
@@ -402,9 +435,14 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         <header className="console__bar">
           <h2 className="console__title">{PAGE_TITLES[view]}</h2>
           <div className="console__tools">
+            <button className="btn btn--ghost btn--small" onClick={() => setDialog("profile")}>
+              <FontAwesomeIcon icon={faUserPen} /> Your profile
+            </button>
+            <button className="btn btn--ghost btn--small" onClick={() => { setView("chat"); setTouring(true); }}>
+              <FontAwesomeIcon icon={faCircleQuestion} /> Tour
+            </button>
             <button ref={quickButton} className="btn btn--soft btn--small" aria-expanded={quickOpen} aria-controls="quick" data-tour={quickOpen ? undefined : "rail"} onClick={() => setQuickOpen(!quickOpen)}>
               <FontAwesomeIcon icon={faBolt} /> Quick access
-              {!quickOpen && today.count > 0 && <b className="quick__badge quick__badge--inline" aria-hidden="true">{capBadge(today.count)}</b>}
             </button>
           </div>
           {(space.coordinator === "unavailable" || STATUS_TEXT[status] || notice) && (
@@ -440,11 +478,31 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             />
           </>
         )}
-        {view === "tasks" && <TasksPage tasks={tasks} today={todayIso()} me={space.me?.id ?? null} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onNew={() => setDialog("newtask")} />}
+        {view === "tasks" && (
+          <TasksPage
+            tasks={tasks}
+            members={space.members}
+            today={todayIso()}
+            me={space.me?.id ?? null}
+            nameOf={(id) => nameOf(id, space)}
+            onTask={(taskId, edit) => void editTask(taskId, edit)}
+            onNew={() => setDialog("newtask")}
+            onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }}
+          />
+        )}
         {view === "decisions" && <DecisionsPage state={space.state} nameOf={(id) => nameOf(id, space)} onPlan={() => setDialog("settings")} />}
-        {view === "dependencies" && <DependenciesPage tasks={tasks} onNew={() => setDialog("newtask")} onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }} />}
+        {view === "dependencies" && (
+          <DependenciesPage
+            tasks={tasks}
+            proposals={Object.values(space.proposals)}
+            nameOf={(id) => nameOf(id, space)}
+            onNew={() => setDialog("newtask")}
+            onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }}
+            onAnswer={(proposalId, action) => void ask({ type: "click", proposalId, action })}
+          />
+        )}
         {view === "milestones" && <MilestonesPage milestones={space.state?.milestones ?? []} today={todayIso()} onMilestone={editMilestone} onNew={() => setDialog("newmilestone")} />}
-        {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} />}
+        {view === "reflection" && <ReflectionPage state={space.state} today={todayIso()} nameOf={(id) => nameOf(id, space)} onLoad={loadReflection} />}
       </main>
       {quickOpen && (
         <>
@@ -460,6 +518,9 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         goal={space.state?.charter?.goal ?? ""}
         deliverables={space.state?.charter?.deliverables ?? []}
         language={space.state?.language ?? ""}
+        documents={space.state?.documents ?? []}
+        onAddDocument={addDocument}
+        onRemoveDocument={removeDocument}
         onRename={rename}
         onCharter={editCharter}
         onLanguage={(language) => void setLanguage(language)}
@@ -486,33 +547,12 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
       ) : (
         <ProfileDialog open={dialog === "profile"} onClose={() => setDialog(null)} onSave={saveProfile} />
       )}
-      <CatchUpDialog open={dialog === "catchup"} summary={caught.summary} catchup={caught.catchup} inviteCode={space.group?.inviteCode ?? ""} onClose={() => setDialog(null)} />
+      <CatchUpDialog open={dialog === "catchup"} summary={caught.summary} catchup={caught.catchup} inviteCode={space.group?.inviteCode ?? ""} nameOf={(id) => nameOf(id, space)} onClose={closeCatchUp} />
+      <OwnersDialog open={dialog === "owners"} tasks={tasks} onClose={() => setDialog(null)} onFind={findOwners} />
       <PlanningDialog open={dialog === "planning"} members={space.members} onClose={() => setDialog(null)} onSend={planningList} />
-      <TaskRegisterDialog
-        open={dialog === "tasks"}
-        tasks={space.state?.tasks ?? []}
-        members={space.members}
-        me={space.me?.id ?? null}
-        nameOf={(id) => nameOf(id, space)}
-        onTask={(taskId, edit) => void editTask(taskId, edit)}
-        onAdd={addTask}
-        onClose={() => setDialog(null)}
-      />
-      <AgendaDialog
-        open={dialog === "agenda"}
-        tasks={space.state?.tasks ?? []}
-        milestones={space.state?.milestones ?? []}
-        members={space.members}
-        nameOf={(id) => nameOf(id, space)}
-        onTask={(taskId, edit) => void editTask(taskId, edit)}
-        onClose={() => setDialog(null)}
-      />
-      <AskWhyDialog open={dialog === "askwhy"} onClose={() => setDialog(null)} onWhy={why} />
-      <CalendarDialog open={dialog === "calendar"} onClose={() => setDialog(null)} onCalendar={() => calendarLink(token)} />
       <NewTaskDialog open={dialog === "newtask"} tasks={space.state?.tasks ?? []} members={space.members} onClose={() => setDialog(null)} onCreate={createTask} />
       <WaitsOnDialog open={dialog === "link"} tasks={space.state?.tasks ?? []} taskId={linkTask} onClose={() => setDialog(null)} onSave={saveWaitsOn} />
       <NewMilestoneDialog open={dialog === "newmilestone"} onClose={() => setDialog(null)} onCreate={createMilestone} />
-      <TodayDialog open={dialog === "today"} today={todayIso()} tasks={space.state?.tasks ?? []} nameOf={(id) => nameOf(id, space)} onTask={(taskId, edit) => void editTask(taskId, edit)} onClose={() => setDialog(null)} />
       <DeleteDialog open={dialog === "delete"} spaceName={space.group?.name ?? ""} onClose={() => setDialog(null)} onDelete={removeSpace} />
     </div>
   );

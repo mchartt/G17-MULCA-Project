@@ -4,7 +4,7 @@
 // week's chat. Everything is about the group, never about one person: no
 // per-member counts (the privacy promise: Cadence never scores or ranks people).
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { faChevronLeft, faChevronRight } from "../lib/icons";
 import type { MemberId, ProjectState, Reflection } from "../lib/types";
 import { dayLabel } from "./plan";
@@ -37,12 +37,16 @@ export function ReflectionPage({ today, onLoad }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const current = week === mondayOf(today);
+  // The parent passes a new function at every render: asking again each time would make the
+  // server refuse ("already looking") and drop the answer. Ask once per week shown.
+  const load = useRef(onLoad);
+  load.current = onLoad;
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError(null);
-    void onLoad(week).then((answer) => {
+    void load.current(week).then((answer) => {
       if (!alive) return;
       if (typeof answer === "string") setError(answer);
       else setData(answer);
@@ -51,7 +55,7 @@ export function ReflectionPage({ today, onLoad }: Props) {
     return () => {
       alive = false;
     };
-  }, [week, onLoad]);
+  }, [week]);
 
   const shown = data && data.week === week ? data : null;
   const messages = shown?.talk.reduce((sum, t) => sum + t.messages, 0) ?? 0;
@@ -81,7 +85,7 @@ export function ReflectionPage({ today, onLoad }: Props) {
             <li className="stat stat--wide">
               <span className="stat__value">{progress}%</span>
               <span className="stat__label">of the plan done ({shown.progress.done} of {shown.progress.total})</span>
-              <span className="progress progress--wide" role="progressbar" aria-label="Plan progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }} /></span>
+              <span className="meter meter--wide" role="progressbar" aria-label="Plan progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: `${progress}%` }} /></span>
             </li>
           </ul>
 

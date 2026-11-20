@@ -51,7 +51,7 @@ test("quick actions, pages and dependencies", async ({ page }) => {
 
   // The dependency page: notes on the board and the same in words; the second task waits.
   await rail.getByRole("button", { name: "Dependencies" }).click();
-  await expect(page.getByRole("button", { name: /^Test the API, To do/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Test the API .*Change what it waits on$/ })).toBeVisible();
   const list = page.getByRole("region", { name: "In words" });
   await expect(list).toContainText("Test the API");
   await expect(list.getByText("Waiting")).toBeVisible();

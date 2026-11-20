@@ -51,9 +51,9 @@ test("dependencies: every task is a note on the board, the waits are said in wor
   const onLink = vi.fn();
   const tasks = [task("a", "Build the API"), task("b", "Test the API", "todo", ["a"], 2)];
   render(<DependenciesPage tasks={tasks} proposals={[]} nameOf={names} onNew={vi.fn()} onLink={onLink} onAnswer={vi.fn()} />);
-  expect(screen.getByRole("button", { name: /^Build the API, To do, Ada/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Build the API Ada To do/ })).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Test the API waits on" })).getByText(/Build the API/)).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: /^Test the API, To do, Bruno/ }));
+  await userEvent.click(screen.getByRole("button", { name: /^Test the API Bruno Waiting/ }));
   expect(onLink).toHaveBeenCalledWith("b");
 });
 
@@ -93,7 +93,7 @@ test("tasks: four tabs; Due soon holds late and near tasks; a row opens its deta
   expect(within(screen.getByRole("tabpanel")).getByText("Recruit")).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("tab", { name: /In progress 1/ }));
-  await userEvent.click(screen.getByRole("button", { name: "Interviews: open the details" }));
+  await userEvent.click(screen.getByRole("button", { name: /^Interviews .*Open the details$/ }));
   const dialog = within(screen.getByRole("dialog", { name: "Task details" }));
   fireEvent.change(dialog.getByLabelText(/Progress/), { target: { value: "20" } });
   await userEvent.click(dialog.getByRole("button", { name: "Save" }));
@@ -104,7 +104,7 @@ test("tasks: a very long title is cut in the row and whole in its details", asyn
   const long = "A task with a title so long that it would push the owner and the date out of the row ".repeat(3).trim();
   render(<TasksPage tasks={[task("a", long, "todo", [], 1, "2026-11-20")]} members={members} today="2026-11-19" me={1} nameOf={names} onTask={vi.fn()} onNew={vi.fn()} onLink={vi.fn()} />);
   expect(screen.getByTitle(long)).toHaveClass("task-card__title");
-  await userEvent.click(screen.getByRole("button", { name: `${long}: open the details` }));
+  await userEvent.click(screen.getByRole("button", { name: new RegExp(`^${long}.*Open the details$`) }));
   expect(screen.getByLabelText("Title")).toHaveValue(long);
 });
 

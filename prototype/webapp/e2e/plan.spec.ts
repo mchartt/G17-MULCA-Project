@@ -41,7 +41,7 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
   await expect(ada.getByRole("button", { name: /^I'll take it/ })).toHaveCount(0);
 
   // A member marks a task blocked from its details.
-  await ada.getByRole("button", { name: "UI screens: open the details" }).click();
+  await ada.getByRole("button", { name: /^UI screens .*Open the details$/ }).click();
   const details = ada.getByRole("dialog", { name: "Task details" });
   await details.getByLabel("Status").selectOption("blocked");
   await details.getByRole("button", { name: "Save" }).click();

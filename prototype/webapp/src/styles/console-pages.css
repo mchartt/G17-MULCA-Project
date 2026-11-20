@@ -11,9 +11,9 @@
 .seg__item:focus-visible { outline: var(--focus); outline-offset: 2px; }
 .seg__item--alert .seg__count { background: var(--er-bg); color: var(--er); }
 .seg__count { display: inline-grid; place-items: center; min-width: 1.35rem; height: 1.35rem; padding: 0 .35rem; border-radius: var(--r-pill); background: var(--canvas); color: var(--ink2); font-size: var(--t-cap); font-weight: 600; font-variant-numeric: tabular-nums; }
-.progress { position: relative; display: inline-block; width: 4.5rem; height: .4rem; border-radius: var(--r-pill); background: var(--inset); overflow: hidden; flex: none; }
-.progress i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--act); transition: width 400ms var(--ease); }
-.progress--wide { width: 100%; height: .5rem; margin-top: .4rem; }
+.meter { position: relative; display: inline-block; width: 4.5rem; height: .4rem; border-radius: var(--r-pill); background: var(--inset); overflow: hidden; flex: none; }
+.meter i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--act); transition: width 400ms var(--ease); }
+.meter--wide { width: 100%; height: .5rem; margin-top: .4rem; }
 .due { font-size: var(--t-xs); color: var(--ink2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .due--late { color: var(--er); font-weight: 600; }
 .tag svg { margin-right: .3rem; font-size: .7em; }
@@ -35,14 +35,17 @@
 .task-card__main:focus-visible { outline: var(--focus); outline-offset: 3px; }
 .task-card__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-card__about { font-size: var(--t-xs); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-card__meta { display: flex; align-items: center; gap: .75rem; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
+/* Owner, progress and date in fixed columns, so they line up from row to row. */
+.task-card__meta { display: grid; grid-template-columns: auto 9.5rem 6.5rem 8.5rem; align-items: center; justify-items: start; gap: .75rem; min-width: 0; }
+.task-card__meta > .tag { justify-self: end; }
+.task-card__meta > :not(.tag):first-child { grid-column: 2; }
 .task-card__owner { display: inline-flex; align-items: center; gap: .4rem; max-width: 9.5rem; min-width: 0; font-size: var(--t-xs); }
 .task-card__avatar { background: var(--act); }
 .task-card__owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-card__progress { display: inline-flex; align-items: center; gap: .4rem; color: var(--ink2); font-variant-numeric: tabular-nums; }
-@media (max-width: 760px) {
+@media (max-width: 960px) {
   .task-card { grid-template-columns: auto minmax(0, 1fr); }
-  .task-card__meta { grid-column: 2; justify-content: flex-start; }
+  .task-card__meta { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: flex-start; }
 }
 .task-sheet { gap: .4rem; }
 .task-sheet__row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
@@ -62,7 +65,7 @@
 .jam-idea__mark { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 7px; background: var(--ag-solid); color: #fff; font-size: var(--t-cap); font-weight: 700; }
 @media (max-width: 640px) { .jam-idea { grid-template-columns: auto minmax(0, 1fr); } .jam-idea .btn { grid-column: 2; justify-self: start; } }
 .jam { position: relative; border-radius: var(--r-dialog); border: 1px solid var(--line-s); overflow: hidden; background: var(--surface); }
-.jam__tools { position: absolute; z-index: 2; top: .6rem; right: .6rem; display: flex; gap: .35rem; align-items: center; padding: .3rem; border-radius: var(--r-pill); background: var(--glass); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: var(--shadow-soft), 0 0 0 1px var(--line-s); }
+.jam__tools { display: flex; gap: .35rem; align-items: center; justify-content: flex-end; padding: .45rem .6rem; border-bottom: 1px solid var(--line-s); background: var(--surface); }
 .jam__tools .btn--round { width: 2rem; height: 2rem; }
 .jam__zoom { min-width: 2.8rem; text-align: center; font-variant-numeric: tabular-nums; color: var(--ink2); }
 .jam__board {
@@ -92,7 +95,7 @@
 .note__foot { display: flex; justify-content: space-between; gap: .5rem; font-size: var(--t-cap); color: rgba(21, 24, 30, .7); }
 .note__foot span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .note__foot span:last-child { flex: none; font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .note, .progress i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .note, .meter i { transition: none; } }
 
 /* ---------- Plan and decisions ---------- */
 .goal-card { padding: 1.2rem 1.4rem; border-radius: var(--r-dialog); background: var(--surface); border: 1px solid var(--line-s); box-shadow: var(--shadow-soft); display: grid; gap: .5rem; }
@@ -132,7 +135,7 @@
 .stat--warn .stat__value { color: var(--er); }
 @media (max-width: 960px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stat--wide { grid-column: 1 / -1; } }
 .reflection__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: .8rem; align-items: start; }
-.reflect { padding: 1rem 1.1rem; display: grid; gap: .5rem; min-width: 0; }
+.reflect { padding: 1rem 1.1rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; min-width: 0; align-content: start; }
 .reflect h3 { font-size: var(--t-sm); }
 .reflect h4 { font-size: var(--t-xs); color: var(--ink2); margin-top: .4rem; }
 .reflect__list { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem; font-size: var(--t-sm); }

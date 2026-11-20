@@ -41,8 +41,13 @@ function keepPositions(positions: Record<string, Point>) {
 }
 
 /** Where each note starts: linked tasks by layer, the others in a block below. */
-export function startPositions(tasks: Task[]): Record<string, Point> {
-  const { nodes, rows } = layoutDependencies(tasks);
+export function startPositions(tasks: Task[], ideas: { from: string; to: string }[] = []): Record<string, Point> {
+  // Cadence's suggested links count for the layout too, so a suggested pair sits side by side.
+  const withIdeas = tasks.map((t) => {
+    const extra = ideas.filter((i) => i.to === t.task_id).map((i) => i.from);
+    return extra.length ? { ...t, depends_on: [...new Set([...(t.depends_on ?? []), ...extra])] } : t;
+  });
+  const { nodes, rows } = layoutDependencies(withIdeas);
   const out: Record<string, Point> = {};
   for (const n of nodes) out[n.id] = { x: PAD + n.layer * COL, y: PAD + n.row * ROW };
   const rest = tasks.filter((t) => t.task_id && !out[t.task_id]);
@@ -142,7 +147,7 @@ export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onAn
 }
 
 function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggestion[]; nameOf: (id?: MemberId | null) => string | undefined; onLink: (taskId: string) => void }) {
-  const auto = useMemo(() => startPositions(tasks), [tasks]);
+  const auto = useMemo(() => startPositions(tasks, ideas), [tasks, ideas]);
   const [moved, setMoved] = useState<Record<string, Point>>(savedPositions);
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
   const drag = useRef<{ kind: "note" | "pan"; id?: string; start: Point; origin: Point; moved: boolean } | null>(null);
@@ -195,13 +200,22 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
     setTimeout(fit, 0);
   };
 
+  /** An arrow from the note that is needed to the one that waits, leaving from the side that faces it. */
   const curve = (a: Point, b: Point) => {
-    const x1 = a.x + NOTE_W;
-    const y1 = a.y + NOTE_H / 2;
-    const x2 = b.x;
-    const y2 = b.y + NOTE_H / 2;
-    const bend = Math.max(40, Math.abs(x2 - x1) / 2);
-    return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+    if (b.x >= a.x + NOTE_W * 0.75) {
+      const x1 = a.x + NOTE_W, y1 = a.y + NOTE_H / 2, x2 = b.x, y2 = b.y + NOTE_H / 2;
+      const bend = Math.max(40, (x2 - x1) / 2);
+      return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+    }
+    if (b.x + NOTE_W * 0.75 <= a.x) {
+      const x1 = a.x, y1 = a.y + NOTE_H / 2, x2 = b.x + NOTE_W, y2 = b.y + NOTE_H / 2;
+      const bend = Math.max(40, (x1 - x2) / 2);
+      return `M ${x1} ${y1} C ${x1 - bend} ${y1}, ${x2 + bend} ${y2}, ${x2} ${y2}`;
+    }
+    const down = b.y >= a.y;
+    const x1 = a.x + NOTE_W / 2, y1 = down ? a.y + NOTE_H : a.y, x2 = b.x + NOTE_W / 2, y2 = down ? b.y : b.y + NOTE_H;
+    const bend = Math.max(30, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
+    return `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`;
   };
   const size = tasks.reduce((s, t) => {
     const p = pos(t.task_id!);
@@ -249,7 +263,6 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
                 className={`note note--${status}`}
                 style={{ left: p.x, top: p.y, width: NOTE_W, height: NOTE_H, ["--tilt" as string]: `${((i % 5) - 2) * 0.6}deg` }}
                 onPointerDown={(e) => down(e, "note", t.task_id!)}
-                aria-label={`${t.title}, ${STATUS_NAMES[t.status] ?? t.status}${owner ? `, ${owner}` : ""}. Change what it waits on`}
                 title={t.title}
               >
                 <span className="note__title">{t.title}</span>
@@ -257,6 +270,7 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
                   <span>{owner ?? "No owner"}</span>
                   <span>{status === "waiting" ? "Waiting" : STATUS_NAMES[t.status] ?? t.status}</span>
                 </span>
+                <span className="sr-only">Change what it waits on</span>
               </button>
             );
           })}

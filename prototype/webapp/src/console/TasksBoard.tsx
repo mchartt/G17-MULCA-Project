@@ -96,11 +96,12 @@ export function TasksPage({ tasks, members, today, me, nameOf, onTask, onNew, on
               return (
                 <li key={t.task_id ?? t.title} className={`task-card${t.status === "done" ? " task-card--done" : ""}`}>
                   {t.task_id && <DoneBox task={t} onTask={onTask} />}
-                  <button className="task-card__main" onClick={() => setOpen(t.task_id ?? null)} disabled={!t.task_id} aria-label={`${t.title}: open the details`}>
+                  <button className="task-card__main" onClick={() => setOpen(t.task_id ?? null)} disabled={!t.task_id}>
                     <span className="task-card__title" title={t.title}>{t.title}</span>
                     <span className="task-card__about">
                       {t.description ? t.description : <span className="muted">No description</span>}
                     </span>
+                    <span className="sr-only">Open the details</span>
                   </button>
                   <div className="task-card__meta">
                     {t.status === "blocked" && <span className="tag tag--warn"><FontAwesomeIcon icon={faFlag} /> Blocked</span>}
@@ -117,7 +118,7 @@ export function TasksPage({ tasks, members, today, me, nameOf, onTask, onNew, on
                       <span className="muted small">No owner</span>
                     )}
                     <span className="task-card__progress" title={`${progress}% done`}>
-                      <span className="progress" role="progressbar" aria-label={`${t.title}: progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+                      <span className="meter" role="progressbar" aria-label={`${t.title}: progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
                         <i style={{ width: `${progress}%` }} />
                       </span>
                       <span className="small">{progress}%</span>

@@ -139,6 +139,9 @@ class ScriptedModel:
 
     async def _create(self, **kwargs):
         name = kwargs["response_format"]["json_schema"]["name"]
+        if name == "project_answer" and "take your time" in kwargs["messages"][1]["content"]:
+            # SCRIPTED delay: lets the browser test see "Cadence is thinking…" (thinking.spec.ts).
+            await asyncio.sleep(2.5)
         content = json.dumps(scripted(name, kwargs["messages"][1]["content"]))
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))], usage=None)
 

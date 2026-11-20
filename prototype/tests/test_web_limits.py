@@ -113,6 +113,20 @@ async def test_a_follow_up_right_after_cadence_answered_is_offered_to_it(stack):
     await tab.ws.close()
 
 
+async def test_a_sure_call_shows_cadence_thinking_until_its_answer_is_in_the_chat(stack):
+    hub, _, http, ws_url = stack
+    async with httpx.AsyncClient(base_url=http) as api:
+        ada = (await api.post("/api/groups", json={"groupName": "Team 17", "displayName": "Ada"})).json()
+    tab = await Tab.open(ws_url, ada["token"])
+    await tab.send(type="message", text="cadence who does the slides?")
+    await tab.wait_for(lambda e: e["type"] == "typing" and e["on"] is False)
+    kinds = [("typing", e["on"]) if e["type"] == "typing" else ("agent", None)
+             for e in tab.seen
+             if e["type"] == "typing" or (e["type"] == "message" and e["message"]["author"] is None)]
+    assert kinds == [("typing", True), ("agent", None), ("typing", False)]
+    await tab.ws.close()
+
+
 async def test_helpful_click_passes_through_and_is_answered(stack):
     hub, _, http, ws_url = stack
     async with httpx.AsyncClient(base_url=http) as api:
@@ -155,3 +169,25 @@ async def test_delete_space_keeps_everything_when_the_server_part_fails(tmp_path
         failed = await api.post("/api/groups/delete", json={"confirm": "Team 17"}, headers={"Authorization": f"Bearer {ada['token']}"})
         assert failed.status_code == 502
         assert hub.store.group_by_code(ada["inviteCode"]) is not None
+
+
+async def test_a_group_with_a_deadline_close_is_woken_for_a_progress_assessment(stack):
+    """CS6: after an adapter restart a group nobody opens still gets its assessment."""
+    from datetime import date
+
+    hub, _, http, ws_url = stack
+    async with httpx.AsyncClient(base_url=http) as api:
+        ada = (await api.post("/api/groups", json={"groupName": "Team 17", "displayName": "Ada"})).json()
+        far = (await api.post("/api/groups", json={"groupName": "Team 18", "displayName": "Bea"})).json()
+    near_id = hub.store.member_by_token(ada["token"]).group_id
+    far_id = hub.store.member_by_token(far["token"]).group_id
+    member = hub.store.member_by_token(ada["token"]).id
+    hub.calendar.save_state(near_id, {"tasks": [{"task_id": "t1", "title": "Dashboard", "owner_id": member,
+                                                  "due_date": "2026-11-25", "status": "todo"}]})
+    hub.calendar.save_state(far_id, {"tasks": [{"task_id": "t2", "title": "Slides", "owner_id": member,
+                                                 "due_date": "2026-12-20", "status": "todo"},
+                                                {"task_id": "t3", "title": "Done", "owner_id": member,
+                                                 "due_date": "2026-11-25", "status": "done"}]})
+    assert hub.groups_with_close_deadlines(date(2026, 11, 24)) == [near_id]
+    # The command reaches MUCA-Server and is answered (an empty notice: nothing to ask here).
+    assert await hub.wake_due_groups(date(2026, 11, 24)) == 1

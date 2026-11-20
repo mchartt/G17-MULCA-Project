@@ -57,8 +57,9 @@ SERVER_NAME_MENTION = "@MULCA"
 # cadence?", see addressing.py) is answered by the coordinator from
 # everything the project holds (command "ask"), not by the lab's agent, which
 # cannot read the plan. For a short while after Cadence answered, the next
-# messages are offered to it as "maybe": it answers a follow-up and stays
-# silent when the members talk among themselves. Only routing: no state change.
+# messages are offered to it as "maybe" (and only to it): it answers a
+# follow-up and stays silent when the members talk among themselves. Only
+# routing: no state change.
 MAX_QUESTION_CHARS = MAX_ADDRESSED_CHARS
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
@@ -273,9 +274,12 @@ class WebHub:
             await self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True)
             return
         if self._follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
-            # Maybe for Cadence: offered to it (it may stay silent), and also kept in the
-            # group's normal chat below, so the server's history sees it either way.
-            asyncio.create_task(self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True))
+            # Maybe for Cadence: offered to it only (it may stay silent; the server
+            # keeps the line in the chat's memory either way). Not sent on as
+            # user_text too: in the 20/11 test space the lab's agent answered these
+            # a second time, in English and without sources.
+            await self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True)
+            return
 
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
@@ -302,6 +306,8 @@ class WebHub:
                 logger.exception("follow-up offered to Cadence failed")
                 return
             raise
+        if maybe and answer.get("ok") is False:
+            return  # e.g. "already working on a request": never shown for a message not sent to Cadence
         text = answer.get("text") or ("" if maybe else UNAVAILABLE)
         if not text:
             return

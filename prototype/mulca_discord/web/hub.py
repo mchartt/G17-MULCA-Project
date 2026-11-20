@@ -108,11 +108,10 @@ class WebChannel:
         stored = self._hub.store.add_message(self._group.id, None, text)
         reply = WebReply(self, stored.id, text)
         await self._hub.broadcast(self._group.id, {"type": "message", "message": self._hub.message_json(stored)})
-        # Cadence spoke, asked or not (an answer, a CS6 progress question): the
-        # next messages are offered to it as "maybe", so "tutto bene, manca solo
-        # un controllo" reaches the coordinator. The server lets only one
-        # responder answer such a message (R10).
-        self._hub.follow_ups.answered(str(self._group.id))
+        # Not a follow-up window here: an unasked message (the plan opener's
+        # question, a CS6 progress question) is answered in the normal chat, so
+        # the reply goes on as user_text and the server routes it (the opener
+        # hears it; MUCA-Server reads a reply to a progress question however late).
         return reply
 
     async def update(self, reply: WebReply) -> None:

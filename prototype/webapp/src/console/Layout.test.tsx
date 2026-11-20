@@ -65,3 +65,13 @@ test("the rail shows three members; the whole team opens in a popup with a searc
   expect(onMember).toHaveBeenCalledWith(8);
   expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
 });
+
+test("a task finished more than an hour ago counts as gone; one finished now does not", async () => {
+  const { finishedLongAgo } = await import("./plan");
+  const now = Date.UTC(2026, 10, 20, 15);
+  const at = (minutes: number) => (now - minutes * 60_000) / 1000;
+  expect(finishedLongAgo({ task_id: "a", title: "A", status: "done", done_at: at(61) }, now)).toBe(true);
+  expect(finishedLongAgo({ task_id: "a", title: "A", status: "done", done_at: at(59) }, now)).toBe(false);
+  expect(finishedLongAgo({ task_id: "a", title: "A", status: "done", done_at: null }, now)).toBe(true); // no time kept: old
+  expect(finishedLongAgo({ task_id: "a", title: "A", status: "doing" }, now)).toBe(false);
+});

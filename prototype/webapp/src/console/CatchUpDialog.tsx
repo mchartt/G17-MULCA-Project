@@ -48,13 +48,15 @@ export function CatchUpDialog({ open, summary, catchup, inviteCode, nameOf, onSi
   const [from, setFrom] = useState<string>("");
 
   const loading = !summary;
-  const topics = catchup?.topics ?? [];
+  // The recap (new servers), or the topics alone (older ones).
+  const recap = catchup?.recap ?? { overview: "", topics: catchup?.topics ?? [], open: [] };
   const done = catchup?.tasks_done ?? [];
   const added = catchup?.tasks_added ?? [];
   const places = [
     ...(catchup?.here && catchup.here.messages.length ? [{ place: catchup.here, title: "In this chat" }] : []),
     ...(catchup?.elsewhere ?? []).filter((p) => p.messages.length > 0).map((p) => ({ place: p, title: `On ${CHANNEL_NAMES[p.channel] ?? p.channel}` })),
   ];
+  const said = places.reduce((sum, p) => sum + p.place.total, 0);
   const owner = (ownerId?: MemberId | null) => (ownerId ? <span className="muted"> · {nameOf(ownerId) ?? "a member"}</span> : null);
 
   return (
@@ -72,7 +74,7 @@ export function CatchUpDialog({ open, summary, catchup, inviteCode, nameOf, onSi
         </div>
         {catchup?.since !== undefined && !loading && <p className="muted small">Since {day(catchup.since)}.</p>}
 
-        <p role="status" className="catchup__line">{loading ? "Cadence is reading what happened…" : summary}</p>
+        <p role="status" className="catchup__line">{loading ? "Cadence is reading the chat and summing it up…" : summary}</p>
 
         {catchup && !catchup.linked && (
           <p className="muted small">
@@ -80,13 +82,26 @@ export function CatchUpDialog({ open, summary, catchup, inviteCode, nameOf, onSi
           </p>
         )}
 
-        {topics.length > 0 && (
+        {catchup && (
           <section className="catchup__brief" aria-labelledby={`${id}-brief`}>
             <h3 id={`${id}-brief`}>In brief</h3>
-            <ul>
-              {topics.map((t) => <li key={t.title}><strong>{t.title}</strong>: {t.summary}</li>)}
-            </ul>
-            <p className="catchup__by small">Summed up by Cadence from these messages only. The facts below come from the plan and the decision log.</p>
+            {recap.overview && <p className="catchup__overview">{recap.overview}</p>}
+            {recap.topics.length > 0 && (
+              <ul>{recap.topics.map((t) => <li key={t.title}><strong>{t.title}</strong>: {t.summary}</li>)}</ul>
+            )}
+            {recap.open.length > 0 && (
+              <>
+                <h4>Still open</h4>
+                <ul>{recap.open.map((q) => <li key={q}>{q}</li>)}</ul>
+              </>
+            )}
+            {said === 0 ? (
+              <p className="muted small">Nobody wrote in the chat since then.</p>
+            ) : !recap.overview && recap.topics.length === 0 ? (
+              <p className="muted small">Nothing to sum up in these {said} message{said === 1 ? "" : "s"}: they are below.</p>
+            ) : (
+              <p className="catchup__by small">Summed up by Cadence from these messages only. The facts below come from the plan and the decision log.</p>
+            )}
           </section>
         )}
 

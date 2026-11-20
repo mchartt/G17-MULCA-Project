@@ -76,3 +76,23 @@ test("the empty chat says what Cadence does in plain words, without teaching @ o
   expect(screen.getByText(/Nothing changes until one of you clicks/)).toBeInTheDocument();
   expect(screen.queryByText(/Type \/ to see the commands/)).toBeNull();
 });
+
+test("a card about a task finished more than an hour ago leaves the chat; one finished just now stays", () => {
+  const now = Date.now() / 1000;
+  const card = (id: string, taskId: string) => ({
+    proposal_id: id, kind: "blocker", status: "applied",
+    payload: { context: { strategy_id: "cs7_blockers_dependencies", topic: id, evidence: [] }, task_id: taskId, title: `Task ${taskId}` },
+  });
+  const space = {
+    ...emptySpace,
+    state: { tasks: [
+      { task_id: "old", title: "Old", status: "done", done_at: now - 7200 },
+      { task_id: "new", title: "New", status: "done", done_at: now - 60 },
+    ] },
+    proposals: { p1: card("p1", "old"), p2: card("p2", "new") },
+    timeline: [{ kind: "proposal", id: "p1" }, { kind: "proposal", id: "p2" }],
+  } as unknown as Space;
+  open(space);
+  expect(screen.queryByText("Task old")).toBeNull();
+  expect(screen.getByText("Task new")).toBeInTheDocument();
+});

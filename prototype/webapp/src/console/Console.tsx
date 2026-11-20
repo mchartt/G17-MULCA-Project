@@ -211,6 +211,14 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     if (error) setNotice(error);
   };
 
+  /** Pulled off the board: `to` stops waiting on `from`. */
+  const disconnect = async (from: string, to: string) => {
+    const waiting = space.state?.tasks?.find((t) => t.task_id === to);
+    if (!waiting?.depends_on?.includes(from)) return;
+    const error = await saveWaitsOn(to, waiting.depends_on.filter((d) => d !== from));
+    if (error) setNotice(error);
+  };
+
   const addTask = async (task: NewTask) => {
     const args: Record<string, unknown> = { add: task.title, owner: task.owner ?? "", due: task.due ?? "" };
     if (task.description) args.description = task.description;
@@ -506,6 +514,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
             onNew={() => setDialog("newtask")}
             onLink={(taskId) => { setLinkTask(taskId); setDialog("link"); }}
             onConnect={(from, to) => void connect(from, to)}
+            onDisconnect={(from, to) => void disconnect(from, to)}
             onAnswer={(proposalId, action) => void ask({ type: "click", proposalId, action })}
           />
         )}

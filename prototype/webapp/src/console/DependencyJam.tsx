@@ -19,6 +19,7 @@ const NOTE_H = 112;
 const COL = 260;
 const ROW = 148;
 const PAD = 40;
+const PORT = 18; // diameter of the dots on the notes
 const STORE = "cadence.jam";
 
 type Point = { x: number; y: number };
@@ -79,10 +80,12 @@ type Props = {
   onLink: (taskId: string | null) => void;
   /** Drawn on the board: `to` now waits on `from` too. */
   onConnect?: (from: string, to: string) => void;
+  /** Pulled off the board: `to` no longer waits on `from`. */
+  onDisconnect?: (from: string, to: string) => void;
   onAnswer: (proposalId: string, action: "confirm" | "not_now") => void;
 };
 
-export function DependenciesPage({ tasks: allTasks, proposals, nameOf, onNew, onLink, onConnect, onAnswer }: Props) {
+export function DependenciesPage({ tasks: allTasks, proposals, nameOf, onNew, onLink, onConnect, onDisconnect, onAnswer }: Props) {
   // A task finished more than an hour ago leaves the board and the list (Matteo, 20/11); a switch shows them again.
   const now = useNow();
   const [showFinished, setShowFinished] = useState(false);
@@ -127,7 +130,7 @@ export function DependenciesPage({ tasks: allTasks, proposals, nameOf, onNew, on
       {withIds.length === 0 ? (
         <p className="muted register__empty">No tasks yet. Add one with “New task”; when tasks need each other, Cadence suggests the link here.</p>
       ) : (
-        <Board tasks={withIds} ideas={ideas} nameOf={nameOf} onLink={onLink} onConnect={onConnect} />
+        <Board tasks={withIds} ideas={ideas} nameOf={nameOf} onLink={onLink} onConnect={onConnect} onDisconnect={onDisconnect} />
       )}
 
       <section className="page__section" aria-labelledby="deps-list">
@@ -173,16 +176,18 @@ export function DependenciesPage({ tasks: allTasks, proposals, nameOf, onNew, on
   );
 }
 
-function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ideas: Suggestion[]; nameOf: (id?: MemberId | null) => string | undefined; onLink: (taskId: string) => void; onConnect?: (from: string, to: string) => void }) {
+function Board({ tasks, ideas, nameOf, onLink, onConnect, onDisconnect }: { tasks: Task[]; ideas: Suggestion[]; nameOf: (id?: MemberId | null) => string | undefined; onLink: (taskId: string) => void; onConnect?: (from: string, to: string) => void; onDisconnect?: (from: string, to: string) => void }) {
   const auto = useMemo(() => startPositions(tasks, ideas), [tasks, ideas]);
   const [moved, setMoved] = useState<Record<string, Point>>(savedPositions);
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
-  const drag = useRef<{ kind: "note" | "pan" | "wire"; id?: string; start: Point; origin: Point; moved: boolean } | null>(null);
+  const drag = useRef<{ kind: "note" | "pan" | "wire" | "cut"; id?: string; waits?: string; start: Point; origin: Point; moved: boolean } | null>(null);
   // A link being drawn: from the dot of a note to the pointer (canvas coordinates).
-  const [wire, setWire] = useState<{ from: string; to: Point; over: string | null } | null>(null);
+  // `cut` is the waiting note whose existing link is being pulled off by its end dot.
+  const [wire, setWire] = useState<{ from: string; to: Point; over: string | null; cut?: string } | null>(null);
   const board = useRef<HTMLDivElement>(null);
   const pos = (id: string): Point => moved[id] ?? auto[id] ?? { x: PAD, y: PAD };
   const waiting = new Set(waitingOn(tasks).filter((w) => w.waiting).map((w) => w.task.task_id));
+  const titles = new Map(tasks.map((t) => [t.task_id!, t.title]));
 
   const edges = tasks.flatMap((t) => (t.depends_on ?? []).filter((d) => auto[d] || moved[d]).map((d) => ({ from: d, to: t.task_id!, done: tasks.find((x) => x.task_id === d)?.status === "done" })));
 
@@ -207,13 +212,13 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
   const noteAt = (e: { clientX: number; clientY: number }) =>
     (document.elementFromPoint?.(e.clientX, e.clientY)?.closest("[data-task]") as HTMLElement | null)?.dataset.task ?? null;
 
-  const down = (e: ReactPointerEvent, kind: "note" | "pan" | "wire", id?: string) => {
+  const down = (e: ReactPointerEvent, kind: "note" | "pan" | "wire" | "cut", id?: string, waits?: string) => {
     if (e.button !== 0) return;
-    if (kind === "wire" && id) {
+    if ((kind === "wire" || kind === "cut") && id) {
       e.stopPropagation();
-      drag.current = { kind, id, start: { x: e.clientX, y: e.clientY }, origin: pos(id), moved: false };
+      drag.current = { kind, id, waits, start: { x: e.clientX, y: e.clientY }, origin: pos(id), moved: false };
       (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-      setWire({ from: id, to: onCanvas(e), over: null });
+      setWire({ from: id, to: onCanvas(e), over: null, cut: waits });
       return;
     }
     const origin = kind === "note" && id ? pos(id) : { x: view.x, y: view.y };
@@ -227,9 +232,9 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
     const dx = e.clientX - d.start.x;
     const dy = e.clientY - d.start.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
-    if (d.kind === "wire") {
+    if (d.kind === "wire" || d.kind === "cut") {
       const over = noteAt(e);
-      setWire({ from: d.id!, to: onCanvas(e), over: over && over !== d.id ? over : null });
+      setWire({ from: d.id!, to: onCanvas(e), over: over && over !== d.id ? over : null, cut: d.waits });
       return;
     }
     if (d.kind === "pan") setView((v) => ({ ...v, x: d.origin.x + dx, y: d.origin.y + dy }));
@@ -244,6 +249,14 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
       if (target && target !== d.id) onConnect?.(d.id!, target);
       return;
     }
+    if (d?.kind === "cut") {
+      // Pulled off and let go in the open: the link is removed. Let go on any note (or cancel the
+      // drag) and the link snaps back unchanged.
+      const target = e ? noteAt(e) : null;
+      setWire(null);
+      if (d.moved && e && !target) onDisconnect?.(d.id!, d.waits!);
+      return;
+    }
     if (d?.kind === "note" && d.moved) keepPositions(moved);
     if (d?.kind === "note" && !d.moved && d.id) onLink(d.id);
   };
@@ -256,23 +269,30 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
     setTimeout(fit, 0);
   };
 
-  /** An arrow from the note that is needed to the one that waits, leaving from the side that faces it. */
-  const curve = (a: Point, b: Point) => {
+  /**
+   * An arrow from the note that is needed to the one that waits, leaving from the side that faces it.
+   * `end` is where the arrow meets the waiting note: the line stops one dot-radius short of it so the
+   * arrowhead touches the dot that sits there (the dot that disconnects the link).
+   */
+  const route = (a: Point, b: Point): { d: string; end: Point } => {
+    const R = PORT / 2;
     if (b.x >= a.x + NOTE_W * 0.75) {
       const x1 = a.x + NOTE_W, y1 = a.y + NOTE_H / 2, x2 = b.x, y2 = b.y + NOTE_H / 2;
       const bend = Math.max(40, (x2 - x1) / 2);
-      return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+      return { d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - R - bend} ${y2}, ${x2 - R} ${y2}`, end: { x: x2, y: y2 } };
     }
     if (b.x + NOTE_W * 0.75 <= a.x) {
       const x1 = a.x, y1 = a.y + NOTE_H / 2, x2 = b.x + NOTE_W, y2 = b.y + NOTE_H / 2;
       const bend = Math.max(40, (x1 - x2) / 2);
-      return `M ${x1} ${y1} C ${x1 - bend} ${y1}, ${x2 + bend} ${y2}, ${x2} ${y2}`;
+      return { d: `M ${x1} ${y1} C ${x1 - bend} ${y1}, ${x2 + R + bend} ${y2}, ${x2 + R} ${y2}`, end: { x: x2, y: y2 } };
     }
     const down = b.y >= a.y;
     const x1 = a.x + NOTE_W / 2, y1 = down ? a.y + NOTE_H : a.y, x2 = b.x + NOTE_W / 2, y2 = down ? b.y : b.y + NOTE_H;
     const bend = Math.max(30, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
-    return `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`;
+    const ye = down ? y2 - R : y2 + R;
+    return { d: `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${ye - bend}, ${x2} ${ye}`, end: { x: x2, y: y2 } };
   };
+  const curve = (a: Point, b: Point) => route(a, b).d;
   const size = tasks.reduce((s, t) => {
     const p = pos(t.task_id!);
     return { w: Math.max(s.w, p.x + NOTE_W + PAD), h: Math.max(s.h, p.y + NOTE_H + PAD) };
@@ -302,7 +322,7 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
               <marker id="jam-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" className="jam__head" /></marker>
               <marker id="jam-arrow-idea" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" className="jam__head jam__head--idea" /></marker>
             </defs>
-            {edges.map((e) => (
+            {edges.filter((e) => !(wire?.cut === e.to && wire.from === e.from)).map((e) => (
               <g key={`${e.from}-${e.to}`} className="jam__link">
                 {/* A wide invisible stroke makes the arrow easy to click: it opens the waiting task's links. */}
                 <path d={curve(pos(e.from), pos(e.to))} className="jam__hit" onPointerDown={(ev) => ev.stopPropagation()} onClick={() => onLink(e.to)} />
@@ -349,10 +369,27 @@ function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ide
               <span
                 key={`port-${t.task_id}`}
                 className="jam__port"
-                style={{ left: p.x + NOTE_W - 9, top: p.y + NOTE_H / 2 - 9 }}
+                style={{ left: p.x + NOTE_W - PORT / 2, top: p.y + NOTE_H / 2 - PORT / 2 }}
                 title={`Drag onto the task that waits on “${t.title}”`}
                 aria-hidden="true"
                 onPointerDown={(e) => down(e, "wire", t.task_id!)}
+              />
+            );
+          })}
+          {/* The other end of each arrow: a dot where it meets the waiting note. Pull it off into the open to disconnect. */}
+          {onDisconnect && edges.map((e) => {
+            const end = route(pos(e.from), pos(e.to)).end;
+            // Kept in the page while pulled (it holds the pointer), only hidden: the draft line takes its place.
+            const lifted = wire?.cut === e.to && wire.from === e.from;
+            return (
+              <span
+                key={`end-${e.from}-${e.to}`}
+                className={`jam__port jam__port--end${lifted ? " jam__port--lifted" : ""}`}
+                data-end={`${e.from}>${e.to}`}
+                style={{ left: end.x - PORT / 2, top: end.y - PORT / 2 }}
+                title={`Drag away to stop “${titles.get(e.to)}” waiting on “${titles.get(e.from)}”`}
+                aria-hidden="true"
+                onPointerDown={(ev) => down(ev, "cut", e.from, e.to)}
               />
             );
           })}

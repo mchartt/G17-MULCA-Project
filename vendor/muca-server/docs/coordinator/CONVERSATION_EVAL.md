@@ -156,8 +156,33 @@ messages for Cadence to the coordinator like the web app (one rule,
 `addressing.for_cadence`); a message to Cadence is still mirrored to the
 group's linked channels (`args.said`).
 
-Not done here (decisions needed): soft delete / restore of tasks (schema
-change), reverting a confirmed change, milestone reschedule and dependency
-removal by chat, cancelling a pending card by chat. Pre-existing flaky test:
+After review: Discord says "unavailable" when the server fails (it said the
+answer would come); Discord and Slack give up visibly on a late answer after
+180 s, like the web; the web banner is reset by the server on reconnect
+(`hello.thinking`); the web answers in the background, one group's answers in
+order, so a message typed under the banner is shown at once.
+
+A "maybe" Cadence stays silent on now goes on as ordinary chat (the
+conversation logs it, the proactive judge reads it). Before, every message for
+180 s after an answer or a card skipped CS3/CS5/CS7: the e2e specs
+`plan.spec` (CS3 "Think-aloud or SUS?") and `opener.spec` failed on HEAD
+for this reason; both pass now.
+
+Proof on this branch: pytest server 764, client 379; Vitest 167; Playwright
+e2e 16/16 (HEAD: 3 failing, same stack); axe 0 violations on 5 screens
+(`e2e/axe.mjs` opened the landing for the sign-up form, now on /login).
+
+Known limits (decisions for Matteo):
+- Discord/Slack: an @mention of the bot or a sure call goes to the
+  coordinator only, so it no longer reaches the lab agent (its web search
+  included), and a message Cadence answers is not judged by CS5/CS7 too.
+- Silence on talk ABOUT Cadence rests on the prompt (MAYBE_NOTE): NOT VERIFIED
+  with a real model. Earlier corpora showed the prompt alone did not always
+  hold such rules.
+
+NOT IMPLEMENTED (fit the existing action → card → click pattern): milestone
+reschedule by chat, dependency removal by chat, cancelling a pending card by
+chat ("annulla la proposta"), reverting the last confirmed change ("annulla
+l'ultima modifica"). Need a data decision: soft delete / restore of tasks. Pre-existing flaky test:
 `test_a_blocker_replaces_an_owner_card_still_being_drafted` (sleep 0.05 s)
 fails only under load; 12/12 sequential on HEAD and on this branch.

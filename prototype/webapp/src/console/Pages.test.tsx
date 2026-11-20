@@ -135,3 +135,16 @@ test("reflection: an error from the server is said", async () => {
   render(<ReflectionPage state={null} today="2026-11-19" nameOf={names} onLoad={vi.fn().mockResolvedValue("Cadence is not available.")} />);
   expect(await screen.findByRole("alert")).toHaveTextContent("Cadence is not available.");
 });
+
+test("dependencies: each link says where it came from, or that its origin is not recorded", () => {
+  const tasks = [
+    task("d", "Dati su cui si basa il RASD", "todo", [], 2),
+    task("m", "Create first mockup"),
+    { ...task("r", "Rivedere e correggere il RASD", "todo", ["d", "m"]),
+      dependency_sources: { d: "card 9381bb8f2fa6: “Mathias deve mandarmi prima i dati” (Matteo)" } },
+  ];
+  render(<DependenciesPage tasks={tasks} proposals={[]} nameOf={names} onNew={vi.fn()} onLink={vi.fn()} onAnswer={vi.fn()} />);
+  const needs = within(screen.getByRole("list", { name: "Rivedere e correggere il RASD waits on" }));
+  expect(needs.getByText("Linked from a card: “Mathias deve mandarmi prima i dati” (Matteo)")).toBeInTheDocument();
+  expect(needs.getByText("Origin of this link not recorded")).toBeInTheDocument();
+});

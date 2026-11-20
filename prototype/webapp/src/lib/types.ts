@@ -98,6 +98,8 @@ export type Proposal = {
     // CS7 v2 (blocker) and K3 (revisit)
     certainty?: "blocked" | "possible";
     depends_on_title?: string;
+    /** CS7: the member the chat named as the one who delivers the work it waits on (owner of that new task). */
+    depends_on_owner_id?: MemberId | null;
     ways_forward?: string[];
     choice?: string;
     reason?: string;
@@ -121,6 +123,8 @@ export type ProjectState = {
     due_date?: string | null;
     description?: string;
     depends_on?: string[];
+    /** Where each link came from (task it waits on -> "card <id>: <chat line>", "by hand (<member>)"); missing = not known. */
+    dependency_sources?: Record<string, string>;
     /** 0-100, set by a member; 100 when done. */
     progress?: number;
     created_at?: number | null;

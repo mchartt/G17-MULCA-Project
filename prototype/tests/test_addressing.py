@@ -49,3 +49,39 @@ def test_follow_ups_last_a_few_minutes_after_cadence_answered():
     assert not follow.is_follow_up("g1", "   ")
     now[0] = 200
     assert not follow.is_follow_up("g1", "and by when?")
+
+
+def test_a_clear_call_is_sure_a_passing_mention_is_only_maybe():
+    """Matteo, 20/11: "Cadence ieri ha risposto male" talks about Cadence; it is offered as maybe, never a sure call."""
+    from mulca_discord.addressing import call
+
+    sure = [
+        "Cadence, come procede il progetto?",
+        "Ehi cadence, controlli le scadenze?",
+        "@Cadence chi segue il frontend?",
+        "Cadence?",
+        "Coordinator, mi fai un riepilogo?",
+        "cadence chi si occupa delle API?",
+        "vero, Cadence?",
+        "cadence: aggiungi la dipendenza",
+    ]
+    maybe = [
+        "Cadence ieri ha risposto male.",
+        "cadence what is our goal",
+        "the demo is on friday, right cadence?",
+    ]
+    never = ["Secondo voi dobbiamo migliorare Cadence?", "ragazzi, vi piace cadence?", "what do you all think of cadence?",
+             "Ho modificato il codice del coordinator.", "I told Cadence about it yesterday", "Mi aiuti a capire cosa manca?"]
+    for text in sure:
+        assert call(text)[1] is True, text
+    for text in maybe:
+        assert call(text)[1] is False, text
+    for text in never:
+        assert call(text) is None, text
+
+
+def test_a_clear_call_to_cadence_inside_a_group_message_still_counts():
+    from mulca_discord.addressing import call
+
+    assert call("Cadence, secondo voi... no, secondo te il piano regge?")[1] is True
+    assert call("@cadence ragazzi chiedono chi fa le slide")[1] is True

@@ -90,3 +90,12 @@ test("once answered, the card says who answered it", () => {
   rerender(<ProposalCard proposal={{ ...done, status: "applied", resolved_by: null }} agentName="Cadence" onAnswer={vi.fn()} memberName={names} />);
   expect(screen.getByRole("status")).toHaveTextContent("Confirmed");
 });
+
+test("a dependency on new work names who delivers it, when the chat said so", () => {
+  const rasd: Proposal = {
+    ...possible,
+    payload: { ...possible.payload, title: "Rivedere il RASD", depends_on_title: "Dati del RASD", depends_on_owner_id: 2, helper_id: null },
+  };
+  render(<ProposalCard proposal={rasd} agentName="Cadence" onAnswer={vi.fn()} memberName={names} />);
+  expect(screen.getByText("Delivered by").parentElement).toHaveTextContent("Delivered bySara");
+});

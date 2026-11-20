@@ -33,7 +33,7 @@ from typing import Any, Protocol
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import MAX_QUESTION_CHARS as MAX_ADDRESSED_CHARS
-from ..addressing import FollowUps, addressed
+from ..addressing import FollowUps, addressed, call
 from ..courses import DEFAULT_COURSE
 from ..muca_client import MucaConnectionLost
 from ..sessions import Scope, ScopeSession, SessionRegistry
@@ -261,9 +261,16 @@ class WebHub:
         stored = self.store.add_message(member.group_id, member.id, text)
         await self.broadcast(member.group_id, {"type": "message", "message": self.message_json(stored)})
 
-        question = typed_question(text)
-        if question:
-            await self._answer_in_chat(member, question)
+        called = call(text)
+        if called and called[1]:
+            await self._answer_in_chat(member, called[0])
+            return
+        if called:
+            # Names Cadence without the shape of a call ("Cadence ieri ha risposto
+            # male"): maybe talking about it. Offered whole as "maybe" (it may stay
+            # silent). Like a sure call, not sent on as user_text: the name would
+            # let the lab's respond_when_addressed answer it a second time (7.6).
+            await self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True)
             return
         if self._follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
             # Maybe for Cadence: offered to it (it may stay silent), and also kept in the
@@ -408,7 +415,12 @@ class WebHub:
         event = data.get("event")
         data = browser_safe(data)
         if event == "coordinator_proposal":
-            await self.broadcast(group.id, {"type": "proposal", "proposal": data.get("proposal", {})})
+            proposal = data.get("proposal", {})
+            await self.broadcast(group.id, {"type": "proposal", "proposal": proposal})
+            if proposal.get("status") == "pending":
+                # A new card is Cadence speaking too: "Sì, fallo" typed under it is
+                # offered to Cadence as maybe (it points to the card; the click saves).
+                self._follow_ups.answered(str(group.id))
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
             self.calendar.save_state(group.id, data.get("state", {}))

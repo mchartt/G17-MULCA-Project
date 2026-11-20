@@ -1,3 +1,4 @@
+import { parseAgentText, type Inline } from "../lib/agentText";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { faCompass, faPaperPlane } from "../lib/icons";
@@ -135,7 +136,7 @@ export function Message({ space, author, text, channel, mine }: { space: Space; 
         <span className="avatar avatar--agent" aria-hidden="true"><FontAwesomeIcon icon={faCompass} /></span>
         <div className="bubble">
           <p className="msg__who"><span className="msg__agent-label">{space.agentName}</span><span className="tag">Coordinator</span></p>
-          <p className="msg__text">{text || "…"}</p>
+          {text ? <AgentReply text={text} /> : <p className="msg__text">…</p>}
         </div>
       </div>
     );
@@ -150,6 +151,28 @@ export function Message({ space, author, text, channel, mine }: { space: Space; 
         </p>
         <p className="msg__text">{withMentions(text, space.members.map((m) => m.name))}</p>
       </div>
+    </div>
+  );
+}
+
+/** Cadence's reply: paragraphs, lists and bold read from plain text (never HTML), then its sources apart. */
+export function AgentReply({ text }: { text: string }) {
+  const { blocks, sources } = parseAgentText(text);
+  const show = (parts: Inline[]) => parts.map((p, n) => (p.bold ? <strong key={n}>{p.text}</strong> : <span key={n}>{p.text}</span>));
+  return (
+    <div className="msg__text msg__text--agent">
+      {blocks.map((block, n) =>
+        block.kind === "list" ? (
+          <ul key={n} className="msg__list">{block.items.map((item, i) => <li key={i}>{show(item)}</li>)}</ul>
+        ) : (
+          <p key={n}>{show(block.parts)}</p>
+        ),
+      )}
+      {sources && (
+        <p className="msg__sources">
+          <span className="msg__sources-label">{sources.label}:</span> {sources.text}
+        </p>
+      )}
     </div>
   );
 }

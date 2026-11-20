@@ -189,6 +189,7 @@ function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (i
       <>
         <Field label="Task">{payload.title}</Field>
         {waitsOn && <Field label={possible ? "May wait on" : "Waits on"}>{waitsOn}</Field>}
+        {waitsOn && payload.depends_on_owner_id ? <Field label="Delivered by">{memberName(payload.depends_on_owner_id)}</Field> : null}
         {payload.question && <Field label="Question">{payload.question}</Field>}
         {payload.helper_id ? <Field label="Who could help">{memberName(payload.helper_id)}</Field> : null}
         {ways.length > 0 && (

@@ -134,6 +134,11 @@ export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onAn
                     <li key={n.task.task_id ?? n.task.title}>
                       {n.done ? <FontAwesomeIcon icon={faCheck} aria-hidden="true" /> : <span className="deps__open" aria-hidden="true" />}
                       {n.task.title} <span className="muted small">{n.done ? "done" : STATUS_NAMES[n.task.status] ?? n.task.status}</span>
+                      <span className="deps__why muted small">
+                        {row.task.dependency_sources?.[n.task.task_id ?? ""]
+                          ? `Linked ${row.task.dependency_sources[n.task.task_id!].replace(/^card \w+/, "from a card")}`
+                          : "Origin of this link not recorded"}
+                      </span>
                     </li>
                   ))}
                 </ul>

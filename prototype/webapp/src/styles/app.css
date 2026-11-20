@@ -181,6 +181,11 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .msg--agent .bubble { background: var(--ag-bg); border: 1px solid var(--ag-ln); }
 .msg__who { display: flex; align-items: center; font-weight: 600; font-size: var(--t-xs); color: var(--ink2); }
 .msg__text { white-space: pre-wrap; margin-top: .1rem; }
+.msg__text--agent { white-space: normal; display: grid; gap: .35rem; }
+.msg__text--agent p { margin: 0; }
+.msg__list { margin: 0; padding-left: 1.1rem; display: grid; gap: .15rem; }
+.msg__sources { font-size: var(--t-xs); color: var(--ink2); border-top: 1px solid var(--line, currentColor); padding-top: .3rem; margin-top: .1rem; }
+.msg__sources-label { font-weight: 600; }
 .msg__agent-label { color: var(--ag-fg); }
 .composer { display: flex; gap: .6rem; align-items: flex-end; margin: 0 1.5rem 1.5rem; padding: .4rem .4rem .4rem .9rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
 .composer textarea { flex: 1; resize: none; border: none; padding: .55rem 0; background: transparent; }
@@ -501,7 +506,8 @@ button, input, textarea { font: inherit; color: inherit; letter-spacing: inherit
 .deps { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
 .deps__row { padding: .75rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); }
 .deps__needs { list-style: none; margin: .4rem 0 0; padding: 0; display: grid; gap: .25rem; font-size: var(--t-xs); }
-.deps__needs li { display: flex; gap: .5rem; align-items: center; }
+.deps__needs li { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.deps__why { flex-basis: 100%; padding-left: 1.1rem; overflow-wrap: anywhere; }
 .deps__open { width: .6rem; height: .6rem; border: 1.5px solid var(--ink2); border-radius: 50%; display: inline-block; flex: none; }
 .refl__bar { width: 100%; height: .6rem; accent-color: var(--act); }
 .refl__facts, .refl__decisions { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .5rem; }

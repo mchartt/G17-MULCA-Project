@@ -70,7 +70,7 @@ class ChatFrame(BaseModel):
 
 class CommandFrame(BaseModel):
     type: Literal["command"]
-    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone", "approach"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone", "approach", "document", "reflection"]
     args: dict = Field(default_factory=dict)
     request_id: str = Field(default="", alias="requestId", max_length=64)
 
@@ -192,6 +192,19 @@ def create_web_app(
         if member is None:
             raise HTTPException(401, "Unknown or expired access.")
         return {"path": f"/api/calendar/{hub.calendar.new_link(member.group_id)}.ics"}
+
+    @app.post("/api/calendar/file")
+    async def calendar_file(authorization: str = Header(default="")) -> Response:
+        """Add to my calendar: a one-time .ics file (milestones + my tasks), no link to keep secret."""
+        member = hub.store.member_by_token(authorization.removeprefix("Bearer ").strip())
+        if member is None:
+            raise HTTPException(401, "Unknown or expired access.")
+        text = hub.calendar.file_for(member.group_id, member.id)
+        return Response(
+            text,
+            media_type="text/calendar; charset=utf-8",
+            headers={"Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="cadence.ics"'},
+        )
 
     @app.get("/api/calendar/{token}.ics")
     async def calendar_feed(token: str) -> Response:

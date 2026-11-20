@@ -69,3 +69,25 @@ async def test_the_feed_follows_the_state_the_server_sends(tmp_path):
 
     await hub._on_coordinator_event(Session(), {"event": "coordinator_state", "state": STATE})
     assert hub.calendar.feed(token).count("BEGIN:VEVENT") == 3
+
+
+def test_my_file_has_the_milestones_and_only_my_tasks():
+    text = ics("AUI group 17", 1, STATE, {5: "Ada"}, now=NOW, owner=5)
+    assert "Milestone: Demo Madness" in text
+    assert "Task: Server\, API\; tests (Ada)" in text
+    assert "Slides" not in text  # nobody's task: not in Ada's file
+
+
+async def test_add_to_my_calendar_downloads_a_file_for_the_member(tmp_path):
+    """Matteo, 20/11: a file to import in Outlook or Google Calendar, nothing to keep secret."""
+    hub = WebHub(WebStore(tmp_path / "w.db"), "ws://127.0.0.1:9/")
+    group, ada, token = hub.create_group("AUI group 17", "Ada")
+    state = {**STATE, "tasks": [{**t, "owner_id": ada.id if t["task_id"] == "t1" else t["owner_id"]} for t in STATE["tasks"]]}
+    hub.calendar.save_state(group.id, state)
+    app = create_web_app(hub)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
+        assert (await client.post("/api/calendar/file")).status_code == 401
+        got = await client.post("/api/calendar/file", headers={"Authorization": f"Bearer {token}"})
+    assert got.status_code == 200 and got.headers["content-type"].startswith("text/calendar")
+    assert got.headers["content-disposition"] == 'attachment; filename="cadence.ics"'
+    assert "Milestone: Demo Madness" in got.text and "Server" in got.text and "Slides" not in got.text

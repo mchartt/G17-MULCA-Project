@@ -468,6 +468,8 @@ def _answer(data: dict) -> dict:
     answer = {"type": "notice", "ok": bool(data.get("ok")), "text": data.get("text", "")}
     if data.get("catchup") is not None:
         answer["catchup"] = data["catchup"]  # the "catchup" command's payload
+    if data.get("reflection") is not None:
+        answer["reflection"] = data["reflection"]  # the "reflection" command's payload
     return answer
 
 

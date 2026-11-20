@@ -125,3 +125,15 @@ export function planFacts(tasks: Task[], milestones: Milestone[], today: string)
     milestonesToSchedule: groups.toSchedule.length,
   };
 }
+
+/** How long a finished task stays in the chat and on the Dependencies board (Matteo, 20/11). */
+export const DONE_VISIBLE_MS = 60 * 60 * 1000;
+
+/**
+ * Done more than an hour ago (or done with no time recorded): it leaves the
+ * chat's cards and the Dependencies board; the Tasks page still lists it.
+ */
+export function finishedLongAgo(task: Task, now: number): boolean {
+  if (task.status !== "done") return false;
+  return !task.done_at || now - task.done_at * 1000 >= DONE_VISIBLE_MS;
+}

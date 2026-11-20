@@ -41,6 +41,8 @@ export type CatchUp = {
   tasks_added?: CatchUpTask[];
   /** "In brief": the topics of those messages, summed up by Cadence (only with args.recap). */
   topics?: { title: string; summary: string }[];
+  /** "In brief" (args.recap): what the messages since then said, summed up by Cadence from them only. */
+  recap?: { overview: string; topics: { title: string; summary: string }[]; open: string[] };
 };
 export type CatchUpChannel = { channel: string; total: number; messages: { speaker: string; text: string; at: number }[] };
 export type CatchUpTask = { task_id: string; title: string; owner_id?: MemberId | null; at?: number | null };
@@ -56,6 +58,8 @@ export type Reflection = {
   slipped: { task_id: string; title: string; owner_id?: MemberId | null; due_date?: string | null }[];
   upcoming: { milestone_id: string; title: string; due_date: string }[];
   talk: { channel: string; messages: number }[];
+  /** The week day by day (Monday first): the group's messages and tasks done, counts only. */
+  days?: { day: string; messages: number; done: number }[];
   progress: { done: number; total: number };
   topics: { title: string; summary: string }[];
 };

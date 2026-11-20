@@ -394,3 +394,5 @@
 .catchup__place .catchup__messages { margin-top: .5rem; max-height: 14rem; overflow-y: auto; }
 @media (max-width: 760px) { .toast { position: fixed; top: auto; bottom: calc(5.5rem + env(safe-area-inset-bottom)); right: 1rem; width: calc(100vw - 2rem); } }
 .chat__log:focus-visible { outline: var(--focus); outline-offset: -3px; }
+.catchup__overview { margin: 0 0 .5rem; text-wrap: pretty; }
+.catchup__brief h4 { margin: .6rem 0 .25rem; font-size: var(--t-xs); color: var(--ink2); }

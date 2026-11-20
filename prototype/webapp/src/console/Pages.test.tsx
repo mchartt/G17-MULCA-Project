@@ -148,3 +148,17 @@ test("dependencies: each link says where it came from, or that its origin is not
   expect(needs.getByText("Linked from a card: “Mathias deve mandarmi prima i dati” (Matteo)")).toBeInTheDocument();
   expect(needs.getByText("Origin of this link not recorded")).toBeInTheDocument();
 });
+
+test("dependencies: a task done in the last hour is green; done longer ago leaves the board until 'Show finished'", async () => {
+  const now = Date.now() / 1000;
+  const tasks = [
+    { ...task("old", "Old survey", "done"), done_at: now - 2 * 3600 },
+    { ...task("new", "Fresh mockup", "done"), done_at: now - 600 },
+    task("w", "Write report", "todo", ["old", "new"]),
+  ];
+  render(<DependenciesPage tasks={tasks} proposals={[]} nameOf={names} onNew={vi.fn()} onLink={vi.fn()} onAnswer={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: /^Old survey/ })).toBeNull();
+  expect(screen.getByRole("button", { name: /^Fresh mockup/ })).toHaveClass("note--done");
+  await userEvent.click(screen.getByRole("button", { name: "Show finished (1)" }));
+  expect(screen.getByRole("button", { name: /^Old survey/ })).toBeInTheDocument();
+});

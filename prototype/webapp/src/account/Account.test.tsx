@@ -273,10 +273,14 @@ test("catch up opens with Cadence's recap in brief, and can start from a chosen 
   const onSince = vi.fn();
   render(
     <CatchUpDialog nameOf={() => undefined} open inviteCode="AB12CD" onClose={vi.fn()} onSince={onSince} summary="Since your last catch-up: 4 messages here."
-      catchup={{ since: 0, until: 1, linked: true, decisions: [], elsewhere: [], topics: [{ title: "RASD data", summary: "Matías sends the data on Friday." }] }} />,
+      catchup={{ since: 0, until: 1, linked: true, decisions: [], elsewhere: [], here: { channel: "web", total: 4, messages: [{ speaker: "Matías", text: "data on Friday", at: 1 }] },
+        recap: { overview: "Matías promised the data for Friday.", topics: [{ title: "RASD data", summary: "Matías sends the data on Friday." }], open: ["Who proofreads the RASD?"] } }} />,
   );
   const brief = screen.getByRole("region", { name: "In brief" });
   expect(brief.querySelector("strong")).toHaveTextContent("RASD data");
+  expect(brief).toHaveTextContent("Matías promised the data for Friday.");
+  expect(brief).toHaveTextContent("Still open");
+  expect(brief).toHaveTextContent("Who proofreads the RASD?");
   expect(brief).toHaveTextContent("Summed up by Cadence from these messages only.");
   fireEvent.change(screen.getByLabelText("A day of your choice"), { target: { value: "2026-11-17" } });
   expect(onSince).toHaveBeenCalledWith("2026-11-17");

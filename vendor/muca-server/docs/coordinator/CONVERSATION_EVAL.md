@@ -215,11 +215,13 @@ answer would come); Discord and Slack give up visibly on a late answer after
 (`hello.thinking`); the web answers in the background, one group's answers in
 order, so a message typed under the banner is shown at once.
 
-A "maybe" Cadence stays silent on now goes on as ordinary chat (the
-conversation logs it, the proactive judge reads it). Before, every message for
-180 s after an answer or a card skipped CS3/CS5/CS7: the e2e specs
-`plan.spec` (CS3 "Think-aloud or SUS?") and `opener.spec` failed on HEAD
-for this reason; both pass now.
+Proactive judge on follow-ups: this branch first routed a silent "maybe" back
+to the Conversation; `gitlab-dev` (PR #14, DECISIONS "Web follow-ups reach
+Cadence AND the group's chat again" + R10) fixed the same gap by sending every
+follow-up also as user_text. At the merge this branch adopted that approach
+and dropped its own (no line is read twice). Read once without the proactive
+bridge too (`router._asked`), and late CS6 replies wait in the same queue as
+the other messages to Cadence instead of racing them.
 
 Live, real model (`gpt-6.1-sol` on Azure, `scripts/live_conversation_corpus.py`,
 20/11 evening, model text path only: the Realtime judge and the adapters are

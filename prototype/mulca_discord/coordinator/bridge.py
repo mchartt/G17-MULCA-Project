@@ -72,6 +72,7 @@ class CoordinatorBridge:
         # Messages to Cadence in the chat (chat()): follow-ups per channel, and
         # answers that came late: request id -> (channel, maybe).
         self._follow_ups = FollowUps()
+        self._answers: set[asyncio.Task] = set()
         self._late: dict[str, tuple[Any, bool]] = {}
 
     def attach(self) -> None:
@@ -159,7 +160,9 @@ class CoordinatorBridge:
         (addressing.for_cadence, the same rule as the web app): Cadence
         answers in the channel from everything the project holds (command
         "ask": who is writing, their tasks, the task they talk about). True
-        when handled here; False sends it on as before (the lab's agent).
+        when handled here; False sends it on as before (user_text). A
+        follow-up is both: asked here in the background, and sent on, so the
+        proactive judge still reads it (R10 on the server stops a second reply).
         While the answer is written Discord shows "Cadence is typing…".
         """
         found = self._manager.link_for_channel(getattr(channel, "id", 0) or 0)
@@ -171,7 +174,25 @@ class CoordinatorBridge:
                              member_names=bot.roster_text(link).values(), tagged=tagged)
         if routed is None:
             return False
-        question, maybe = routed
+        question, maybe, also_chat = routed
+        if also_chat:
+            # Started before the caller sends the user_text, so the ask claims it first.
+            task = asyncio.create_task(self._answer(channel, author_id, text, question, maybe, place))
+            self._answers.add(task)
+            task.add_done_callback(self._answers.discard)
+            await asyncio.sleep(0)
+            return False
+        await self._answer(channel, author_id, text, question, maybe, place)
+        return True
+
+    async def wait_for_answers(self) -> None:
+        """Wait for the follow-ups being answered in the background (tests, shutdown)."""
+        # Only the unfinished ones: awaiting finished tasks never yields, so the
+        # done-callbacks that empty the set would never run (a busy loop).
+        while pending := [t for t in self._answers if not t.done()]:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    async def _answer(self, channel: Any, author_id: int, text: str, question: str, maybe: bool, place: str) -> None:
         request_id = uuid.uuid4().hex
         message = CoordinatorCommandMessage(
             event="coordinator_command", command="ask", member_id=author_id,
@@ -192,11 +213,10 @@ class CoordinatorBridge:
             asyncio.get_running_loop().call_later(
                 LATE_ANSWER_SECONDS, lambda: asyncio.ensure_future(self.give_up(request_id))
             )
-            return True
+            return
         if maybe and not answer.get("ok"):
-            return True
+            return
         await self._say(channel, answer.get("text") or ("" if maybe else UNAVAILABLE), place)
-        return True
 
     async def give_up(self, request_id: str) -> None:
         """A late answer that never came: Cadence says so (nothing for a maybe)."""

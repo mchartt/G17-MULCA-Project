@@ -91,7 +91,10 @@ async def test_a_follow_up_right_after_an_answer_is_offered_as_maybe():
     ])
     channel = Channel()
     await bridge.chat(channel, 1, "Cadence, com'è la mia task?")
-    assert await bridge.chat(channel, 1, "sono al 30%") is True
+    # A follow-up is asked in the background AND sent on as user_text (False):
+    # the proactive judge still reads it; R10 on the server stops a second reply.
+    assert await bridge.chat(channel, 1, "sono al 30%") is False
+    await bridge.wait_for_answers()
     assert asked[1][0]["question"] == "sono al 30%" and asked[1][0]["maybe"] is True
 
 

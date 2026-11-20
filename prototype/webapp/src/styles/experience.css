@@ -397,13 +397,3 @@
 .catchup__overview { margin: 0 0 .5rem; text-wrap: pretty; }
 .catchup__brief h4 { margin: .6rem 0 .25rem; font-size: var(--t-xs); color: var(--ink2); }
 
-/* "Cadence is thinking…": while an answer to a message sent to Cadence is on its way. */
-.chat__thinking { display: inline-flex; align-items: center; gap: .5rem; align-self: flex-start; margin: .25rem 0 .5rem; padding: .35rem .8rem; border-radius: var(--r-pill); font-size: var(--t-xs); color: var(--ink2); background: var(--glass); border: 1px solid var(--glass-line); }
-.chat__thinking-dots { display: inline-flex; gap: 3px; }
-.chat__thinking-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--ag-solid); opacity: .35; animation: thinking-dot 1.2s ease-in-out infinite; }
-.chat__thinking-dots span:nth-child(2) { animation-delay: .2s; }
-.chat__thinking-dots span:nth-child(3) { animation-delay: .4s; }
-@keyframes thinking-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) {
-  .chat__thinking-dots span { animation: none; opacity: .7; }
-}

@@ -141,6 +141,14 @@
 .reflect h4 { font-size: var(--t-xs); color: var(--ink2); margin-top: .4rem; }
 .reflect__list { list-style: none; padding: 0; margin: 0; display: grid; gap: .35rem; font-size: var(--t-sm); }
 .reflect__list li { overflow-wrap: anywhere; }
+/* A task in the week's review: its title, then who owns it and by when (a missing one stands out). */
+.reflect__list .rtask, .capped__all .rtask { display: grid; gap: .15rem; padding: .45rem .6rem; border-radius: var(--r-field); background: var(--canvas); }
+.rtask__title { font-weight: 500; }
+.rtask__meta { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .8rem; font-size: var(--t-xs); color: var(--ink2); }
+.rtask__who { display: inline-flex; align-items: center; gap: .35rem; }
+.rtask__avatar { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--act); color: var(--surface); font-size: .65rem; font-weight: 700; }
+.rtask__gap { color: var(--er); font-weight: 600; }
+.rtask__gap .rtask__avatar { background: transparent; color: var(--er); border: 1.5px dashed var(--er); }
 .reflect__by { color: var(--ag-fg); }
 .topics { list-style: none; padding: 0; margin: 0; display: grid; gap: .6rem; }
 .topics li { padding-left: .7rem; border-left: 3px solid var(--ag-ln); }
@@ -163,6 +171,11 @@
 .jam__port { position: absolute; z-index: 2; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 2px solid var(--act); cursor: crosshair; touch-action: none; opacity: .55; transition: opacity .12s, transform .12s; }
 .jam__port:hover, .jam__board:hover .jam__port { opacity: 1; }
 .jam__port:hover { transform: scale(1.2); }
+/* The dot where an arrow lands: pulled off into the open it disconnects, so it grabs rather than aims. */
+.jam__port--end { cursor: grab; border-color: var(--ag-fg); }
+.jam__port--end:hover { border-color: var(--act); }
+.jam__port--end:active { cursor: grabbing; }
+.jam__port--lifted { opacity: 0 !important; }
 .jam__wires .jam__hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
 .jam__link:hover .jam__wire { stroke: var(--act); stroke-width: 2.5; }
 .jam__wire--draft { stroke: var(--act); stroke-dasharray: 5 4; }

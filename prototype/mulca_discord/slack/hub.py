@@ -106,6 +106,14 @@ class SlackHub:
         # (channel, the "thinking" message's timestamp or "", maybe).
         self._follow_ups = FollowUps()
         self._late: dict[str, tuple[str, str, bool]] = {}
+        self._answers: set[asyncio.Task] = set()
+
+    async def wait_for_answers(self) -> None:
+        """Wait for the follow-ups being answered in the background (tests, shutdown)."""
+        # Only the unfinished ones: awaiting finished tasks never yields, so the
+        # done-callbacks that empty the set would never run (a busy loop).
+        while pending := [t for t in self._answers if not t.done()]:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     # ------------------------------------------------------------------
     # Going out
@@ -129,8 +137,16 @@ class SlackHub:
         routed = for_cadence(readable, follow_ups=self._follow_ups, place=channel,
                              member_names=roster.values(), tagged=mentions_bot)
         if routed is not None:
-            await self._answer_in_channel(channel, user, *routed, said=readable)
-            return
+            question, maybe, also_chat = routed
+            if not also_chat:
+                await self._answer_in_channel(channel, user, question, maybe, said=readable)
+                return
+            # A follow-up: asked in the background, started before the user_text
+            # below so the server's R10 claims it first; the proactive judge reads it.
+            task = asyncio.create_task(self._answer_in_channel(channel, user, question, maybe, said=readable))
+            self._answers.add(task)
+            task.add_done_callback(self._answers.discard)
+            await asyncio.sleep(0)
 
         async def action(client) -> None:
             await client.send_participants(_participants(roster), modality="text")

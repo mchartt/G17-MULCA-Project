@@ -387,8 +387,9 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
     await hub.post_message(member, "Cadence, ciao")
     await hub.wait_for_answers()
     # Right after Cadence answered: a message that does not name it is offered to
-    # Cadence only, as "maybe" (it may stay silent). Not forwarded to the lab's
-    # agent too: in the 20/11 test space it answered a second time.
+    # Cadence as "maybe" (it may stay silent) AND kept in the group's normal chat
+    # (user_text): the plan opener and the CS3/CS7 judge must hear it. The lab's
+    # agent answering it a second time (20/11) is stopped on MUCA-Server (R10).
     await hub.post_message(member, "no mention here")
     await hub.wait_for_answers()
     await asyncio.sleep(0.05)
@@ -398,7 +399,7 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
         ("ask", {"question": "ciao", "said": "Cadence, ciao"}),
         ("ask", {"question": "no mention here", "said": "no mention here", "maybe": True}),
     ]
-    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("anyone here?", False)]
+    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("anyone here?", False), ("no mention here", False)]
     members_said = [m.text for m in hub.store.history(group.id) if m.text != "Hello everyone!"]
     assert members_said == ["anyone here?", "@Cadence say hello to the group", "Cadence, ciao", "no mention here"]
 
@@ -441,14 +442,14 @@ async def test_a_late_answer_to_cadence_is_still_posted_in_the_chat(hub):
     hub.broadcast = spy
     await hub.post_message(member, "Cadence, sono al 30% della mia task.")
     await hub.wait_for_answers()
-    assert [f for f in frames if f["type"] == "thinking"] == [{"type": "thinking", "on": True}]  # still on: late
+    assert [f for f in frames if f["type"] == "typing"] == [{"type": "typing", "on": True}]  # still on: late
     session = type("S", (), {"scope": type("Sc", (), {"conversation_id": group.conversation_id})()})()
     await hub._on_coordinator_event(
         session, {"event": "coordinator_notice", "ok": True, "text": "Card pronta: confermala.", "requestId": asked["id"]}
     )
     said = [m.text for m in hub.store.history(group.id)]
     assert said == ["Cadence, sono al 30% della mia task.", "Card pronta: confermala."]
-    assert [f for f in frames if f["type"] == "thinking"][-1] == {"type": "thinking", "on": False}
+    assert [f for f in frames if f["type"] == "typing"][-1] == {"type": "typing", "on": False}
     # The same answer arriving twice is posted once.
     await hub._on_coordinator_event(
         session, {"event": "coordinator_notice", "ok": True, "text": "Card pronta: confermala.", "requestId": asked["id"]}
@@ -462,7 +463,7 @@ async def test_cadence_thinking_is_on_while_it_answers_and_off_after(hub):
     original = hub.broadcast
 
     async def spy(group_id, data):
-        frames.append(data["type"] if data["type"] != "thinking" else ("thinking", data["on"]))
+        frames.append(data["type"] if data["type"] != "typing" else ("typing", data["on"]))
         await original(group_id, data)
 
     async def command(member, name, args, **_):
@@ -471,11 +472,11 @@ async def test_cadence_thinking_is_on_while_it_answers_and_off_after(hub):
     hub.broadcast, hub.command = spy, command
     await hub.post_message(member, "Cadence, mi senti?")
     await hub.wait_for_answers()
-    assert frames == ["message", ("thinking", True), ("thinking", False), "message"]
+    assert frames == ["message", ("typing", True), "message", ("typing", False)]
     frames.clear()
     await hub.post_message(member, "ok grazie")  # a maybe follow-up: no banner
     await hub.wait_for_answers()
-    assert ("thinking", True) not in frames
+    assert ("typing", True) not in frames
 
 
 async def test_a_late_answer_that_never_comes_ends_in_a_visible_error(hub):

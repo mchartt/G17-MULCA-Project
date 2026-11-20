@@ -138,25 +138,31 @@ class FollowUps:
 
 def for_cadence(
     text: str, *, follow_ups: FollowUps, place: str, member_names: Iterable[str] = (), tagged: bool = False
-) -> tuple[str, bool] | None:
+) -> tuple[str, bool, bool] | None:
     """
-    The one routing rule of every channel (web, Discord, Slack): (what to ask
-    Cadence, maybe) when the message is for Cadence or might be, else None.
+    The one routing rule of Discord and Slack (the web hub follows the same
+    steps inline): (what to ask Cadence, maybe, also as chat) when the message
+    is for Cadence or might be, else None.
 
-        tagged (an @mention of the bot) or a clear call  -> (question, False)
-        the name anywhere else                           -> (whole message, True)
-        right after Cadence answered in `place`          -> (whole message, True)
+        tagged (an @mention of the bot) or a clear call  -> (question, False, False)
+        the name anywhere else                           -> (whole message, True, False)
+        right after Cadence answered in `place`          -> (whole message, True, True)
 
     "maybe" lets the server's model stay silent (talk ABOUT Cadence, members
-    talking among themselves).
+    talking among themselves). "also as chat": the message is sent on as
+    user_text too, so the proactive judge (CS3, CS5, CS7) and the plan opener
+    still read it; the server's R10 keeps the lab's agent from answering it
+    a second time (DECISIONS 20/11, "Web follow-ups reach Cadence AND the
+    group's chat again"). A message naming Cadence is not sent on: the name
+    would let the lab's agent answer it too.
     """
     called = call(text)
     if called and called[1]:
-        return called[0], False
+        return called[0], False, False
     if tagged:
-        return " ".join(text.split())[:MAX_QUESTION_CHARS], False
+        return " ".join(text.split())[:MAX_QUESTION_CHARS], False, False
     if called:
-        return text.strip()[:MAX_QUESTION_CHARS], True
+        return text.strip()[:MAX_QUESTION_CHARS], True, False
     if follow_ups.is_follow_up(place, text, member_names):
-        return text.strip()[:MAX_QUESTION_CHARS], True
+        return text.strip()[:MAX_QUESTION_CHARS], True, True
     return None

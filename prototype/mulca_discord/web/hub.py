@@ -28,12 +28,13 @@ import asyncio
 import logging
 import re
 import uuid
+from datetime import date, timedelta
 from typing import Any, Protocol
 
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import MAX_QUESTION_CHARS as MAX_ADDRESSED_CHARS
-from ..addressing import FollowUps, addressed, for_cadence
+from ..addressing import FollowUps, addressed, call
 from ..courses import DEFAULT_COURSE
 from ..muca_client import MucaConnectionLost
 from ..sessions import Scope, ScopeSession, SessionRegistry
@@ -61,6 +62,14 @@ SERVER_NAME_MENTION = "@MULCA"
 # follow-up and stays silent when the members talk among themselves. Only
 # routing: no state change.
 MAX_QUESTION_CHARS = MAX_ADDRESSED_CHARS
+
+# CS6 wake-up (wake_due_groups): the server's progress timer runs only in an
+# open session, and a group nobody opened since this adapter started has none.
+# Every WAKE_EVERY_SECONDS the hub asks for one progress assessment, only for
+# groups whose last saved plan has an open, owned task due from yesterday to
+# the day after tomorrow (the server decides precisely, with its time zone).
+WAKE_EVERY_SECONDS = 30 * 60
+WAKE_FIRST_SECONDS = 2 * 60
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in the chat: no need to try again."
@@ -105,6 +114,10 @@ class WebChannel:
         stored = self._hub.store.add_message(self._group.id, None, text)
         reply = WebReply(self, stored.id, text)
         await self._hub.broadcast(self._group.id, {"type": "message", "message": self._hub.message_json(stored)})
+        # Not a follow-up window here: an unasked message (the plan opener's
+        # question, a CS6 progress question) is answered in the normal chat, so
+        # the reply goes on as user_text and the server routes it (the opener
+        # hears it; MUCA-Server reads a reply to a progress question however late).
         return reply
 
     async def update(self, reply: WebReply) -> None:
@@ -141,15 +154,14 @@ class WebHub:
         self._locks: dict[int, asyncio.Lock] = {}
         self._channels: dict[int, WebChannel] = {}
         self._waiting: dict[str, asyncio.Future] = {}
-        self._follow_ups = FollowUps()
+        self.follow_ups = FollowUps()
         # Messages to Cadence whose answer came after ANSWER_TIMEOUT_SECONDS:
         # request id -> (group id, maybe). Posted when the answer arrives.
         self._late: dict[str, tuple[int, bool]] = {}
-        # Messages to Cadence being answered, per group: the "thinking" banner.
+        # Messages to Cadence being answered, per group: the "thinking" line.
         self._thinking: dict[int, int] = {}
-        # Answers being written (post_message), one group's in order.
+        # Answers being written (post_message); the server answers them in order.
         self._answers: set[asyncio.Task] = set()
-        self._answer_locks: dict[int, asyncio.Lock] = {}
 
     # ------------------------------------------------------------------
     # Groups and members
@@ -278,22 +290,29 @@ class WebHub:
         stored = self.store.add_message(member.group_id, member.id, text)
         await self.broadcast(member.group_id, {"type": "message", "message": self.message_json(stored)})
 
-        # One rule for every channel (addressing.for_cadence): a sure call is
-        # answered; the name anywhere else, or a message right after Cadence
-        # answered, is offered as "maybe" (Cadence may stay silent). Not sent on
-        # as user_text: the lab's agent answered these a second time (7.6).
-        routed = for_cadence(
-            text, follow_ups=self._follow_ups, place=str(member.group_id),
-            member_names=self.roster(member.group_id).values(),
-        )
-        if routed is not None:
-            # In the background, one group's answers in the order asked: the
-            # socket reads the member's next message at once, so "Cadence, mi
-            # senti?" typed under the banner is shown, not held for up to 60 s.
-            task = asyncio.create_task(self._answer_in_order(member, routed[0], maybe=routed[1], said=text))
-            self._answers.add(task)
-            task.add_done_callback(self._answers.discard)
+        # Answers run in the background (the socket reads the member's next
+        # message at once, so "Cadence, mi senti?" typed under the banner is
+        # shown, not held for up to 60 s); the server answers them in order.
+        called = call(text)
+        if called and called[1]:
+            self._answer_later(member, called[0], said=text)
             return
+        if called:
+            # Names Cadence without the shape of a call ("Cadence ieri ha risposto
+            # male", "secondo me Cadence è inutile"): maybe talking about it.
+            # Offered whole as "maybe" (it may stay silent). Like a sure call, not
+            # sent on as user_text: the name would let the lab's
+            # respond_when_addressed answer it a second time (7.6).
+            self._answer_later(member, text[:MAX_QUESTION_CHARS], maybe=True, said=text)
+            return
+        if self.follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
+            # Maybe for Cadence: offered to it (it may stay silent), and ALSO sent on
+            # as user_text below. Without it the plan opener never heard its answers
+            # and CS3/CS7 never saw these lines (a pending card opens this window).
+            # The double reply seen on 20/11 (the lab's agent answering too) is
+            # stopped on the server: R10, the ask claims the text first (it is
+            # started before the user_text below).
+            self._answer_later(member, text[:MAX_QUESTION_CHARS], maybe=True, said=text)
 
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
@@ -312,51 +331,62 @@ class WebHub:
 
     async def wait_for_answers(self) -> None:
         """Wait until every answer started by post_message is posted (tests, shutdown)."""
-        while self._answers:
-            await asyncio.gather(*self._answers, return_exceptions=True)
+        # Only the unfinished ones: awaiting finished tasks never yields, so the
+        # done-callbacks that empty the set would never run (a busy loop).
+        while pending := [t for t in self._answers if not t.done()]:
+            await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _answer_in_order(self, member: Member, question: str, *, maybe: bool, said: str) -> None:
-        async with self._answer_locks.setdefault(member.group_id, asyncio.Lock()):
-            try:
-                await self._answer_in_chat(member, question, maybe=maybe, said=said)
-            except Exception:
-                logger.exception("Cadence's answer failed for group %s", member.group_id)
-                if not maybe:
-                    await self._say(member.group_id, UNAVAILABLE)
+    def _answer_later(self, member: Member, question: str, *, maybe: bool = False, said: str = "") -> None:
+        task = asyncio.create_task(self._answer_safely(member, question, maybe=maybe, said=said))
+        self._answers.add(task)
+        task.add_done_callback(self._answers.discard)
+
+    async def _answer_safely(self, member: Member, question: str, *, maybe: bool, said: str) -> None:
+        try:
+            await self._answer_in_chat(member, question, maybe=maybe, said=said)
+        except Exception:
+            logger.exception("Cadence's answer failed for group %s", member.group_id)
+            if not maybe:
+                await self._say(member.group_id, UNAVAILABLE)
 
     async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False, said: str = "") -> None:
-        """Cadence's answer, posted in the chat for the whole group; a "maybe" left unanswered posts nothing."""
+        """
+        Cadence's answer, posted in the chat for the whole group; a "maybe" left
+        unanswered posts nothing. A sure call shows "Cadence is thinking…" to
+        everyone until its answer is in the chat, or the failure is said; not a
+        "maybe", which may end in silence (a line then nothing would flicker).
+        """
         args = {"question": question, "said": said or question, **({"maybe": True} if maybe else {})}
         request_id = uuid.uuid4().hex
         group_id = member.group_id
-        # A "maybe" may end in silence: no banner for it.
         if not maybe:
             await self._think(group_id, +1)
         late = False
         try:
-            answer = await self.command(member, "ask", args, request_id=request_id)
+            try:
+                answer = await self.command(member, "ask", args, request_id=request_id)
+            except Exception:
+                if maybe:
+                    logger.exception("follow-up offered to Cadence failed")
+                    return
+                raise
             late = bool(answer.get("late"))
-        except Exception:
-            if maybe:
-                logger.exception("follow-up offered to Cadence failed")
+            if late:
+                # Still being answered: posted when it comes (_on_coordinator_event).
+                self._late[request_id] = (group_id, maybe)
+                while len(self._late) > LATE_ANSWER_LIMIT:
+                    await self._give_up(next(iter(self._late)))
+                asyncio.get_running_loop().call_later(
+                    LATE_ANSWER_SECONDS, lambda: asyncio.ensure_future(self._give_up(request_id))
+                )
                 return
-            raise
+            if maybe and answer.get("ok") is False:
+                return  # never shown for a message not sent to Cadence
+            await self._say(group_id, answer.get("text") or ("" if maybe else UNAVAILABLE))
         finally:
+            # Off once the answer is in the chat (or the failure said), not before.
             if not maybe and not late:
                 await self._think(group_id, -1)
-        if late:
-            # Still being answered: posted when it comes (_on_coordinator_event).
-            self._late[request_id] = (group_id, maybe)
-            while len(self._late) > LATE_ANSWER_LIMIT:
-                await self._give_up(next(iter(self._late)))
-            asyncio.get_running_loop().call_later(
-                LATE_ANSWER_SECONDS, lambda: asyncio.ensure_future(self._give_up(request_id))
-            )
-            return
-        if maybe and answer.get("ok") is False:
-            return  # never shown for a message not sent to Cadence
-        text = answer.get("text") or ("" if maybe else UNAVAILABLE)
-        await self._say(member.group_id, text)
 
     async def _think(self, group_id: int, step: int) -> None:
         """Count the answers being written; tell the group when it starts and stops."""
@@ -364,7 +394,11 @@ class WebHub:
         now = max(0, before + step)
         self._thinking[group_id] = now
         if (before == 0) != (now == 0):
-            await self.broadcast(group_id, {"type": "thinking", "on": now > 0})
+            await self.broadcast(group_id, {"type": "typing", "on": now > 0})
+        elif step < 0 and now > 0:
+            # Cadence's message just cleared the line in the browser, and another
+            # answer is still on its way: show it again.
+            await self.broadcast(group_id, {"type": "typing", "on": True})
 
     async def _give_up(self, request_id: str) -> None:
         """A late answer that never came: the banner goes off and Cadence says so."""
@@ -373,8 +407,8 @@ class WebHub:
             return
         group_id, maybe = found
         if not maybe:
-            await self._think(group_id, -1)
             await self._say(group_id, UNAVAILABLE)
+            await self._think(group_id, -1)
 
     async def _say(self, group_id: int, text: str) -> None:
         """Cadence speaks in the group's chat (nothing for an empty text)."""
@@ -382,7 +416,46 @@ class WebHub:
             return
         channel = self._channels.setdefault(group_id, WebChannel(self, self.store.group(group_id)))
         await channel.send(text)
-        self._follow_ups.answered(str(group_id))
+        self.follow_ups.answered(str(group_id))
+
+    def groups_with_close_deadlines(self, today: date | None = None) -> list[int]:
+        """Groups whose saved plan has an open task with an owner due between yesterday and in two days."""
+        today = today or date.today()
+        lo, hi = today - timedelta(days=1), today + timedelta(days=2)
+        found = []
+        for group_id, state in self.calendar.states():
+            for task in state.get("tasks") or []:
+                try:
+                    due = date.fromisoformat(str(task.get("due_date") or ""))
+                except ValueError:
+                    continue
+                if task.get("status") != "done" and task.get("owner_id") and lo <= due <= hi:
+                    found.append(group_id)
+                    break
+        return found
+
+    async def wake_due_groups(self, today: date | None = None) -> int:
+        """Ask MUCA-Server for one CS6 assessment in each such group (it may well stay silent)."""
+        woken = 0
+        for group_id in self.groups_with_close_deadlines(today):
+            members = self.store.members(group_id)
+            if not members:
+                continue
+            try:
+                await self.command(members[0], "progress")
+                woken += 1
+            except Exception:  # one group's failure must not stop the others
+                logger.exception("progress wake-up failed for group %s", group_id)
+        return woken
+
+    async def wake_loop(self) -> None:
+        await asyncio.sleep(WAKE_FIRST_SECONDS)
+        while True:
+            try:
+                await self.wake_due_groups()
+            except Exception:
+                logger.exception("progress wake-up round failed")
+            await asyncio.sleep(WAKE_EVERY_SECONDS)
 
     async def rename_group(self, member: Member, name: str) -> dict:
         """Project settings: a new name for the space; every open tab of the group shows it."""
@@ -497,7 +570,7 @@ class WebHub:
             if proposal.get("status") == "pending":
                 # A new card is Cadence speaking too: "Sì, fallo" typed under it is
                 # offered to Cadence as maybe (it points to the card; the click saves).
-                self._follow_ups.answered(str(group.id))
+                self.follow_ups.answered(str(group.id))
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
             self.calendar.save_state(group.id, data.get("state", {}))
@@ -509,10 +582,10 @@ class WebHub:
             future.set_result(_answer(data))
         elif event == "coordinator_notice" and data.get("requestId", "") in self._late:
             _, maybe = self._late.pop(data["requestId"])
-            if not maybe:
-                await self._think(group.id, -1)
             if data.get("ok") or not maybe:
                 await self._say(group.id, str(data.get("text", "")))
+            if not maybe:
+                await self._think(group.id, -1)
 
     async def _show_mirror(self, group_id: int, data: dict) -> None:
         """A message written on Discord or Slack: kept in the history, shown to everyone."""

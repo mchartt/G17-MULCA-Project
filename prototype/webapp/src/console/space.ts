@@ -15,7 +15,7 @@ export type Space = {
   // id -> name for members of linked channels too (Discord, Slack).
   names: Names;
   coordinator: "available" | "unavailable";
-  // Cadence is answering a message sent to it: the chat shows "Cadence is thinking…".
+  /** Cadence is preparing an answer: the chat shows "Cadence is thinking…". */
   thinking: boolean;
 };
 
@@ -41,7 +41,8 @@ export function reduce(space: Space, event: ServerEvent): Space {
         group: event.group,
         me: event.me,
         members: event.members,
-        // A reconnect may have missed the "off": the server says where it stands.
+        // A reconnect may have missed the "off": the server says where it stands
+        // (a tab opened mid-answer shows it too; an older server sends nothing: off).
         thinking: event.thinking === true,
         // History replaces the timeline; cards already seen this session stay where they were.
         timeline: [
@@ -54,7 +55,10 @@ export function reduce(space: Space, event: ServerEvent): Space {
       const at = space.timeline.findIndex((t) => t.kind === "message" && t.message.id === event.message.id);
       const item: TimelineItem = { kind: "message", message: event.message };
       const timeline = at >= 0 ? space.timeline.map((t, i) => (i === at ? item : t)) : [...space.timeline, item];
-      return { ...space, timeline, coordinator: event.message.author ? space.coordinator : "available" };
+      // Cadence's own message ends its "thinking" line, whatever the adapter sends after.
+      return event.message.author
+        ? { ...space, timeline }
+        : { ...space, timeline, coordinator: "available", thinking: false };
     }
     case "group":
       return { ...space, group: event.group };
@@ -73,8 +77,8 @@ export function reduce(space: Space, event: ServerEvent): Space {
     case "state":
       return { ...space, state: event.state, names: { ...space.names, ...event.state.names }, coordinator: "available" };
     case "status":
-      return { ...space, coordinator: event.coordinator };
-    case "thinking":
+      return { ...space, coordinator: event.coordinator, thinking: false };
+    case "typing":
       return { ...space, thinking: event.on };
     default:
       return space;

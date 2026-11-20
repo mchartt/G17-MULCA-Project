@@ -1,8 +1,7 @@
 // Matteo's 20/11 screenshots: "**30%**" shown with its asterisks on a card, and
 // no sign that Cadence was working on an answer.
-import { act, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { Proposal, ServerEvent } from "../lib/types";
-import { Thinking, THINKING_DELAY_MS } from "./Chat";
 import { ProposalCard } from "./ProposalCard";
 import { emptySpace, reduce } from "./space";
 
@@ -21,19 +20,10 @@ test("a card shows Cadence's bold as bold, never the asterisks", () => {
   expect(screen.getAllByText("30%").every((el) => el.tagName === "STRONG")).toBe(true);
 });
 
-test("the thinking banner waits a moment, so a quick answer never flickers it", () => {
-  vi.useFakeTimers();
-  render(<Thinking name="Cadence" />);
-  expect(screen.queryByRole("status")).toBeNull();
-  act(() => { vi.advanceTimersByTime(THINKING_DELAY_MS); });
-  expect(screen.getByRole("status").textContent).toContain("Cadence is thinking…");
-  vi.useRealTimers();
-});
-
 test("thinking follows the server: on, then off", () => {
-  const on = reduce(emptySpace, { type: "thinking", on: true });
+  const on = reduce(emptySpace, { type: "typing", on: true });
   expect(on.thinking).toBe(true);
-  expect(reduce(on, { type: "thinking", on: false }).thinking).toBe(false);
+  expect(reduce(on, { type: "typing", on: false }).thinking).toBe(false);
 });
 
 test("a reconnect takes the banner from the server, so a missed 'off' never leaves it on", () => {

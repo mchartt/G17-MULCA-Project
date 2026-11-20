@@ -38,7 +38,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [space.timeline, space.thinking]);
+  }, [space.timeline]);
 
   function send(e?: FormEvent) {
     e?.preventDefault();
@@ -103,9 +103,10 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
             <Message key={item.message.id} space={space} author={item.message.author} text={item.message.text} channel={item.message.channel} mine={item.message.author?.id === space.me?.id} />
           ),
         )}
-        {space.thinking && <Thinking name={space.agentName} />}
         <div ref={end} />
       </div>
+      {/* Outside the log: announced once as a status, not again as a new log line. */}
+      {space.thinking && <Thinking name={space.agentName} />}
       {hints.length > 0 && (
         <ul className="hints" aria-label="Suggestions">
           {hints.map((h) => (

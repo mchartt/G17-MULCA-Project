@@ -90,4 +90,7 @@ test("while Cadence prepares an answer the chat says so, and its message clears 
   // A member's message does not end it: Cadence is still working.
   const again = reduce(reduce(space, { type: "typing", on: true }), { type: "message", message: { id: 10, author: { id: 1, name: "Ada" }, text: "ok", channel: "web", at: 0 } as never });
   expect(again.thinking).toBe(true);
+  // A reconnect ("hello") starts clean.
+  const back = reduce(again, { type: "hello", agentName: "Cadence", group: null, me: null, members: [], messages: [] } as never);
+  expect(back.thinking).toBe(false);
 });

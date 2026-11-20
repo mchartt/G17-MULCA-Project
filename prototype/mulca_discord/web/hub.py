@@ -28,6 +28,7 @@ import asyncio
 import logging
 import re
 import uuid
+from datetime import date, timedelta
 from typing import Any, Protocol
 
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
@@ -61,6 +62,14 @@ SERVER_NAME_MENTION = "@MULCA"
 # follow-up and stays silent when the members talk among themselves. Only
 # routing: no state change.
 MAX_QUESTION_CHARS = MAX_ADDRESSED_CHARS
+
+# CS6 wake-up (wake_due_groups): the server's progress timer runs only in an
+# open session, and a group nobody opened since this adapter started has none.
+# Every WAKE_EVERY_SECONDS the hub asks for one progress assessment, only for
+# groups whose last saved plan has an open, owned task due from yesterday to
+# the day after tomorrow (the server decides precisely, with its time zone).
+WAKE_EVERY_SECONDS = 30 * 60
+WAKE_FIRST_SECONDS = 2 * 60
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in the chat: no need to try again."
@@ -332,6 +341,45 @@ class WebHub:
         channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
         await channel.send(text)
         self.follow_ups.answered(str(member.group_id))
+
+    def groups_with_close_deadlines(self, today: date | None = None) -> list[int]:
+        """Groups whose saved plan has an open task with an owner due between yesterday and in two days."""
+        today = today or date.today()
+        lo, hi = today - timedelta(days=1), today + timedelta(days=2)
+        found = []
+        for group_id, state in self.calendar.states():
+            for task in state.get("tasks") or []:
+                try:
+                    due = date.fromisoformat(str(task.get("due_date") or ""))
+                except ValueError:
+                    continue
+                if task.get("status") != "done" and task.get("owner_id") and lo <= due <= hi:
+                    found.append(group_id)
+                    break
+        return found
+
+    async def wake_due_groups(self, today: date | None = None) -> int:
+        """Ask MUCA-Server for one CS6 assessment in each such group (it may well stay silent)."""
+        woken = 0
+        for group_id in self.groups_with_close_deadlines(today):
+            members = self.store.members(group_id)
+            if not members:
+                continue
+            try:
+                await self.command(members[0], "progress")
+                woken += 1
+            except Exception:  # one group's failure must not stop the others
+                logger.exception("progress wake-up failed for group %s", group_id)
+        return woken
+
+    async def wake_loop(self) -> None:
+        await asyncio.sleep(WAKE_FIRST_SECONDS)
+        while True:
+            try:
+                await self.wake_due_groups()
+            except Exception:
+                logger.exception("progress wake-up round failed")
+            await asyncio.sleep(WAKE_EVERY_SECONDS)
 
     async def rename_group(self, member: Member, name: str) -> dict:
         """Project settings: a new name for the space; every open tab of the group shows it."""

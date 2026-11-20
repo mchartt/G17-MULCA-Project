@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Literal
 from urllib.parse import unquote
@@ -102,6 +103,21 @@ def create_web_app(
         return {"ok": True}
 
     add_account_routes(app, hub)
+
+    # CS6: groups with a deadline close get their progress assessment even when
+    # nobody has opened them since this adapter started (hub.wake_loop).
+    waking: list[asyncio.Task] = []
+
+    async def start_waking() -> None:
+        if os.environ.get("MULCA_WEB_WAKE", "on").strip().lower() not in ("0", "off", "false", "no"):
+            waking.append(asyncio.create_task(hub.wake_loop()))
+
+    async def stop_waking() -> None:
+        for task in waking:
+            task.cancel()
+
+    app.router.on_startup.append(start_waking)
+    app.router.on_shutdown.append(stop_waking)
 
     def who(authorization: str, display_name: str):
         """The logged-in person, or None for a guest (who must give a name)."""

@@ -58,6 +58,17 @@ class CalendarFeeds:
         row = self._db.execute("SELECT group_id FROM web_calendar WHERE token_hash = ?", (hash_token(token),)).fetchone()
         return row[0] if row else None
 
+    def states(self) -> list[tuple[int, dict]]:
+        """The last project state saved for every group (the wake-up check reads the due dates)."""
+        rows = self._db.execute("SELECT group_id, state_json FROM web_state").fetchall()
+        out = []
+        for group_id, text in rows:
+            try:
+                out.append((group_id, json.loads(text)))
+            except ValueError:
+                continue
+        return out
+
     def save_state(self, group_id: int, state: dict) -> None:
         with self._db:
             self._db.execute(

@@ -69,6 +69,30 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await popup.getByRole("button", { name: "Save" }).click();
   await expect(list.getByText("Waiting")).toBeVisible();
 
+  // The dot where the arrow lands: let go on a note and nothing changes; pulled off into the open it disconnects.
+  const endDot = page.locator("[data-end]");
+  const dotBox = (await endDot.boundingBox())!;
+  const board = (await page.locator(".jam__board").boundingBox())!;
+  const dotAt = { x: dotBox.x + dotBox.width / 2, y: dotBox.y + dotBox.height / 2 };
+  await page.mouse.move(dotAt.x, dotAt.y);
+  await page.mouse.down();
+  await page.mouse.move(dotAt.x + 40, dotAt.y + 10, { steps: 4 });
+  await page.mouse.up(); // still on the waiting note
+  await expect(endDot).toHaveCount(1);
+  await expect(list.getByText("Waiting")).toBeVisible();
+  await page.mouse.move(dotAt.x, dotAt.y);
+  await page.mouse.down();
+  await page.mouse.move(board.x + board.width - 20, board.y + board.height - 20, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByText("Nothing waits on anything yet.")).toBeVisible();
+  await expect(endDot).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Link tasks" }).click();
+  await popup.getByLabel("Task").selectOption({ label: "Test the API" });
+  await popup.getByLabel("Build the API", { exact: true }).check();
+  await popup.getByRole("button", { name: "Save" }).click();
+  await expect(list.getByText("Waiting")).toBeVisible();
+
   await page.getByRole("button", { name: "Link tasks" }).click();
   await popup.getByLabel("Task").selectOption({ label: "Build the API" });
   await popup.getByLabel("Test the API").check();
@@ -100,6 +124,9 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   // The reflection: the week in numbers, then back to the chat.
   await rail.getByRole("button", { name: "Reflection" }).click();
   await expect(page.getByRole("list", { name: "The week in numbers" })).toContainText("of the plan done");
+  // New tasks say who owns them and by when; a missing one is called out.
+  await expect(page.getByText(/still need an owner or a date/)).toBeVisible();
+  await expect(page.getByText("No deadline").first()).toBeVisible();
   await rail.getByRole("button", { name: "Chat" }).click();
   await expect(page.getByRole("region", { name: "Group chat" })).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/pages-3-chat.png` });

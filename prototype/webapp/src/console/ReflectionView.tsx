@@ -33,7 +33,32 @@ type Props = {
   onLoad: (week: string) => Promise<Reflection | string>;
 };
 
-export function ReflectionPage({ state, today, onLoad }: Props) {
+/**
+ * One task with who owns it and by when. A missing owner or date is shown as such, in the warning
+ * colour: it is the gap Cadence exists to close, so the week's review should not hide it.
+ */
+function TaskLine({ task, today, nameOf, withDate = true }: { task: { task_id: string; title: string; owner_id?: MemberId | null; due_date?: string | null }; today: string; nameOf: Props["nameOf"]; withDate?: boolean }) {
+  const owner = task.owner_id ? nameOf(task.owner_id) : undefined;
+  const late = !!task.due_date && task.due_date < today;
+  return (
+    <li className="rtask">
+      <span className="rtask__title">{task.title}</span>
+      <span className="rtask__meta">
+        <span className={owner ? "rtask__who" : "rtask__who rtask__gap"}>
+          <span className="rtask__avatar" aria-hidden="true">{owner ? owner.slice(0, 1).toUpperCase() : "?"}</span>
+          {owner ?? "No owner"}
+        </span>
+        {withDate && (
+          <span className={task.due_date ? (late ? "due due--late" : "due") : "due rtask__gap"}>
+            {task.due_date ? `${late ? "Was due" : "Due"} ${dayLabel(task.due_date)}` : "No deadline"}
+          </span>
+        )}
+      </span>
+    </li>
+  );
+}
+
+export function ReflectionPage({ state, today, nameOf, onLoad }: Props) {
   const [week, setWeek] = useState(() => mondayOf(today));
   const [data, setData] = useState<Reflection | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +86,7 @@ export function ReflectionPage({ state, today, onLoad }: Props) {
 
   const shown = data && data.week === week ? data : null;
   const messages = shown?.talk.reduce((sum, t) => sum + t.messages, 0) ?? 0;
+  const gaps = shown?.added.filter((t) => !t.owner_id || !t.due_date).length ?? 0;
 
   return (
     <section className="page reflection-page" aria-label="Reflection" aria-busy={loading}>
@@ -113,11 +139,11 @@ export function ReflectionPage({ state, today, onLoad }: Props) {
 
             <section className="panel-card reflect" aria-labelledby="r-done">
               <h3 id="r-done">Done this week</h3>
-              {shown.done.length ? <Capped className="reflect__list" limit={4} title="Done this week" items={shown.done} render={(t) => <li key={t.task_id}>{t.title}</li>} /> : <p className="muted small">Nothing finished this week.</p>}
+              {shown.done.length ? <Capped className="reflect__list" limit={4} title="Done this week" items={shown.done} render={(t) => <TaskLine key={t.task_id} task={t} today={today} nameOf={nameOf} withDate={false} />} /> : <p className="muted small">Nothing finished this week.</p>}
               {shown.added.length > 0 && (
                 <>
-                  <h4>New tasks</h4>
-                  <Capped className="reflect__list" limit={4} title="New tasks this week" items={shown.added} render={(t) => <li key={t.task_id}>{t.title}</li>} />
+                  <h4>New tasks · {gaps > 0 ? `${gaps} of ${shown.added.length} still need an owner or a date` : "all with an owner and a date"}</h4>
+                  <Capped className="reflect__list" limit={4} title="New tasks this week" items={shown.added} render={(t) => <TaskLine key={t.task_id} task={t} today={today} nameOf={nameOf} />} />
                 </>
               )}
             </section>

@@ -47,6 +47,26 @@ test("dependencies: empty explains where a dependency comes from", async () => {
   expect(onNew).toHaveBeenCalled();
 });
 
+test("dependencies: the dot where an arrow lands disconnects it when pulled off into the open", () => {
+  // jsdom has no PointerEvent: a mouse event carries the coordinates and button the board reads.
+  if (!("PointerEvent" in window)) (window as unknown as Record<string, unknown>).PointerEvent = class extends MouseEvent {};
+  const onDisconnect = vi.fn();
+  const tasks = [task("a", "Build the API"), task("b", "Test the API", "todo", ["a"], 2)];
+  const { container } = render(<DependenciesPage tasks={tasks} proposals={[]} nameOf={names} onNew={vi.fn()} onLink={vi.fn()} onConnect={vi.fn()} onDisconnect={onDisconnect} onAnswer={vi.fn()} />);
+  const dot = container.querySelector('[data-end="a>b"]') as HTMLElement;
+  expect(dot).not.toBeNull();
+  const board = container.querySelector(".jam__board") as HTMLElement;
+  // Let go without moving (a plain click) or back where it started: nothing is removed.
+  fireEvent.pointerDown(dot, { button: 0, clientX: 100, clientY: 100 });
+  fireEvent.pointerUp(board, { clientX: 100, clientY: 100 });
+  expect(onDisconnect).not.toHaveBeenCalled();
+  // Pulled off into empty space: the link goes.
+  fireEvent.pointerDown(dot, { button: 0, clientX: 100, clientY: 100 });
+  fireEvent.pointerMove(board, { clientX: 220, clientY: 260 });
+  fireEvent.pointerUp(board, { clientX: 220, clientY: 260 });
+  expect(onDisconnect).toHaveBeenCalledWith("a", "b");
+});
+
 test("dependencies: every task is a note on the board, the waits are said in words, a note opens its links", async () => {
   const onLink = vi.fn();
   const tasks = [task("a", "Build the API"), task("b", "Test the API", "todo", ["a"], 2)];
@@ -106,6 +126,19 @@ test("tasks: a very long title is cut in the row and whole in its details", asyn
   expect(screen.getByTitle(long)).toHaveClass("task-card__title");
   await userEvent.click(screen.getByRole("button", { name: new RegExp(`^${long}.*Open the details$`) }));
   expect(screen.getByLabelText("Title")).toHaveValue(long);
+});
+
+test("reflection: new tasks show their owner and deadline, and a missing one is called out", async () => {
+  const week = {
+    week: "2026-11-16", until: "2026-11-22", current: true, done: [], slipped: [], decisions: [], upcoming: [], talk: [],
+    added: [{ task_id: "a", title: "Prepare data", owner_id: 1, due_date: "2026-11-25" }, { task_id: "b", title: "IA training", owner_id: null, due_date: null }],
+    progress: { done: 0, total: 2 }, topics: [],
+  };
+  render(<ReflectionPage state={null} today="2026-11-19" nameOf={names} onLoad={vi.fn().mockResolvedValue(week)} />);
+  expect(await screen.findByText(/1 of 2 still need an owner or a date/)).toBeInTheDocument();
+  expect(screen.getByText(/^Due Wed,? 25 Nov$/)).toBeInTheDocument();
+  expect(screen.getByText("No owner")).toBeInTheDocument();
+  expect(screen.getByText("No deadline")).toBeInTheDocument();
 });
 
 test("reflection: the week in numbers and topics, group-level, from the server", async () => {

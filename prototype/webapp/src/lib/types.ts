@@ -17,7 +17,7 @@ export type ProposalStatus = "pending" | "applied" | "rejected" | "expired" | "s
 /** A button on a card, as the server expects it (muca_server/protocol/coordinator.py). */
 export type CardAction = "confirm" | "reject" | "take" | "choose" | "not_now" | "helpful";
 export type Click = { action: CardAction; option?: number };
-export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup" | "language" | "charter" | "milestone" | "approach";
+export type CommandName = "profile" | "kickoff" | "state" | "planning" | "checkin" | "task" | "why" | "ask" | "catchup" | "language" | "charter" | "milestone" | "approach" | "document" | "reflection";
 
 /**
  * A member's id. Web members have small numbers. In a linked group a card can
@@ -34,8 +34,32 @@ export type CatchUp = {
   until: number;
   linked: boolean;
   decisions: { question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number }[];
-  elsewhere: { channel: string; total: number; messages: { speaker: string; text: string; at: number }[] }[];
+  elsewhere: CatchUpChannel[];
+  /** This channel's own chat since the last visit (20/11: the group chat is part of the catch-up). */
+  here?: CatchUpChannel;
+  tasks_done?: CatchUpTask[];
+  tasks_added?: CatchUpTask[];
 };
+export type CatchUpChannel = { channel: string; total: number; messages: { speaker: string; text: string; at: number }[] };
+export type CatchUpTask = { task_id: string; title: string; owner_id?: MemberId | null; at?: number | null };
+
+/** The week's reflection (command "reflection"): facts from the plan and the chat, topics from Cadence. Group-level only. */
+export type Reflection = {
+  week: string;
+  until: string;
+  current: boolean;
+  done: { task_id: string; title: string; owner_id?: MemberId | null; at?: number }[];
+  added: { task_id: string; title: string; owner_id?: MemberId | null; due_date?: string | null }[];
+  decisions: { decision_id: string; question: string; choice: string; reason?: string; at: number }[];
+  slipped: { task_id: string; title: string; owner_id?: MemberId | null; due_date?: string | null }[];
+  upcoming: { milestone_id: string; title: string; due_date: string }[];
+  talk: { channel: string; messages: number }[];
+  progress: { done: number; total: number };
+  topics: { title: string; summary: string }[];
+};
+
+/** A document Cadence reads as project context; its text stays on the server. */
+export type ProjectDocument = { document_id: string; name: string; chars: number; added_by?: MemberId | null; added_at: number };
 
 /** Why a proactive card exists (M3): strategy, topic, and the messages behind it. */
 export type ProactiveContext = {
@@ -89,12 +113,25 @@ export type ProjectState = {
   members?: { member_id?: MemberId; display_name: string; discipline?: string; skills?: string[]; weekly_hours?: number | null; background?: string }[];
   /** The language the group chose for Cadence's texts: "en", "it", or "" (it follows the chat). */
   language?: string;
-  tasks?: { task_id?: string; title: string; status: string; owner_id?: MemberId | null; due_date?: string | null; description?: string; depends_on?: string[] }[];
+  tasks?: {
+    task_id?: string;
+    title: string;
+    status: string;
+    owner_id?: MemberId | null;
+    due_date?: string | null;
+    description?: string;
+    depends_on?: string[];
+    /** 0-100, set by a member; 100 when done. */
+    progress?: number;
+    created_at?: number | null;
+    done_at?: number | null;
+  }[];
+  documents?: ProjectDocument[];
   /** decided_by / decided_at: shown when the server sends them (the decision registry page). */
-  decisions?: { question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number }[];
+  decisions?: { decision_id?: string; question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number; reopened_at?: number | null }[];
 };
 
-export type Notice = { type: "notice"; ok: boolean; text: string; catchup?: CatchUp };
+export type Notice = { type: "notice"; ok: boolean; text: string; catchup?: CatchUp; reflection?: Reflection };
 export type Answer = Notice | { type: "state"; ok: boolean; state: ProjectState };
 
 export type ServerEvent =

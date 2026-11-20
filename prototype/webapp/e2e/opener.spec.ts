@@ -48,12 +48,8 @@ test("after the charter Cadence asks how you plan the work, and the answer becom
   await expect(card).toContainText("Confirmed by Ada");
 
   await ada.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Decisions" }).click();
-  const page = ada.getByRole("region", { name: "Decisions", exact: true });
+  const page = ada.getByRole("region", { name: "Plan and decisions", exact: true });
   await expect(page).toContainText("How the group plans the work");
   if (SHOTS) await ada.screenshot({ path: `${SHOTS}/opener-3-decisions.png` });
 
-  // "Plan together" asks again on demand (live run 19/11: the adapter refused the command).
-  await ada.getByRole("list", { name: "Pages" }).getByRole("button", { name: "Chat" }).click();
-  await askCadence(ada, "Plan together");
-  await expect(ada.locator(".msg--agent", { hasText: "How do you want to plan the work?" })).toHaveCount(2, { timeout: 10_000 });
 });

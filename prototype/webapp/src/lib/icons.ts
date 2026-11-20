@@ -30,6 +30,8 @@ export {
   faHashtag,
   faListCheck,
   faMagnifyingGlass,
+  faMinus,
+  faUpRightAndDownLeftFromCenter,
   faListOl,
   faLink,
   faLock,

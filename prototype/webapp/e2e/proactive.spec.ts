@@ -71,7 +71,7 @@ test("CS3: the decision card has one button per option; the choice goes to the d
   await card.getByRole("button", { name: "Think-aloud" }).click();
   await expect(ada.locator(".card", { hasText: "Close the decision" }).getByRole("status")).toHaveText("Confirmed by Bruno");
   await showPage(ada, "Decisions");
-  await expect(ada.getByRole("region", { name: "Decisions", exact: true })).toContainText("Think-aloud");
+  await expect(ada.getByRole("region", { name: "Plan and decisions", exact: true })).toContainText("Think-aloud");
 });
 
 test("Not now closes the card as silenced for 30 minutes and changes nothing", async ({ browser }) => {

@@ -27,11 +27,11 @@ HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); 
 Element.prototype.scrollIntoView = vi.fn();
 const { Console } = await import("./Console");
 
-test("the console opens chat first: one Quick access button in the bar, and the panel it shows beside the chat", async () => {
+test("the console opens chat first: Your profile, Tour and Quick access in the bar, and the panel beside the chat", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   expect(screen.getByRole("region", { name: "Group chat" })).toBeInTheDocument();
   const bar = screen.getByRole("banner");
-  expect(within(bar).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Quick access"]);
+  expect(within(bar).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual(["Your profile", "Tour", "Quick access"]);
   const toggle = within(bar).getByRole("button", { name: "Quick access" });
   expect(toggle).toHaveAttribute("aria-expanded", "true");
   expect(screen.getByRole("complementary", { name: "Quick access" })).toBeInTheDocument();
@@ -127,27 +127,40 @@ test("a page's New button opens the New task popup", async () => {
   expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
 });
 
-test("Quick access holds what is not on a page: Ask Cadence, the dates, project memory and the member, with no copy of Tasks or Milestones", () => {
+test("Quick access holds six actions that work, none repeating a page (Matteo, 20/11)", () => {
   render(<Console token="t" onLeave={() => undefined} />);
   const panel = screen.getByRole("complementary", { name: "Quick access" });
   const groups = Object.fromEntries(within(panel).getAllByRole("region").map((g) => [g.getAttribute("aria-labelledby"), within(g).getAllByRole("button").map((b) => b.textContent?.trim())]));
   expect(groups).toEqual({
-    "quick-ask": ["Plan togetherCadence asks how you want to work, then sums up your answers.", "Paste the assignmentCadence proposes the goal, deliverables and milestones.", "Plan tasksList the tasks; Cadence suggests who could take each.", "Check-inCompare the plan with the dates and see what slips.", "Catch upWhat changed while you were away."],
-    "quick-dates": ["TodayNothing due today.", "Day by dayEvery open task and milestone by date, late first.", "Edit tasksChange the owner, date or status of any task.", "Add to my calendarA private link for Google Calendar or Outlook."],
-    "quick-memory": ["Ask whyWhy did the group decide something? Answered from the log.", "Refresh the planReload the plan if something looks out of date."],
-    "quick-you": ["Your profileSkills and background: Cadence suggests owners from them.", "Show the tourThe quick walk-through of this screen."],
+    "quick-cadence": [
+      "Catch upWhat changed while you were away: chat, decisions, tasks.",
+      "Check-inCompare the plan with the dates and see what slips.",
+      "Paste the assignmentCadence proposes the goal, deliverables and milestones.",
+      "Find ownersShows every task with no owner; Cadence proposes who could take each.",
+    ],
+    "quick-plan": [
+      "New taskAdd a task; Cadence checks whether it waits on another one.",
+      "Add to my calendarA file for Outlook, Google or Apple Calendar: milestones and your tasks.",
+    ],
   });
-  expect(within(panel).queryByRole("button", { name: /^(Create a )?(task|milestone)/i })).toBeNull();
 });
 
-test("the dates and memory shortcuts each open their own popup", async () => {
+test("Find owners and New task open their own popup; Find owners asks for one card", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
-  for (const [button, title] of [[/^Today/, "Today"], [/^Day by day/, "Day by day"], [/^Edit tasks/, "Edit tasks"], [/^Add to my calendar/, "Add to my calendar"], [/^Ask why/, "Ask why"], [/^Your profile/, "Your profile"]] as const) {
+  for (const [button, title] of [[/^Find owners/, "Find owners"], [/^New task/, "New task"]] as const) {
     await userEvent.click(within(screen.getByRole("complementary", { name: "Quick access" })).getByRole("button", { name: button }));
     const popup = screen.getByRole("dialog", { name: title });
     expect(popup).toBeInTheDocument();
     (popup as HTMLDialogElement).close();
   }
+});
+
+test("Catch up only peeks when it opens, and marks it seen when it closes", async () => {
+  render(<Console token="t" onLeave={() => undefined} />);
+  await userEvent.click(screen.getByRole("button", { name: /^Catch up/ }));
+  expect(asked).toContainEqual({ type: "command", command: "catchup", args: { peek: true } });
+  await userEvent.click(within(screen.getByRole("dialog", { name: "Catch up" })).getByRole("button", { name: "Done" }));
+  expect(asked).toContainEqual({ type: "command", command: "catchup", args: { seen: true } });
 });
 
 test("Edit the plan, on the Decisions page, opens Project settings where the goal is edited", async () => {
@@ -160,8 +173,8 @@ test("Edit the plan, on the Decisions page, opens Project settings where the goa
 test("the Decisions page is the plan and decision registry, empty until the group confirms something", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   await userEvent.click(within(screen.getByRole("list", { name: "Pages" })).getByRole("button", { name: "Decisions" }));
-  const page = screen.getByRole("region", { name: "Decisions" });
-  expect(within(page).getByText(/No plan confirmed yet/)).toBeInTheDocument();
+  const page = screen.getByRole("region", { name: "Plan and decisions" });
+  expect(within(page).getByText(/No goal yet/)).toBeInTheDocument();
   expect(within(page).getByText(/No decision recorded yet/)).toBeInTheDocument();
 });
 
@@ -180,10 +193,13 @@ test("Connect Slack or Discord explains the bot and the link command", async () 
   expect(within(popup).getByText(/Without the bot installed, the command does nothing/)).toBeInTheDocument();
 });
 
-test("Plan together, from Quick access, asks the server with the approach command", async () => {
+test("Project settings list the documents Cadence reads", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
-  await userEvent.click(screen.getByRole("button", { name: /^Plan together/ }));
-  expect(asked).toContainEqual({ type: "command", command: "approach" });
+  await userEvent.click(screen.getByRole("button", { name: "Project settings" }));
+  const popup = within(screen.getByRole("dialog", { name: "Project settings" }));
+  expect(popup.getByRole("heading", { name: "Documents Cadence reads" })).toBeInTheDocument();
+  expect(popup.getByText("No documents yet.")).toBeInTheDocument();
+  expect(popup.getByRole("button", { name: /Add a document/ })).toBeInTheDocument();
 });
 
 test("below 1100px Quick access is a sheet: it starts closed, focus goes into it, and the page behind is inert until it closes", async () => {
@@ -199,9 +215,9 @@ test("below 1100px Quick access is a sheet: it starts closed, focus goes into it
   expect(document.querySelector(".side")).toHaveAttribute("inert");
 
   // A shortcut closes the sheet and opens its popup.
-  await userEvent.click(screen.getByRole("button", { name: /^Ask why/ }));
+  await userEvent.click(screen.getByRole("button", { name: /^Find owners/ }));
   expect(screen.queryByRole("complementary", { name: "Quick access" })).toBeNull();
-  expect(screen.getByRole("dialog", { name: "Ask why" })).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Find owners" })).toBeInTheDocument();
   expect(document.querySelector(".console__main")).not.toHaveAttribute("inert");
   vi.unstubAllGlobals();
 });

@@ -80,7 +80,10 @@ export function ProjectDesk({ disabled, onEnter, onBack }: Props) {
           failed.push(file.name);
         }
       }
-      const passed = savePendingBrief(token, composeBrief(description, read));
+      const passed = savePendingBrief(token, composeBrief(description, read), {
+        description: description.trim(),
+        documents: read.map((d) => ({ name: d.name, text: d.text })),
+      });
       clearDraftBrief();
       if (failed.length || !passed) {
         setCreated(token);

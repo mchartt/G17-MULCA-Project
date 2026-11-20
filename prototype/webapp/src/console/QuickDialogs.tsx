@@ -4,8 +4,8 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import type { MemberId, Person } from "../lib/types";
 import { Dialog } from "./Dialogs";
-import { DoneBox, OwnerSelect } from "./PlanDialogs";
-import { dayLabel, todayView, type MilestoneEdit, type NewTask, type Task, type TaskEdit } from "./plan";
+import { OwnerSelect } from "./PlanDialogs";
+import { dayLabel, type MilestoneEdit, type NewTask, type Task } from "./plan";
 
 type Create<T> = (value: T) => Promise<string | null>;
 
@@ -138,128 +138,53 @@ export function NewMilestoneDialog({ open, onClose, onCreate }: { open: boolean;
   );
 }
 
-type TodayProps = {
-  open: boolean;
-  /** The day to look at, as YYYY-MM-DD (the caller's today). */
-  today: string;
-  tasks: Task[];
-  nameOf: (id?: MemberId | null) => string | undefined;
-  onTask: (taskId: string, edit: TaskEdit) => void;
-  onClose: () => void;
-};
-
-/** What is late and what is due today: the quick look, not the whole plan. */
-export function TodayDialog({ open, today, tasks, nameOf, onTask, onClose }: TodayProps) {
-  const view = todayView(tasks, today);
-  const groups = [
-    { key: "late", title: "Late", tasks: view.late },
-    { key: "today", title: "Due today", tasks: view.today },
-  ].filter((g) => g.tasks.length > 0);
-  return (
-    <Dialog open={open} title="Today" onClose={onClose}>
-      {groups.length === 0 ? (
-        <p className="muted register__empty">Nothing is due today and nothing is late.</p>
-      ) : (
-        groups.map((g) => (
-          <section key={g.key} aria-labelledby={`today-${g.key}`} className="agenda">
-            <h3 id={`today-${g.key}`} className={g.key === "late" ? "agenda__day agenda__day--late" : "agenda__day"}>{g.title}</h3>
-            <ul>
-              {g.tasks.map((t) => (
-                <li key={t.task_id ?? t.title} className="agenda__task">
-                  <DoneBox task={t} onTask={onTask} />
-                  <span>{t.title}{g.key === "late" && t.due_date && <span className="muted small"> · was due {dayLabel(t.due_date)}</span>}</span>
-                  <span className={t.owner_id ? "muted small" : "tag tag--warn"}>{t.owner_id ? nameOf(t.owner_id) ?? "member" : "No owner"}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
-      <div className="form__actions"><button type="button" className="btn btn--soft" onClick={onClose}>Close</button></div>
-    </Dialog>
-  );
-}
-
-/** "Ask why": a question about a past decision, answered from the decision log with its source. */
-export function AskWhyDialog({ open, onClose, onWhy }: { open: boolean; onClose: () => void; onWhy: (question: string) => Promise<string> }) {
-  const id = useId();
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
+/**
+ * Find owners (Matteo, 20/11): every open task that nobody owns, listed, and
+ * one button that asks Cadence to propose who could take each, from the
+ * members' profiles. Cadence answers with one card in the chat; nothing is
+ * assigned until a member confirms it.
+ */
+export function OwnersDialog({ open, tasks, onClose, onFind }: { open: boolean; tasks: Task[]; onClose: () => void; onFind: () => Promise<string | null> }) {
+  const ownerless = tasks.filter((t) => !t.owner_id && t.status !== "done");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (open) return;
-    setQuestion("");
-    setAnswer(null);
-    setBusy(false);
-  }, [open]);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!question.trim() || busy) return;
-    setBusy(true);
-    setAnswer(await onWhy(question.trim()));
-    setBusy(false);
-  }
-
-  return (
-    <Dialog open={open} title="Ask why" onClose={onClose}>
-      <p className="muted">Ask why the group decided something. Cadence answers from the decision log and shows its source.</p>
-      <form className="form" onSubmit={submit}>
-        <label htmlFor={`${id}-q`}>Your question</label>
-        <input id={`${id}-q`} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Why did we choose…?" maxLength={500} />
-        {answer && <p className="askwhy__answer" role="status">{answer}</p>}
-        <div className="form__actions">
-          <button type="button" className="btn btn--soft" onClick={onClose}>Close</button>
-          <button type="submit" className="btn btn--primary" disabled={busy || !question.trim()}>{busy ? "Looking…" : "Ask"}</button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-/** N3: milestones and task dates in each member's own calendar, read-only, through a private link. */
-export function CalendarDialog({ open, onClose, onCalendar }: { open: boolean; onClose: () => void; onCalendar: () => Promise<string> }) {
-  const id = useId();
-  const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
   useEffect(() => {
-    if (open) return;
-    setError(null);
-    setCopied(false);
+    if (open) setError(null);
   }, [open]);
-
-  async function make() {
-    setError(null);
-    setCopied(false);
-    try {
-      setUrl(await onCalendar());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "The link could not be created.");
-    }
-  }
-
+  const find = async () => {
+    setBusy(true);
+    setError(await onFind());
+    setBusy(false);
+  };
   return (
-    <Dialog open={open} title="Add to my calendar" onClose={onClose}>
-      <p className="muted">Milestones and task dates appear in your own calendar, read-only. Keep the link private: a new link turns the old one off.</p>
-      <div className="calendar">
-        <div>
-          <button type="button" className="btn btn--primary btn--small" onClick={() => void make()}>{url ? "Make a new link" : "Create my link"}</button>
-        </div>
-        {url && (
-          <>
-            <label htmlFor={`${id}-url`} className="small">Subscribe to this link. Google Calendar: Other calendars, From URL. Outlook: Add calendar, Subscribe from web.</label>
-            <div className="askwhy__row">
-              <input id={`${id}-url`} readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
-              <button type="button" className="btn btn--soft btn--small" onClick={() => void navigator.clipboard?.writeText(url).then(() => setCopied(true))}>{copied ? "Copied" : "Copy"}</button>
-            </div>
-          </>
+    <Dialog open={open} title="Find owners" onClose={onClose}>
+      {ownerless.length === 0 ? (
+        <p className="muted">Every open task already has an owner.</p>
+      ) : (
+        <>
+          <p className="muted">
+            {ownerless.length === 1 ? "This task has no owner yet." : `These ${ownerless.length} tasks have no owner yet.`} Cadence
+            proposes who could take each, from your profiles; one of you confirms the card in the chat.
+          </p>
+          <ul className="owners-list" aria-label="Tasks with no owner">
+            {ownerless.map((t) => (
+              <li key={t.task_id ?? t.title}>
+                <span className="owners-list__title">{t.title}</span>
+                {t.due_date && <span className="muted small">due {dayLabel(t.due_date)}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {error && <p className="form__error" role="alert">{error}</p>}
+      <div className="form__actions">
+        <button type="button" className="btn btn--soft" onClick={onClose}>Close</button>
+        {ownerless.length > 0 && (
+          <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void find()}>
+            {busy ? "Asking Cadence…" : "Ask Cadence to propose owners"}
+          </button>
         )}
-        {error && <p className="form__error" role="alert">{error}</p>}
       </div>
-      <div className="form__actions"><button type="button" className="btn btn--soft" onClick={onClose}>Close</button></div>
     </Dialog>
   );
 }

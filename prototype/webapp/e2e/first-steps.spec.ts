@@ -66,7 +66,7 @@ test("first steps, team, language and an edited goal", async ({ browser }) => {
 
   // Editing the goal (Decisions page, "Edit the plan"): a card; the page keeps the confirmed goal until someone confirms.
   await showPage(ada, "Decisions");
-  const before = (await ada.locator(".registry__goal").textContent())!;
+  const before = (await ada.locator(".goal-card__text").textContent())!;
   await ada.getByRole("button", { name: "Edit the plan" }).click();
   const settings = ada.getByRole("dialog", { name: "Project settings" });
   await settings.getByRole("button", { name: "Edit goal" }).click();
@@ -74,20 +74,25 @@ test("first steps, team, language and an edited goal", async ({ browser }) => {
   if (SHOTS) await ada.screenshot({ path: `${SHOTS}/3-goal-form.png` });
   await settings.getByRole("button", { name: "Propose change" }).click();
   await ada.keyboard.press("Escape");
-  await expect(ada.locator(".registry__goal")).toHaveText(before);
+  await expect(ada.locator(".goal-card__text")).toHaveText(before);
   await showPage(ada, "Chat");
   const edit = ada.locator(".card", { hasText: "Ada edited the goal and deliverables." });
   await expect(edit).toContainText("Ship Cadence for the demo.");
   await edit.getByRole("button", { name: "Confirm" }).click();
   await showPage(ada, "Decisions");
-  await expect(ada.locator(".registry__goal")).toHaveText("Ship Cadence for the demo.");
+  await expect(ada.locator(".goal-card__text")).toHaveText("Ship Cadence for the demo.");
   await showPage(ada, "Chat");
 
-  // The tasks, from "Ask Cadence".
-  await askCadence(ada, "Plan tasks");
-  await ada.getByLabel("Task 1", { exact: true }).fill("Server API");
-  await ada.getByLabel("Task 2", { exact: true }).fill("UI screens");
-  await ada.getByRole("button", { name: "Suggest owners" }).click();
+  // The tasks, then owners suggested by Cadence (Find owners) in one card.
+  for (const title of ["Server API", "UI screens"]) {
+    await askCadence(ada, "New task");
+    const add = ada.getByRole("dialog", { name: "New task" });
+    await add.getByLabel("Name").fill(title);
+    await add.getByRole("button", { name: "Add task" }).click();
+    await expect(add).toBeHidden();
+  }
+  await askCadence(ada, "Find owners");
+  await ada.getByRole("dialog", { name: "Find owners" }).getByRole("button", { name: "Ask Cadence to propose owners" }).click();
   await ada.locator(".card", { hasText: "Plan: who does what" }).getByRole("button", { name: "Confirm" }).click();
   if (SHOTS) await ada.screenshot({ path: `${SHOTS}/4-all-done.png` });
 });

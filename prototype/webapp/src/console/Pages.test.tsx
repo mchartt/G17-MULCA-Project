@@ -1,7 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
+import type { MemberId } from "../lib/types";
 import { DependenciesPage, MilestonesPage, ReflectionPage, TasksPage } from "./Pages";
+
+// jsdom has no <dialog> modal: show it as open.
+HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
 
 const task = (task_id: string, title: string, status = "todo", depends_on: string[] = [], owner_id: number | null = 1, due_date: string | null = null) => ({ task_id, title, status, depends_on, owner_id, due_date });
 
@@ -31,76 +36,102 @@ test("milestones: creating goes through the popup, so the page only asks for it;
   expect(onNew).toHaveBeenCalled();
 });
 
+const names = (id?: MemberId | null) => (id === 1 ? "Ada" : id === 2 ? "Bruno" : undefined);
+const members = [{ id: 1, name: "Ada" }, { id: 2, name: "Bruno" }];
+
 test("dependencies: empty explains where a dependency comes from", async () => {
   const onNew = vi.fn();
-  render(<DependenciesPage tasks={[task("a", "API")]} onNew={onNew} onLink={vi.fn()} />);
+  render(<DependenciesPage tasks={[task("a", "API")]} proposals={[]} nameOf={names} onNew={onNew} onLink={vi.fn()} onAnswer={vi.fn()} />);
   expect(screen.getByText(/Nothing waits on anything yet/)).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "New task" }));
+  await userEvent.click(screen.getAllByRole("button", { name: /New task/ })[0]!);
   expect(onNew).toHaveBeenCalled();
 });
 
-test("dependencies: each task that waits shows what it needs, and whether it can start", () => {
-  const tasks = [task("a", "Build the API", "doing"), task("d", "Design", "done"), task("t", "Test the API", "todo", ["a"]), task("r", "Release", "todo", ["d"])];
-  render(<DependenciesPage tasks={tasks} onNew={vi.fn()} onLink={vi.fn()} />);
-  const list = within(screen.getByRole("region", { name: "As a list" }));
-  const testing = list.getByText("Test the API").closest("li")!;
-  expect(within(testing).getByText("Waiting")).toBeInTheDocument();
-  expect(within(within(testing).getByRole("list", { name: "Test the API waits on" })).getByText("Build the API")).toBeInTheDocument();
-  const release = list.getByText("Release").closest("li")!;
-  expect(within(release).getByText("Ready to start")).toBeInTheDocument();
-});
-
-test("reflection: counts from the plan, only the ones that matter, and the decisions with their reasons", () => {
-  const state = {
-    tasks: [task("a", "A", "done"), task("b", "B", "todo", [], null, "2026-11-10"), task("c", "C", "todo", [], 1, null)],
-    milestones: [{ milestone_id: "m", title: "Demo", due_date: null }],
-    decisions: [{ question: "Which database?", choice: "SQLite", reason: "No server to run" }, { question: "Poster size?", choice: "A1" }],
-  };
-  render(<ReflectionPage state={state} today="2026-11-19" />);
-  expect(screen.getByText("of 3 tasks done", { exact: false })).toBeInTheDocument();
-  expect(screen.getByRole("progressbar", { name: "Tasks done" })).toHaveAttribute("value", "1");
-  expect(screen.getByText("tasks are late", { exact: false })).toBeInTheDocument();
-  expect(screen.getByText("open tasks have no owner", { exact: false })).toBeInTheDocument();
-  expect(screen.queryByText("milestone dates have passed", { exact: false })).toBeNull(); // zero: not shown
-  expect(screen.getByText("Which database?")).toBeInTheDocument();
-  expect(screen.getByText(/No server to run/)).toBeInTheDocument();
-  expect(screen.getByText("A1")).toBeInTheDocument();
-});
-
-test("reflection: nothing saved yet says so, without numbers", () => {
-  render(<ReflectionPage state={null} today="2026-11-19" />);
-  expect(screen.getByText("No tasks yet.")).toBeInTheDocument();
-  expect(screen.getByText(/No decision recorded yet/)).toBeInTheDocument();
-});
-
-test("dependencies: the graph is drawn above the list, and a row can reopen its links", async () => {
+test("dependencies: every task is a note on the board, the waits are said in words, a note opens its links", async () => {
   const onLink = vi.fn();
-  const tasks = [task("a", "Build the API", "doing"), task("t", "Test the API", "todo", ["a"]), task("x", "Alone")];
-  render(<DependenciesPage tasks={tasks} onNew={vi.fn()} onLink={onLink} />);
-  const graph = screen.getByRole("img", { name: /Dependency graph: 2 tasks, 1 links, 1 waiting/ });
-  expect(within(graph).getAllByText("Waiting").length).toBe(1);
-  expect(within(graph).queryByText("Alone")).toBeNull(); // it waits on nothing and nothing waits on it
-  await userEvent.click(screen.getByRole("button", { name: "Change what Test the API waits on" }));
-  expect(onLink).toHaveBeenLastCalledWith("t");
-  await userEvent.click(screen.getByRole("button", { name: "Link tasks" }));
-  expect(onLink).toHaveBeenLastCalledWith(null);
+  const tasks = [task("a", "Build the API"), task("b", "Test the API", "todo", ["a"], 2)];
+  render(<DependenciesPage tasks={tasks} proposals={[]} nameOf={names} onNew={vi.fn()} onLink={onLink} onAnswer={vi.fn()} />);
+  expect(screen.getByRole("button", { name: /^Build the API, To do, Ada/ })).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Test the API waits on" })).getByText(/Build the API/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /^Test the API, To do, Bruno/ }));
+  expect(onLink).toHaveBeenCalledWith("b");
 });
 
-test("dependencies: with a single task there is nothing to link, so no Link tasks button", () => {
-  render(<DependenciesPage tasks={[task("a", "API")]} onNew={vi.fn()} onLink={vi.fn()} />);
-  expect(screen.queryByRole("button", { name: "Link tasks" })).toBeNull();
+test("dependencies: Cadence's suggestion is shown with Confirm and Not now", async () => {
+  const onAnswer = vi.fn();
+  const proposal = { proposal_id: "p1", kind: "blocker", status: "pending", payload: { certainty: "possible", task_id: "b", depends_on_task_id: "a", question: "Does “Test the API” wait on “Build the API”? Tests need the API." } };
+  render(
+    <DependenciesPage tasks={[task("a", "Build the API"), task("b", "Test the API")]} proposals={[proposal as never]} nameOf={names} onNew={vi.fn()} onLink={vi.fn()} onAnswer={onAnswer} />,
+  );
+  const idea = within(screen.getByRole("list", { name: "Cadence's suggestions" }));
+  expect(idea.getByText(/“Test the API” waits on “Build the API”/)).toBeInTheDocument();
+  await userEvent.click(idea.getByRole("button", { name: "Confirm" }));
+  expect(onAnswer).toHaveBeenCalledWith("p1", "confirm");
 });
 
-test("tasks: a task nobody owns offers \"I'll take it\" to the member looking, a done one does not", async () => {
+test("tasks: four tabs; Due soon holds late and near tasks; a row opens its details and progress is saved", async () => {
   const onTask = vi.fn();
-  const tasks = [task("a", "Slides", "todo", [], null), task("b", "Report", "done", [], null), task("c", "Server", "todo", [], 1)];
-  render(<TasksPage tasks={tasks} today="2026-11-19" me={2} nameOf={(id) => (id === 1 ? "Ada" : "Bruno")} onTask={onTask} onNew={vi.fn()} />);
-  expect(screen.getAllByRole("button", { name: /^Take / })).toHaveLength(1);
-  await userEvent.click(screen.getByRole("button", { name: "Take Slides" }));
-  expect(onTask).toHaveBeenCalledWith("a", { owner: 2 });
+  const tasks = [
+    { ...task("a", "Late report", "todo", [], 1, "2026-11-10"), progress: 20 },
+    { ...task("b", "Interviews", "doing", [], 2, "2026-11-22"), description: "Five students, think-aloud." },
+    task("c", "Far away", "todo", [], null, "2026-12-30"),
+    { ...task("d", "Recruit", "done"), done_at: 10 },
+  ];
+  render(<TasksPage tasks={tasks} members={members} today="2026-11-19" me={1} nameOf={names} onTask={onTask} onNew={vi.fn()} onLink={vi.fn()} />);
+  expect(screen.getByRole("tab", { name: /Due soon 2/ })).toHaveAttribute("aria-selected", "true");
+  const panel = within(screen.getByRole("tabpanel"));
+  expect(panel.getByText("Late report")).toBeInTheDocument();
+  expect(panel.getByText(/^Late ·/)).toBeInTheDocument();
+  expect(panel.getByText("Five students, think-aloud.")).toBeInTheDocument();
+  expect(panel.queryByText("Far away")).toBeNull();
+
+  await userEvent.click(screen.getByRole("tab", { name: /To do 2/ }));
+  await userEvent.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "I'll take it: Far away" }));
+  expect(onTask).toHaveBeenLastCalledWith("c", { owner: 1 });
+
+  await userEvent.click(screen.getByRole("tab", { name: /Completed 1/ }));
+  expect(within(screen.getByRole("tabpanel")).getByText("Recruit")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("tab", { name: /In progress 1/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Interviews: open the details" }));
+  const dialog = within(screen.getByRole("dialog", { name: "Task details" }));
+  fireEvent.change(dialog.getByLabelText(/Progress/), { target: { value: "20" } });
+  await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+  expect(onTask).toHaveBeenLastCalledWith("b", { progress: 20 });
 });
 
-test("tasks: a guest of the space (no member) cannot take a task", () => {
-  render(<TasksPage tasks={[task("a", "Slides", "todo", [], null)]} today="2026-11-19" nameOf={() => undefined} onTask={vi.fn()} onNew={vi.fn()} />);
-  expect(screen.queryByRole("button", { name: /^Take / })).toBeNull();
+test("tasks: a very long title is cut in the row and whole in its details", async () => {
+  const long = "A task with a title so long that it would push the owner and the date out of the row ".repeat(3).trim();
+  render(<TasksPage tasks={[task("a", long, "todo", [], 1, "2026-11-20")]} members={members} today="2026-11-19" me={1} nameOf={names} onTask={vi.fn()} onNew={vi.fn()} onLink={vi.fn()} />);
+  expect(screen.getByTitle(long)).toHaveClass("task-card__title");
+  await userEvent.click(screen.getByRole("button", { name: `${long}: open the details` }));
+  expect(screen.getByLabelText("Title")).toHaveValue(long);
+});
+
+test("reflection: the week in numbers and topics, group-level, from the server", async () => {
+  const week = {
+    week: "2026-11-16", until: "2026-11-22", current: true,
+    done: [{ task_id: "a", title: "Recruit 5 participants" }], added: [], slipped: [{ task_id: "b", title: "Slides", due_date: "2026-11-18" }],
+    decisions: [{ decision_id: "d1", question: "Which test?", choice: "Think-aloud", at: 1 }],
+    upcoming: [{ milestone_id: "m1", title: "Demo Madness", due_date: "2026-12-02" }],
+    talk: [{ channel: "web", messages: 12 }, { channel: "discord", messages: 5 }],
+    progress: { done: 1, total: 4 },
+    topics: [{ title: "Lab booking", summary: "The group agreed on Tuesday at 17:00." }],
+  };
+  const onLoad = vi.fn().mockResolvedValue(week);
+  render(<ReflectionPage state={null} today="2026-11-19" nameOf={names} onLoad={onLoad} />);
+  expect(await screen.findByText("Lab booking")).toBeInTheDocument();
+  expect(onLoad).toHaveBeenCalledWith("2026-11-16");
+  const stats = within(screen.getByRole("list", { name: "The week in numbers" }));
+  expect(stats.getByText("17")).toBeInTheDocument();
+  expect(stats.getByText("25%")).toBeInTheDocument();
+  expect(screen.getByText("Recruit 5 participants")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Previous week" }));
+  expect(onLoad).toHaveBeenLastCalledWith("2026-11-09");
+});
+
+test("reflection: an error from the server is said", async () => {
+  render(<ReflectionPage state={null} today="2026-11-19" nameOf={names} onLoad={vi.fn().mockResolvedValue("Cadence is not available.")} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Cadence is not available.");
 });

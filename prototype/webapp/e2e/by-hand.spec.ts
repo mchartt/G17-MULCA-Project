@@ -50,33 +50,35 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
   await bruno.getByRole("button", { name: "Join the space" }).click();
   await expect(bruno.getByRole("heading", { name: "Group Hand" })).toBeVisible();
 
-  await askCadence(ada, "Plan tasks");
-  await ada.getByLabel("Task 1", { exact: true }).fill("Interview five students");
-  await ada.getByLabel("Owner of task 1").selectOption({ label: "Bruno" });
-  await ada.getByRole("button", { name: "Make the plan card" }).click();
-  const plan = ada.locator(".card", { hasText: "Plan: who does what" });
-  await expect(plan).toContainText("Ada listed the tasks with their owners.");
-  await plan.getByRole("button", { name: "Confirm" }).click();
+  // Ada adds a task by hand with Bruno as owner (New task in Quick access): no card, no model.
+  await askCadence(ada, "New task");
+  let popup = ada.getByRole("dialog", { name: "New task" });
+  await popup.getByLabel("Name").fill("Interview five students");
+  await popup.getByLabel("Owner").selectOption({ label: "Bruno" });
+  await popup.getByRole("button", { name: "Add task" }).click();
   await showPage(ada, "Tasks");
   const tasks = ada.getByRole("region", { name: "Tasks", exact: true });
+  await ada.getByRole("tab", { name: /^To do/ }).click();
   await expect(tasks).toContainText("Interview five students");
   await expect(tasks).toContainText("Bruno");
 
-  // Edit tasks (Quick access): a task added by hand with nobody on it, then dated.
-  await askCadence(ada, "Edit tasks");
-  await ada.locator("dialog[open]").getByLabel("New task", { exact: true }).fill("Write the report"); // the open register, not the closed New task popup
-  await ada.getByRole("button", { name: "Add task" }).click();
-  await ada.getByLabel("Date of Write the report").fill("2030-12-01");
-  if (SHOTS) await ada.screenshot({ path: `${SHOTS}/5-register.png` });
-  await ada.locator("dialog[open]").getByRole("button", { name: "Close" }).click();
-  await expect(tasks).toContainText("No owner");
+  // A second task with nobody on it, dated.
+  await ada.getByRole("button", { name: "New task", exact: true }).click();
+  popup = ada.getByRole("dialog", { name: "New task" });
+  await popup.getByLabel("Name").fill("Write the report");
+  await popup.getByLabel("Due date").fill("2030-12-01");
+  await popup.getByRole("button", { name: "Add task" }).click();
+  await expect(tasks).toContainText("Write the report");
+  await expect(ada.getByRole("button", { name: "I'll take it: Write the report" })).toBeVisible();
+  if (SHOTS) await ada.screenshot({ path: `${SHOTS}/5-tasks.png` });
 
   // Bruno sees it and takes it; Ada sees his name without doing anything.
   await showPage(bruno, "Tasks");
-  await bruno.getByRole("button", { name: "Take Write the report" }).click();
-  await expect(tasks).not.toContainText("No owner");
+  await bruno.getByRole("tab", { name: /^To do/ }).click();
+  await bruno.getByRole("button", { name: "I'll take it: Write the report" }).click();
+  await expect(ada.getByRole("button", { name: "I'll take it: Write the report" })).toHaveCount(0);
 
-  // A milestone by hand, then the plan day by day.
+  // A milestone by hand.
   await showPage(ada, "Milestones");
   await ada.getByRole("button", { name: "New milestone" }).click();
   const milestone = ada.getByRole("dialog", { name: "New milestone" });
@@ -84,16 +86,12 @@ test("documents, tasks and milestones by hand", async ({ browser }) => {
   await milestone.getByLabel("Date (optional)").fill("2030-12-01");
   await milestone.getByRole("button", { name: "Add milestone" }).click();
   await expect(ada.getByRole("region", { name: "Milestones", exact: true })).toContainText("First draft");
-  await askCadence(ada, "Day by day");
-  const day = ada.locator(".agenda > li", { hasText: "First draft" });
-  await expect(day).toContainText("Write the report");
-  await expect(day).toContainText("Bruno");
-  if (SHOTS) await ada.screenshot({ path: `${SHOTS}/6-day-by-day.png` });
-  await ada.locator("dialog[open]").getByRole("button", { name: "Close" }).click();
 
-  // Done from the Tasks page: the task moves to the Done group.
+  // Done from the Tasks page: the task moves to Completed.
   await showPage(ada, "Tasks");
+  await ada.getByRole("tab", { name: /^To do/ }).click();
   await ada.getByRole("checkbox", { name: "Write the report: done" }).click();
-  await expect(ada.getByRole("region", { name: /^Done/ })).toContainText("Write the report");
+  await ada.getByRole("tab", { name: /^Completed/ }).click();
+  await expect(ada.getByRole("tabpanel")).toContainText("Write the report");
   if (SHOTS) await ada.screenshot({ path: `${SHOTS}/7-panel.png` });
 });

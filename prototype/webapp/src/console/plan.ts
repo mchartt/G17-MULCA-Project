@@ -5,7 +5,7 @@ import type { MemberId, Milestone, ProjectState } from "../lib/types";
 export type Task = NonNullable<ProjectState["tasks"]>[number];
 
 /** What a member changes on a task by hand. `owner: null` = nobody, `due: null` = no date. */
-export type TaskEdit = { status?: string; owner?: MemberId | null; due?: string | null; title?: string; description?: string; waitsOn?: string[]; remove?: true };
+export type TaskEdit = { status?: string; owner?: MemberId | null; due?: string | null; title?: string; description?: string; waitsOn?: string[]; progress?: number; remove?: true };
 /** `waitsOn` holds task ids; `description` and `waitsOn` are optional (the "New task" popup). */
 export type NewTask = { title: string; owner: MemberId | null; due: string | null; description?: string; waitsOn?: string[] };
 export type MilestoneEdit = { add: string; due: string | null } | { milestone: string; title?: string; due?: string | null; remove?: true };

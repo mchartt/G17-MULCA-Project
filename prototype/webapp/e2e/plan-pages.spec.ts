@@ -1,6 +1,6 @@
 // The left rail and the quick actions, end to end on the offline stack: tasks
 // and milestones made in popups, a dependency between two tasks (drawn and
-// listed), a loop the server refuses, the Today line, the reflection page.
+// listed, on the jam board), Cadence's suggested link, a loop the server refuses, the reflection page.
 // Needs the server with task details (description, depends_on): run the fake
 // stack with it first on PYTHONPATH.
 import { expect, test } from "@playwright/test";
@@ -11,7 +11,7 @@ const SHOTS = process.env.SHOTS_DIR;
 // New task / New milestone are the buttons of their own pages (the right-hand panel has no copy of them).
 async function newFromMenu(page, what: "Task" | "Milestone") {
   await page.getByRole("list", { name: "Pages" }).getByRole("button", { name: what === "Task" ? "Tasks" : "Milestones", exact: true }).click();
-  await page.getByRole("button", { name: `New ${what.toLowerCase()}` }).click();
+  await page.getByRole("button", { name: `New ${what.toLowerCase()}`, exact: true }).click();
 }
 
 test("quick actions, pages and dependencies", async ({ page }) => {
@@ -44,16 +44,15 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await popup.getByLabel("Build the API").check();
   await popup.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByText("Task added: “Test the API”.")).toBeVisible();
-  await expect(page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today\s*1 late/ })).toBeVisible();
-  await page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today\s*1 late/ }).click();
-  await expect(popup.getByRole("region", { name: "Late" })).toContainText("Test the API");
-  await popup.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByRole("complementary", { name: "Quick access" }).getByRole("button", { name: /^Today\s*1 late/ })).toBeFocused(); // the focus goes back to where the popup was opened
+  // Late today: the Tasks page shows it under Due soon, with "Late".
+  await rail.getByRole("button", { name: "Tasks" }).click();
+  await page.getByRole("tab", { name: /^Due soon\s*1/ }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Late ·");
 
-  // The dependency page: drawn and listed; the second task waits.
+  // The dependency page: notes on the board and the same in words; the second task waits.
   await rail.getByRole("button", { name: "Dependencies" }).click();
-  await expect(page.getByRole("img", { name: /Dependency graph: 2 tasks, 1 links, 1 waiting/ })).toBeVisible();
-  const list = page.getByRole("region", { name: "As a list" });
+  await expect(page.getByRole("button", { name: /^Test the API, To do/ })).toBeVisible();
+  const list = page.getByRole("region", { name: "In words" });
   await expect(list).toContainText("Test the API");
   await expect(list.getByText("Waiting")).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/pages-1-dependencies.png` });
@@ -62,13 +61,13 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await list.getByRole("button", { name: "Change what Test the API waits on" }).click();
   await popup.getByLabel("Build the API").uncheck();
   await popup.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Nothing waits on anything yet")).toBeVisible();
+  await expect(page.getByText("Nothing waits on anything yet.")).toBeVisible();
 
   await page.getByRole("button", { name: "Link tasks" }).click();
   await popup.getByLabel("Task").selectOption({ label: "Test the API" });
   await popup.getByLabel("Build the API").check();
   await popup.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("img", { name: /Dependency graph/ })).toBeVisible();
+  await expect(list.getByText("Waiting")).toBeVisible();
 
   await page.getByRole("button", { name: "Link tasks" }).click();
   await popup.getByLabel("Task").selectOption({ label: "Build the API" });
@@ -88,10 +87,19 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await expect(page.getByRole("region", { name: /^To complete/ })).toContainText("Prototype ready");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/pages-2-milestones.png` });
 
-  // The reflection: counts from the plan, then back to the chat.
+  // A third task named "Test ...": Cadence suggests what it waits on (SCRIPTED), confirmed on the board.
+  await newFromMenu(page, "Task");
+  await popup.getByLabel("Name").fill("Test the slides");
+  await popup.getByRole("button", { name: "Add task" }).click();
+  await rail.getByRole("button", { name: "Dependencies" }).click();
+  const ideas = page.getByRole("list", { name: "Cadence's suggestions" });
+  await expect(ideas).toContainText("“Test the slides” waits on");
+  await ideas.getByRole("button", { name: "Confirm" }).click();
+  await expect(ideas).toBeHidden();
+
+  // The reflection: the week in numbers, then back to the chat.
   await rail.getByRole("button", { name: "Reflection" }).click();
-  await expect(page.getByText("of 2 tasks done", { exact: false })).toBeVisible();
-  await expect(page.getByText("tasks are late", { exact: false })).toBeVisible();
+  await expect(page.getByRole("list", { name: "The week in numbers" })).toContainText("of the plan done");
   await rail.getByRole("button", { name: "Chat" }).click();
   await expect(page.getByRole("region", { name: "Group chat" })).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/pages-3-chat.png` });

@@ -2,7 +2,6 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { faBolt } from "../lib/icons";
-import { AskWhyDialog, CalendarDialog } from "./QuickDialogs";
 import { todayIso } from "./plan";
 import { QuickPanel, todaySummary } from "./QuickPanel";
 
@@ -52,24 +51,4 @@ test("Today says what is due and what is late, or that nothing is", () => {
   const some = todaySummary([task(day(-3)), task(day(0))]);
   expect(some.count).toBe(2);
   expect(some.about).toMatch(/^1 due, 1 late/);
-});
-
-test("Ask why: a question goes out, the answer shows with its source", async () => {
-  const onWhy = vi.fn().mockResolvedValue("You chose think-aloud.\nSource: “Which test?”");
-  render(<AskWhyDialog open onClose={vi.fn()} onWhy={onWhy} />);
-  expect(screen.getByRole("button", { name: "Ask" })).toBeDisabled();
-  await userEvent.type(screen.getByLabelText("Your question"), "Why think-aloud?");
-  await userEvent.click(screen.getByRole("button", { name: "Ask" }));
-  expect(onWhy).toHaveBeenCalledWith("Why think-aloud?");
-  expect(await screen.findByText(/Source: “Which test\?”/)).toBeInTheDocument();
-});
-
-test("the calendar link is created on request and can be copied; a failure is said", async () => {
-  const onCalendar = vi.fn().mockRejectedValueOnce(new Error("Sign in again.")).mockResolvedValue("http://127.0.0.1:8090/api/calendar/abc.ics");
-  render(<CalendarDialog open onClose={vi.fn()} onCalendar={onCalendar} />);
-  await userEvent.click(screen.getByRole("button", { name: "Create my link" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Sign in again.");
-  await userEvent.click(screen.getByRole("button", { name: "Create my link" }));
-  expect(await screen.findByDisplayValue("http://127.0.0.1:8090/api/calendar/abc.ics")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Make a new link" })).toBeInTheDocument();
 });

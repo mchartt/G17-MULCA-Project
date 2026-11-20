@@ -90,6 +90,12 @@ logger = logging.getLogger(__name__)
 UNAVAILABLE = "The coordinator is not available right now. Try again in a few minutes."
 GROUP_ONLY = "The coordinator works only in a group channel, not in a direct message."
 MEMBERS_ONLY = "Only members of this group can use the coordinator here."
+# The catch-up recap needs at least two messages to have something to sum up.
+RECAP_MIN_MESSAGES = 2
+# CS6: how long after a progress question a member's message is still read as
+# a possible reply, and how many of their messages per question at most.
+LATE_REPLY_SECONDS = 3 * 24 * 3600
+LATE_TRIES = 3
 KICKOFF_RUNNING = "A kickoff is already running for this group: its card will appear here."
 
 
@@ -129,10 +135,13 @@ class CoordinatorRouter:
         self._live = live
         self._catchup = catchup
         self._home_id: str | None = None
+        # CS6: messages already offered as late replies, per (task, due date).
+        self._late_tries: dict[tuple[str, str], int] = {}
         # The kickoff running in the background, if any (one per group).
         self._kickoff: asyncio.Task | None = None
         # The reflection being built (it may ask the model for the week's topics).
         self._reflecting: asyncio.Task | None = None
+        self._recapping: asyncio.Task | None = None
         # M3: proactive cards (CS5, CS2, CS3), plugged into the policy by wiring.py.
         self.proactive = (
             ProactiveBridge(
@@ -223,7 +232,14 @@ class CoordinatorRouter:
         """
         A chat message: the Conversation handles it as always, then the
         group's other channels get a copy to show (linked groups only).
+        CS6: a message from a member Cadence asked about a task's progress,
+        not answered yet, is also read by Cadence as a possible reply, however
+        late it comes (before the Conversation, so R10 holds for it).
         """
+        try:
+            await self._late_progress_reply(message)
+        except Exception:  # reading a late reply must never break the chat
+            logger.exception("%s could not read a late progress reply", self._conversation.conversation_id)
         await self._conversation.route_user_text(message)
         try:
             await self._mirror(message)
@@ -309,6 +325,12 @@ class CoordinatorRouter:
                 await self._on_document(message)
             elif message.command == "reflection":
                 await self._start_reflection(message)
+            elif message.command == "progress":
+                # CS6 on request of the adapter (a group with a deadline near
+                # and no session since a restart): the same sweep as the timer.
+                if self.progress is not None:
+                    await self.progress.sweep()
+                await self._notice(True, "", request_id)
             else:  # "state"
                 await self._send_state(request_id)
         except Exception:
@@ -320,6 +342,8 @@ class CoordinatorRouter:
             await asyncio.gather(self._kickoff, return_exceptions=True)
         if self._reflecting is not None:
             await asyncio.gather(self._reflecting, return_exceptions=True)
+        if self._recapping is not None:
+            await asyncio.gather(self._recapping, return_exceptions=True)
         if self.proactive is not None:
             await self.proactive.wait()
         await self._plan.wait()
@@ -640,21 +664,87 @@ class CoordinatorRouter:
             )
             await self._notice(True, "You are caught up.", message.request_id)
             return
-        since = message.args.get("since")
-        group = self._links.group(self._home()) if self._links is not None else [self._home()]
-        result = await self._catchup.build(
-            store=self._store_now(),
-            conversation_id=self._conversation.conversation_id,
-            group=group,
-            member_id=message.member_id,
-            since=float(since) if isinstance(since, (int, float)) else None,
-            move_mark=message.args.get("peek") is not True,
-        )
-        await self._outbound.put(
-            CoordinatorNoticeMessage(
-                ok=True, text=summary_line(result), request_id=message.request_id, catchup=result
+        if message.args.get("recap") is True:
+            # The recap asks the model for the topics: in the background, like the reflection.
+            if self._recapping is not None and not self._recapping.done():
+                await self._notice(False, "Cadence is already writing your recap.", message.request_id)
+                return
+            self._recapping = asyncio.create_task(self._run_catchup(message, recap=True))
+            return
+        await self._run_catchup(message, recap=False)
+
+    async def _run_catchup(self, message: CoordinatorCommandMessage, *, recap: bool) -> None:
+        """
+        The catch-up since the member's last one, or since `args.since` (a day
+        the member chose). With `recap`, also "In brief": the topics of those
+        messages, summed up by the model from the messages only (the same
+        writer as the reflection's topics); without enough messages, none.
+        """
+        try:
+            since = message.args.get("since")
+            group = self._links.group(self._home()) if self._links is not None else [self._home()]
+            result = await self._catchup.build(
+                store=self._store_now(),
+                conversation_id=self._conversation.conversation_id,
+                group=group,
+                member_id=message.member_id,
+                since=float(since) if isinstance(since, (int, float)) else None,
+                move_mark=message.args.get("peek") is not True,
             )
-        )
+            if recap:
+                places = [result.get("here") or {"messages": []}, *result["elsewhere"]]
+                lines = [f"{m['speaker']}: {m['text']}" for place in places for m in place["messages"]]
+                recap = await PlanWriter(self._writer).draft_recap(lines) if len(lines) >= RECAP_MIN_MESSAGES else None
+                result["recap"] = recap or {"overview": "", "topics": [], "open": []}
+                result["topics"] = result["recap"]["topics"]  # older clients read the topics only
+            # The group's language, or the language its messages are in.
+            places = [result.get("here") or {"messages": []}, *result["elsewhere"]]
+            sample = " ".join(m["text"] for place in places for m in place["messages"][-10:])
+            it = italian(await self._store_now().setting("language"), sample)
+            await self._outbound.put(
+                CoordinatorNoticeMessage(
+                    ok=True, text=summary_line(result, it=it), request_id=message.request_id, catchup=result
+                )
+            )
+        except Exception:
+            if not recap:
+                raise
+            await self._fail(message.event, message.request_id)
+
+    async def _late_progress_reply(self, message: Any) -> bool:
+        """
+        The speaker owes an answer to a CS6 question (asked < LATE_REPLY_SECONDS
+        ago, no answer recorded): offer this message to `ask` as "maybe" and
+        post the answer in the chat. At most LATE_TRIES messages per question,
+        so a member who talks about other things does not cost a call each time.
+        """
+        if self.progress is None or self._conversation.is_private or self._conversation.is_ephemeral:
+            return False
+        text = (getattr(message, "text", "") or "").strip()
+        speaker = getattr(message, "speaker", None)
+        if not text or speaker is None:
+            return False
+        now = time.time()
+        rows = [
+            r for r in await self._store_now().progress_checkins()
+            if r.get("member_id") == speaker and r.get("asked_at") and not r.get("answer")
+            and now - r["asked_at"] < LATE_REPLY_SECONDS
+        ]
+        if not rows:
+            return False
+        key = (rows[-1]["task_id"], rows[-1]["due_date"])
+        if self._late_tries.get(key, 0) >= LATE_TRIES:
+            return False
+        if not self._plan.answer_late(speaker, text[:500], self._say_unlogged):
+            return False
+        self._late_tries[key] = self._late_tries.get(key, 0) + 1
+        if self.proactive is not None:
+            self.proactive.claim(text)  # R10: the lab's agent does not answer it too
+        return True
+
+    async def _say_unlogged(self, text: str) -> None:
+        """Post an answer whose words ask already wrote into the chat's memory."""
+        await self._post_text(text)
 
     def _busy(self) -> str:
         """Why a time-driven message must wait (a card draft, the opener, a member's request), or ""."""
@@ -695,20 +785,25 @@ class CoordinatorRouter:
 
     async def _say(self, text: str) -> None:
         """Cadence speaks unasked in the group chat (a CS6 question): shown, remembered, heard by the observer."""
+        await self._post_text(text)
+        if self._catchup is not None:
+            await self._catchup.remember(self._conversation.conversation_id, "Cadence", "", text)
+
+    async def _post_text(self, text: str) -> None:
         if getattr(self._conversation, "is_answering", False):
             # Never in the middle of the main agent's answer: the two texts would mix.
             wait_until_idle = getattr(self._conversation, "wait_until_idle", None)
             if wait_until_idle is not None:
                 await wait_until_idle()
         await self._outbound.put(AssistantTextMessage(text=text, is_final=True, modality="text"))
-        if self._catchup is not None:
-            await self._catchup.remember(self._conversation.conversation_id, "Cadence", "", text)
         tell_observers = getattr(self._conversation, "tell_observers", None)
         if tell_observers is not None:
             await tell_observers(f"Cadence: {text}")
 
     async def _recent_timed(self) -> list[tuple[float, str]]:
-        return await self._catchup.recent_timed(self._conversation.conversation_id)
+        # Three days: the CS6 question sees Cadence's earlier questions (to vary
+        # its opening) and whether the task was discussed (CHAT_HOURS filters).
+        return await self._catchup.recent_timed(self._conversation.conversation_id, window=3 * 24 * 3600, limit=60)
 
     async def _recent_chat(self) -> list[str]:
         """This channel's last lines, so Cadence answers within the conversation."""

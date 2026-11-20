@@ -98,6 +98,11 @@ class WebChannel:
         stored = self._hub.store.add_message(self._group.id, None, text)
         reply = WebReply(self, stored.id, text)
         await self._hub.broadcast(self._group.id, {"type": "message", "message": self._hub.message_json(stored)})
+        # Cadence spoke, asked or not (an answer, a CS6 progress question): the
+        # next messages are offered to it as "maybe", so "tutto bene, manca solo
+        # un controllo" reaches the coordinator. The server lets only one
+        # responder answer such a message (R10).
+        self._hub.follow_ups.answered(str(self._group.id))
         return reply
 
     async def update(self, reply: WebReply) -> None:
@@ -134,7 +139,7 @@ class WebHub:
         self._locks: dict[int, asyncio.Lock] = {}
         self._channels: dict[int, WebChannel] = {}
         self._waiting: dict[str, asyncio.Future] = {}
-        self._follow_ups = FollowUps()
+        self.follow_ups = FollowUps()
 
     # ------------------------------------------------------------------
     # Groups and members
@@ -272,7 +277,7 @@ class WebHub:
             # let the lab's respond_when_addressed answer it a second time (7.6).
             await self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True)
             return
-        if self._follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
+        if self.follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
             # Maybe for Cadence: offered to it (it may stay silent), and also kept in the
             # group's normal chat below, so the server's history sees it either way.
             asyncio.create_task(self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True))
@@ -294,6 +299,19 @@ class WebHub:
 
     async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False) -> None:
         """Cadence's answer, posted in the chat for the whole group; a "maybe" left unanswered posts nothing."""
+        if maybe:
+            await self._post_answer(member, question, maybe=True)
+            return
+        # A sure call: everyone sees Cadence is working on it ("Cadence is thinking…"),
+        # cleared once the answer is in the chat (or on failure). Not for a "maybe",
+        # which may end in silence: a typing line followed by nothing would flicker.
+        await self.broadcast(member.group_id, {"type": "typing", "on": True})
+        try:
+            await self._post_answer(member, question, maybe=False)
+        finally:
+            await self.broadcast(member.group_id, {"type": "typing", "on": False})
+
+    async def _post_answer(self, member: Member, question: str, *, maybe: bool) -> None:
         args = {"question": question, **({"maybe": True} if maybe else {})}
         try:
             answer = await self.command(member, "ask", args)
@@ -307,7 +325,7 @@ class WebHub:
             return
         channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
         await channel.send(text)
-        self._follow_ups.answered(str(member.group_id))
+        self.follow_ups.answered(str(member.group_id))
 
     async def rename_group(self, member: Member, name: str) -> dict:
         """Project settings: a new name for the space; every open tab of the group shows it."""
@@ -420,7 +438,7 @@ class WebHub:
             if proposal.get("status") == "pending":
                 # A new card is Cadence speaking too: "Sì, fallo" typed under it is
                 # offered to Cadence as maybe (it points to the card; the click saves).
-                self._follow_ups.answered(str(group.id))
+                self.follow_ups.answered(str(group.id))
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
             self.calendar.save_state(group.id, data.get("state", {}))

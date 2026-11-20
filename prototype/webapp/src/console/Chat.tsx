@@ -38,7 +38,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
-  }, [space.timeline]);
+  }, [space.timeline, space.thinking]);
 
   function send(e?: FormEvent) {
     e?.preventDefault();
@@ -103,6 +103,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
             <Message key={item.message.id} space={space} author={item.message.author} text={item.message.text} channel={item.message.channel} mine={item.message.author?.id === space.me?.id} />
           ),
         )}
+        {space.thinking && <Thinking name={space.agentName} />}
         <div ref={end} />
       </div>
       {hints.length > 0 && (
@@ -132,6 +133,20 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
         <button className="btn btn--primary btn--round" type="submit" aria-label="Send" disabled={disabled || !draft.trim()}><FontAwesomeIcon icon={faPaperPlane} /></button>
       </form>
     </section>
+  );
+}
+
+/** A few ways of saying "working on it", one picked per answer so it does not read like a loop. */
+export const THINKING_LINES = ["{name} is thinking…", "{name} is cooking…", "Let me see…", "{name} is looking at the plan…"];
+
+/** Feedback while Cadence prepares an answer: three dots and a short line, in dark gray. */
+export function Thinking({ name }: { name: string }) {
+  const [line] = useState(() => THINKING_LINES[Math.floor(Math.random() * THINKING_LINES.length)]!.replace("{name}", name));
+  return (
+    <div className="thinking" role="status" data-testid="thinking">
+      <span className="thinking__dots" aria-hidden="true"><span /><span /><span /></span>
+      <span className="thinking__text">{line}</span>
+    </div>
   );
 }
 

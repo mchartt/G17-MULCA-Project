@@ -113,6 +113,32 @@ async def test_a_follow_up_right_after_cadence_answered_is_offered_to_it(stack):
     await tab.ws.close()
 
 
+async def test_a_sure_call_shows_cadence_thinking_until_its_answer_is_in_the_chat(stack):
+    hub, _, http, ws_url = stack
+    async with httpx.AsyncClient(base_url=http) as api:
+        ada = (await api.post("/api/groups", json={"groupName": "Team 17", "displayName": "Ada"})).json()
+    tab = await Tab.open(ws_url, ada["token"])
+    await tab.send(type="message", text="cadence who does the slides?")
+    await tab.wait_for(lambda e: e["type"] == "typing" and e["on"] is False)
+    kinds = [("typing", e["on"]) if e["type"] == "typing" else ("agent", None)
+             for e in tab.seen
+             if e["type"] == "typing" or (e["type"] == "message" and e["message"]["author"] is None)]
+    assert kinds == [("typing", True), ("agent", None), ("typing", False)]
+    await tab.ws.close()
+
+
+async def test_after_cadence_speaks_unasked_the_next_message_is_offered_to_it(stack):
+    """CS6: Bruno's reply to a progress question must reach the coordinator ("maybe")."""
+    hub, _, http, ws_url = stack
+    async with httpx.AsyncClient(base_url=http) as api:
+        ada = (await api.post("/api/groups", json={"groupName": "Team 17", "displayName": "Ada"})).json()
+    group_id = hub.store.member_by_token(ada["token"]).group_id
+    from mulca_discord.web.hub import WebChannel
+
+    await WebChannel(hub, hub.store.group(group_id)).send("Ada, come sta andando il dashboard?")
+    assert hub.follow_ups.is_follow_up(str(group_id), "tutto bene, manca solo un controllo")
+
+
 async def test_helpful_click_passes_through_and_is_answered(stack):
     hub, _, http, ws_url = stack
     async with httpx.AsyncClient(base_url=http) as api:

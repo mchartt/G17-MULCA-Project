@@ -76,3 +76,18 @@ test("the empty chat says what Cadence does in plain words, without teaching @ o
   expect(screen.getByText(/Nothing changes until one of you clicks/)).toBeInTheDocument();
   expect(screen.queryByText(/Type \/ to see the commands/)).toBeNull();
 });
+
+test("while Cadence prepares an answer the chat says so, and its message clears the line", async () => {
+  const { reduce } = await import("./space");
+  let space = reduce({ ...emptySpace, agentName: "Cadence" }, { type: "typing", on: true });
+  const { unmount } = render(<Chat space={space} onSay={vi.fn()} onCommand={vi.fn()} onAnswer={noAnswer} disabled={false} />);
+  const line = screen.getByTestId("thinking");
+  expect(line).toHaveAttribute("role", "status");
+  expect(line.textContent).toMatch(/Cadence is thinking…|Cadence is cooking…|Let me see…|Cadence is looking at the plan…/);
+  unmount();
+  space = reduce(space, { type: "message", message: { id: 9, author: null, text: "Il dashboard è di Bruno.", channel: "web", at: 0 } as never });
+  expect(space.thinking).toBe(false);
+  // A member's message does not end it: Cadence is still working.
+  const again = reduce(reduce(space, { type: "typing", on: true }), { type: "message", message: { id: 10, author: { id: 1, name: "Ada" }, text: "ok", channel: "web", at: 0 } as never });
+  expect(again.thinking).toBe(true);
+});

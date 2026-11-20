@@ -53,6 +53,9 @@ UNAVAILABLE = "The coordinator is not available right now. The chat still works;
 # A message to Cadence whose answer is late: said once, posted when it comes.
 ASK_SLOW = "Cadence is taking longer than usual: its answer will appear here."
 LATE_ANSWER_LIMIT = 50
+# A late answer that has not come after this long: Cadence says it could not
+# answer (every message to Cadence ends in an answer or an error).
+LATE_ANSWER_SECONDS = 180
 
 
 class CoordinatorBridge:
@@ -176,21 +179,31 @@ class CoordinatorBridge:
             channel="discord", request_id=request_id,
         )
         if maybe:  # it may end in silence: no "typing"
-            answer = await self._send_to(channel.id, request_id, message)
+            answer = await self._send_to(channel.id, request_id, message, errors_as_notice=True)
         else:
             async with channel.typing():
-                answer = await self._send_to(channel.id, request_id, message)
-        if answer is None:
+                answer = await self._send_to(channel.id, request_id, message, errors_as_notice=True)
+        if answer is None:  # timed out: still being answered
             self._late[request_id] = (channel, maybe)
             while len(self._late) > LATE_ANSWER_LIMIT:
                 self._late.pop(next(iter(self._late)))
             if not maybe:
                 await self._say(channel, ASK_SLOW, place)
+            asyncio.get_running_loop().call_later(
+                LATE_ANSWER_SECONDS, lambda: asyncio.ensure_future(self.give_up(request_id))
+            )
             return True
         if maybe and not answer.get("ok"):
             return True
         await self._say(channel, answer.get("text") or ("" if maybe else UNAVAILABLE), place)
         return True
+
+    async def give_up(self, request_id: str) -> None:
+        """A late answer that never came: Cadence says so (nothing for a maybe)."""
+        found = self._late.pop(request_id, None)
+        if found is not None and not found[1]:
+            channel = found[0]
+            await self._say(channel, UNAVAILABLE, f"discord:{getattr(channel, 'id', '')}")
 
     async def _say(self, channel: Any, text: str, place: str) -> None:
         if not text:
@@ -205,7 +218,13 @@ class CoordinatorBridge:
     async def _send(self, interaction: discord.Interaction, request_id: str, message) -> dict | None:
         return await self._send_to(interaction.channel_id or 0, request_id, message)
 
-    async def _send_to(self, channel_id: int, request_id: str, message) -> dict | None:
+    async def _send_to(self, channel_id: int, request_id: str, message, *, errors_as_notice: bool = False) -> dict | None:
+        """
+        The server's answer; None when it did not come in time. A failure is
+        None too for commands and clicks (they say NO_ANSWER), but an
+        "unavailable" notice with `errors_as_notice`: a chat message must not
+        be told "the answer will appear here" when the server is down.
+        """
         found = self._manager.link_for_channel(channel_id)
         if found is None:
             return {"event": "coordinator_notice", "ok": False, "text": NOT_LINKED}
@@ -232,7 +251,7 @@ class CoordinatorBridge:
             return None
         except Exception:
             logger.exception("Coordinator %s failed for %s", message.event, link.conversation_id)
-            return None
+            return {"event": "coordinator_notice", "ok": False, "text": UNAVAILABLE} if errors_as_notice else None
         finally:
             self._waiting.pop(request_id, None)
 

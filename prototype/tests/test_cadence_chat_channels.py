@@ -34,7 +34,7 @@ def make_bridge(answers):
     bridge = CoordinatorBridge(SimpleNamespace(bots=[bot], link_for_channel=lambda cid: (bot, link) if cid == 42 else None))
     asked = []
 
-    async def send_to(channel_id, request_id, message):
+    async def send_to(channel_id, request_id, message, **_):
         asked.append((message.args, request_id, message.member_id))
         return answers.pop(0)
 
@@ -145,3 +145,29 @@ async def test_slack_talk_about_cadence_stays_silent():
     hub, api, asked = make_slack([{"event": "coordinator_notice", "ok": True, "text": ""}])
     await hub.on_message({"type": "message", "channel": "C1", "user": "U1", "text": "Mannaggia mi sa che cadence non basta"})
     assert asked[0].args["maybe"] is True and api.posts == []
+
+
+async def test_discord_says_unavailable_when_the_server_fails_not_that_an_answer_will_come():
+    bridge, _ = make_bridge([{"event": "coordinator_notice", "ok": False, "text": "The coordinator is not available right now."}])
+    channel = Channel()
+    await bridge.chat(channel, 1, "Cadence, mi senti?")
+    assert channel.sent == ["The coordinator is not available right now."] and bridge._late == {}
+
+
+async def test_discord_gives_up_on_a_late_answer_that_never_comes():
+    from mulca_discord.coordinator.bridge import UNAVAILABLE
+
+    bridge, asked = make_bridge([None])
+    channel = Channel()
+    await bridge.chat(channel, 1, "Cadence, sono al 30%.")
+    await bridge.give_up(asked[0][1])
+    assert channel.sent == [ASK_SLOW, UNAVAILABLE]
+
+
+async def test_slack_thinking_line_becomes_unavailable_if_no_answer_comes():
+    from mulca_discord.slack.hub import UNAVAILABLE
+
+    hub, api, asked = make_slack([None])
+    await hub.on_message({"type": "message", "channel": "C1", "user": "U1", "text": "Cadence, sono al 30%."})
+    await hub.give_up("req-0")
+    assert api.posts == [UNAVAILABLE]

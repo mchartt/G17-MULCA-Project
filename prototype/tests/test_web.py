@@ -218,6 +218,7 @@ async def test_with_muca_server_down_the_chat_still_works_and_says_so(hub):
     hub.registry._reconnect_delays = (0.0,)
     await hub.connect(Sock(), member)
     await hub.post_message(member, "anyone?")
+    await hub.wait_for_answers()
     assert [e["type"] for e in seen] == ["hello", "message", "status"]
     assert seen[-1] == {"type": "status", "coordinator": "unavailable"}
     answer = await hub.command(member, "state")
@@ -380,12 +381,16 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
     hub._run = run
     hub.command = command
     await hub.post_message(member, "anyone here?")  # Cadence has not spoken yet: the group's normal chat
+    await hub.wait_for_answers()
     await hub.post_message(member, "@Cadence say hello to the group")
+    await hub.wait_for_answers()
     await hub.post_message(member, "Cadence, ciao")
+    await hub.wait_for_answers()
     # Right after Cadence answered: a message that does not name it is offered to
     # Cadence only, as "maybe" (it may stay silent). Not forwarded to the lab's
     # agent too: in the 20/11 test space it answered a second time.
     await hub.post_message(member, "no mention here")
+    await hub.wait_for_answers()
     await asyncio.sleep(0.05)
     assert asked == [
         # "said": the message as written, for the group's linked channels.
@@ -409,7 +414,9 @@ async def test_a_follow_up_refused_as_busy_posts_nothing(hub):
 
     hub.command = command
     await hub.post_message(member, "Cadence, ciao")
+    await hub.wait_for_answers()
     await hub.post_message(member, "and then?")  # a follow-up, refused as busy
+    await hub.wait_for_answers()
     said = [m.text for m in hub.store.history(group.id)]
     assert said == ["Cadence, ciao", "Hello everyone!", "and then?"]
 
@@ -433,6 +440,7 @@ async def test_a_late_answer_to_cadence_is_still_posted_in_the_chat(hub):
 
     hub.broadcast = spy
     await hub.post_message(member, "Cadence, sono al 30% della mia task.")
+    await hub.wait_for_answers()
     assert [f for f in frames if f["type"] == "thinking"] == [{"type": "thinking", "on": True}]  # still on: late
     session = type("S", (), {"scope": type("Sc", (), {"conversation_id": group.conversation_id})()})()
     await hub._on_coordinator_event(
@@ -462,9 +470,11 @@ async def test_cadence_thinking_is_on_while_it_answers_and_off_after(hub):
 
     hub.broadcast, hub.command = spy, command
     await hub.post_message(member, "Cadence, mi senti?")
+    await hub.wait_for_answers()
     assert frames == ["message", ("thinking", True), ("thinking", False), "message"]
     frames.clear()
     await hub.post_message(member, "ok grazie")  # a maybe follow-up: no banner
+    await hub.wait_for_answers()
     assert ("thinking", True) not in frames
 
 
@@ -476,6 +486,7 @@ async def test_a_late_answer_that_never_comes_ends_in_a_visible_error(hub):
 
     hub.command = command
     await hub.post_message(member, "Cadence, sono al 30%.")
+    await hub.wait_for_answers()
     (request_id,) = list(hub._late)
     await hub._give_up(request_id)
     assert [m.text for m in hub.store.history(group.id)][-1] == HUB_UNAVAILABLE

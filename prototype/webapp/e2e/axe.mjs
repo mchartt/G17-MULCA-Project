@@ -12,6 +12,8 @@ const report = async (name) => {
 await page.goto("http://127.0.0.1:8090/");
 await page.waitForTimeout(1500);
 await report("landing");
+// The sign-up form lives on /login since the landing became its own page.
+await page.goto("http://127.0.0.1:8090/login");
 await signUp(page, "Ada");
 await page.getByRole("button", { name: "New project" }).click(); // the setup desk, /login/new
 await page.locator("#c-project").fill("AUI group 17");

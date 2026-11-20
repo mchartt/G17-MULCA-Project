@@ -52,6 +52,8 @@ UNAVAILABLE = "The coordinator is not available right now. Try again in a minute
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in this channel: no need to try again."
 # Slack has no "typing" for bots: this line stands for it, then becomes the answer.
 THINKING = "_Cadence is thinking…_"
+# A late answer that has not come after this long: the thinking line says so.
+LATE_ANSWER_SECONDS = 180
 
 
 class SlackReply:
@@ -167,8 +169,21 @@ class SlackHub:
             self._late[sent[0]] = (channel, thinking, maybe)
             while len(self._late) > 50:
                 self._late.pop(next(iter(self._late)))
+            asyncio.get_running_loop().call_later(
+                LATE_ANSWER_SECONDS, lambda: asyncio.ensure_future(self.give_up(sent[0]))
+            )
             return
         await self._say(channel, thinking, answer, maybe)
+
+    async def give_up(self, request_id: str) -> None:
+        """A late answer that never came: the thinking line becomes "unavailable"."""
+        found = self._late.pop(request_id, None)
+        if found is None or found[2]:
+            return
+        try:
+            await self._say(found[0], found[1], {"ok": False, "text": UNAVAILABLE}, False)
+        except Exception:
+            logger.exception("Could not say a late answer failed in Slack channel %s", found[0])
 
     async def _say(self, channel: str, thinking: str, answer: dict, maybe: bool) -> None:
         text = str(answer.get("text") or "")

@@ -41,6 +41,8 @@ export function reduce(space: Space, event: ServerEvent): Space {
         group: event.group,
         me: event.me,
         members: event.members,
+        // A reconnect may have missed the "off": the server says where it stands.
+        thinking: event.thinking === true,
         // History replaces the timeline; cards already seen this session stay where they were.
         timeline: [
           ...event.messages.map((m) => ({ kind: "message" as const, message: m })),

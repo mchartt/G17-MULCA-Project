@@ -1,7 +1,7 @@
 // Matteo's 20/11 screenshots: "**30%**" shown with its asterisks on a card, and
 // no sign that Cadence was working on an answer.
 import { act, render, screen } from "@testing-library/react";
-import type { Proposal } from "../lib/types";
+import type { Proposal, ServerEvent } from "../lib/types";
 import { Thinking, THINKING_DELAY_MS } from "./Chat";
 import { ProposalCard } from "./ProposalCard";
 import { emptySpace, reduce } from "./space";
@@ -34,4 +34,11 @@ test("thinking follows the server: on, then off", () => {
   const on = reduce(emptySpace, { type: "thinking", on: true });
   expect(on.thinking).toBe(true);
   expect(reduce(on, { type: "thinking", on: false }).thinking).toBe(false);
+});
+
+test("a reconnect takes the banner from the server, so a missed 'off' never leaves it on", () => {
+  const stuck = { ...emptySpace, thinking: true };
+  const hello: Extract<ServerEvent, { type: "hello" }> = { type: "hello", agentName: "Cadence", group: { id: 1, name: "T", inviteCode: "x" }, me: { id: 1, name: "Ada" }, members: [], messages: [] };
+  expect(reduce(stuck, hello).thinking).toBe(false);
+  expect(reduce(emptySpace, { ...hello, thinking: true }).thinking).toBe(true);
 });

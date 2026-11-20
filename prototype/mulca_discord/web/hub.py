@@ -147,6 +147,9 @@ class WebHub:
         self._late: dict[str, tuple[int, bool]] = {}
         # Messages to Cadence being answered, per group: the "thinking" banner.
         self._thinking: dict[int, int] = {}
+        # Answers being written (post_message), one group's in order.
+        self._answers: set[asyncio.Task] = set()
+        self._answer_locks: dict[int, asyncio.Lock] = {}
 
     # ------------------------------------------------------------------
     # Groups and members
@@ -246,6 +249,8 @@ class WebHub:
                 "agentName": AGENT_NAME,
                 "group": {"id": group.id, "name": group.name, "inviteCode": group.invite_code},
                 "me": {"id": member.id, "name": member.display_name},
+                # Cadence is answering right now (a tab opened or reconnected mid-answer).
+                "thinking": self._thinking.get(group.id, 0) > 0,
                 "members": self._members_json(group.id),
                 "messages": [self.message_json(m) for m in self.store.history(group.id)],
             }
@@ -282,7 +287,12 @@ class WebHub:
             member_names=self.roster(member.group_id).values(),
         )
         if routed is not None:
-            await self._answer_in_chat(member, routed[0], maybe=routed[1], said=text)
+            # In the background, one group's answers in the order asked: the
+            # socket reads the member's next message at once, so "Cadence, mi
+            # senti?" typed under the banner is shown, not held for up to 60 s.
+            task = asyncio.create_task(self._answer_in_order(member, routed[0], maybe=routed[1], said=text))
+            self._answers.add(task)
+            task.add_done_callback(self._answers.discard)
             return
 
         async def action(client) -> None:
@@ -299,6 +309,20 @@ class WebHub:
         except (ConnectionError, OSError):
             logger.exception("MUCA-Server unreachable; message kept in the web chat only")
             await self.broadcast(member.group_id, {"type": "status", "coordinator": "unavailable"})
+
+    async def wait_for_answers(self) -> None:
+        """Wait until every answer started by post_message is posted (tests, shutdown)."""
+        while self._answers:
+            await asyncio.gather(*self._answers, return_exceptions=True)
+
+    async def _answer_in_order(self, member: Member, question: str, *, maybe: bool, said: str) -> None:
+        async with self._answer_locks.setdefault(member.group_id, asyncio.Lock()):
+            try:
+                await self._answer_in_chat(member, question, maybe=maybe, said=said)
+            except Exception:
+                logger.exception("Cadence's answer failed for group %s", member.group_id)
+                if not maybe:
+                    await self._say(member.group_id, UNAVAILABLE)
 
     async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False, said: str = "") -> None:
         """Cadence's answer, posted in the chat for the whole group; a "maybe" left unanswered posts nothing."""

@@ -15,6 +15,8 @@ export type Space = {
   // id -> name for members of linked channels too (Discord, Slack).
   names: Names;
   coordinator: "available" | "unavailable";
+  // Cadence is answering a message sent to it: the chat shows "Cadence is thinking…".
+  thinking: boolean;
 };
 
 export const emptySpace: Space = {
@@ -27,6 +29,7 @@ export const emptySpace: Space = {
   state: null,
   names: {},
   coordinator: "available",
+  thinking: false,
 };
 
 export function reduce(space: Space, event: ServerEvent): Space {
@@ -69,6 +72,8 @@ export function reduce(space: Space, event: ServerEvent): Space {
       return { ...space, state: event.state, names: { ...space.names, ...event.state.names }, coordinator: "available" };
     case "status":
       return { ...space, coordinator: event.coordinator };
+    case "thinking":
+      return { ...space, thinking: event.on };
     default:
       return space;
   }

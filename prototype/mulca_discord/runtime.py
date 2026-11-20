@@ -233,6 +233,9 @@ class BotRuntime:
     registry: SessionRegistry
     store: LinkStore
     is_primary: bool = True
+    # The Group Coordinator's bridge, set by install_coordinator when it is on
+    # (a class attribute, not a field: None means MULCA exactly as before).
+    coordinator_chat = None
 
     voice: dict[str, object] = field(default_factory=dict)
     paused: bool = False
@@ -1016,6 +1019,14 @@ class BotRuntime:
         if await self.over_limit(channel, tagged=tagged):
             return
 
+        # Group Coordinator on: a message for Cadence (named, @mentioned, or a
+        # follow-up) is answered by the coordinator from the project, like on
+        # the web app; everything else goes on as before.
+        coordinator = self.coordinator_chat
+        if link is not None and coordinator is not None and not attachments:
+            if await coordinator.chat(channel, message.author.id, content, tagged=tagged):
+                return
+
         roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
             roster = await _roster(message.channel)
@@ -1357,6 +1368,7 @@ class BotManager:
                 self._ready[record.bot_id].set()
 
             runtime.after_ready.append(online)
+            runtime.coordinator_chat = getattr(self, "coordinator_chat", None)
             self.bots.append(runtime)
             try:
                 async with client:

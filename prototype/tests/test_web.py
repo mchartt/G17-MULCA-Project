@@ -17,6 +17,7 @@ import websockets
 
 from mulca_discord.sessions import SessionRegistry
 from mulca_discord.web import WebHub, WebStore, create_web_app
+from mulca_discord.web.hub import UNAVAILABLE as HUB_UNAVAILABLE
 from mulca_discord.web.store import INVITE_ALPHABET, INVITE_LENGTH, MEMBER_ID_MAX, MEMBER_ID_MIN, hash_token
 from tests.test_coordinator_discord import coordinator_server  # noqa: F401  (pytest fixture)
 from tests.test_muca_client import free_port
@@ -372,7 +373,7 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
     async def run(group_id, action):
         await action(Client())
 
-    async def command(member, name, args):
+    async def command(member, name, args, **_):
         asked.append((name, args))
         return {"type": "notice", "ok": True, "text": "Hello everyone!"}
 
@@ -387,9 +388,10 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
     await hub.post_message(member, "no mention here")
     await asyncio.sleep(0.05)
     assert asked == [
-        ("ask", {"question": "say hello to the group"}),
-        ("ask", {"question": "ciao"}),
-        ("ask", {"question": "no mention here", "maybe": True}),
+        # "said": the message as written, for the group's linked channels.
+        ("ask", {"question": "say hello to the group", "said": "@Cadence say hello to the group"}),
+        ("ask", {"question": "ciao", "said": "Cadence, ciao"}),
+        ("ask", {"question": "no mention here", "said": "no mention here", "maybe": True}),
     ]
     assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("anyone here?", False)]
     members_said = [m.text for m in hub.store.history(group.id) if m.text != "Hello everyone!"]
@@ -400,7 +402,7 @@ async def test_a_follow_up_refused_as_busy_posts_nothing(hub):
     """A maybe that the server refuses ("already working on a request") stays silent in the chat."""
     group, member, _ = hub.create_group("Team", "Ada")
 
-    async def command(member, name, args):
+    async def command(member, name, args, **_):
         if args.get("maybe"):
             return {"type": "notice", "ok": False, "text": "The coordinator is already working on a request for this group."}
         return {"type": "notice", "ok": True, "text": "Hello everyone!"}
@@ -410,3 +412,71 @@ async def test_a_follow_up_refused_as_busy_posts_nothing(hub):
     await hub.post_message(member, "and then?")  # a follow-up, refused as busy
     said = [m.text for m in hub.store.history(group.id)]
     assert said == ["Cadence, ciao", "Hello everyone!", "and then?"]
+
+
+async def test_a_late_answer_to_cadence_is_still_posted_in_the_chat(hub):
+    """20/11: an answer that came after the 60 s wait was dropped with its request."""
+    group, member, _ = hub.create_group("Team", "Ada")
+    asked = {}
+
+    async def command(member, name, args, request_id=None):
+        asked["id"] = request_id
+        return {"type": "notice", "ok": False, "text": "still working", "late": True}
+
+    hub.command = command
+    frames = []
+    original = hub.broadcast
+
+    async def spy(group_id, data):
+        frames.append(data)
+        await original(group_id, data)
+
+    hub.broadcast = spy
+    await hub.post_message(member, "Cadence, sono al 30% della mia task.")
+    assert [f for f in frames if f["type"] == "thinking"] == [{"type": "thinking", "on": True}]  # still on: late
+    session = type("S", (), {"scope": type("Sc", (), {"conversation_id": group.conversation_id})()})()
+    await hub._on_coordinator_event(
+        session, {"event": "coordinator_notice", "ok": True, "text": "Card pronta: confermala.", "requestId": asked["id"]}
+    )
+    said = [m.text for m in hub.store.history(group.id)]
+    assert said == ["Cadence, sono al 30% della mia task.", "Card pronta: confermala."]
+    assert [f for f in frames if f["type"] == "thinking"][-1] == {"type": "thinking", "on": False}
+    # The same answer arriving twice is posted once.
+    await hub._on_coordinator_event(
+        session, {"event": "coordinator_notice", "ok": True, "text": "Card pronta: confermala.", "requestId": asked["id"]}
+    )
+    assert len(hub.store.history(group.id)) == 2
+
+
+async def test_cadence_thinking_is_on_while_it_answers_and_off_after(hub):
+    group, member, _ = hub.create_group("Team", "Ada")
+    frames = []
+    original = hub.broadcast
+
+    async def spy(group_id, data):
+        frames.append(data["type"] if data["type"] != "thinking" else ("thinking", data["on"]))
+        await original(group_id, data)
+
+    async def command(member, name, args, **_):
+        return {"type": "notice", "ok": True, "text": "Sì, ti sento."}
+
+    hub.broadcast, hub.command = spy, command
+    await hub.post_message(member, "Cadence, mi senti?")
+    assert frames == ["message", ("thinking", True), ("thinking", False), "message"]
+    frames.clear()
+    await hub.post_message(member, "ok grazie")  # a maybe follow-up: no banner
+    assert ("thinking", True) not in frames
+
+
+async def test_a_late_answer_that_never_comes_ends_in_a_visible_error(hub):
+    group, member, _ = hub.create_group("Team", "Ada")
+
+    async def command(member, name, args, request_id=None):
+        return {"type": "notice", "ok": False, "text": "still working", "late": True}
+
+    hub.command = command
+    await hub.post_message(member, "Cadence, sono al 30%.")
+    (request_id,) = list(hub._late)
+    await hub._give_up(request_id)
+    assert [m.text for m in hub.store.history(group.id)][-1] == HUB_UNAVAILABLE
+    assert hub._thinking[group.id] == 0

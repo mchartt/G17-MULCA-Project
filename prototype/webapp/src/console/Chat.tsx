@@ -112,6 +112,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
             <Message key={item.message.id} space={space} author={item.message.author} text={item.message.text} channel={item.message.channel} mine={item.message.author?.id === space.me?.id} />
           ),
         )}
+        {space.thinking && <Thinking name={space.agentName} />}
         <div ref={end} />
       </div>
       {hints.length > 0 && (
@@ -168,6 +169,24 @@ export function Message({ space, author, text, channel, mine }: { space: Space; 
         <p className="msg__text">{withMentions(text, space.members.map((m) => m.name))}</p>
       </div>
     </div>
+  );
+}
+
+/** Shown only when an answer takes a moment, so a quick reply never flickers it. */
+export const THINKING_DELAY_MS = 700;
+
+export function Thinking({ name }: { name: string }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShown(true), THINKING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  if (!shown) return null;
+  return (
+    <p className="chat__thinking" role="status" aria-live="polite">
+      <span className="chat__thinking-dots" aria-hidden="true"><span /><span /><span /></span>
+      {name} is thinking…
+    </p>
   );
 }
 

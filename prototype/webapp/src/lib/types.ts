@@ -153,6 +153,8 @@ export type ServerEvent =
   | { type: "proposal"; proposal: Proposal }
   | { type: "state"; state: ProjectState }
   | { type: "status"; coordinator: "unavailable" }
+  // Cadence is working on an answer to a message sent to it (on), or done (off).
+  | { type: "thinking"; on: boolean }
   | { type: "reply"; requestId: string; answer: Answer }
   | { type: "error"; text: string }
   | { type: "deleted" };

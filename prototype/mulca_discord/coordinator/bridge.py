@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
+from ..addressing import FollowUps, for_cadence
 from ..sessions import Scope, SessionRegistry
 from .cards import CardButton, card_view, proposal_embed, why_text
 from .texts import mirror_text
@@ -48,6 +49,10 @@ NO_ANSWER = (
     "The coordinator is still working. If it succeeds, the card appears in "
     "this channel: no need to try again."
 )
+UNAVAILABLE = "The coordinator is not available right now. The chat still works; try again in a minute."
+# A message to Cadence whose answer is late: said once, posted when it comes.
+ASK_SLOW = "Cadence is taking longer than usual: its answer will appear here."
+LATE_ANSWER_LIMIT = 50
 
 
 class CoordinatorBridge:
@@ -61,6 +66,10 @@ class CoordinatorBridge:
         self._proposals: dict[str, dict] = {}
         # Bot clients whose card buttons are registered (see _register_buttons).
         self._buttons_on: set[int] = set()
+        # Messages to Cadence in the chat (chat()): follow-ups per channel, and
+        # answers that came late: request id -> (channel, maybe).
+        self._follow_ups = FollowUps()
+        self._late: dict[str, tuple[Any, bool]] = {}
 
     def attach(self) -> None:
         """
@@ -141,8 +150,63 @@ class CoordinatorBridge:
         # The card itself is redrawn by on_event (coordinator_proposal).
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
+    async def chat(self, channel: Any, author_id: int, text: str, *, tagged: bool = False) -> bool:
+        """
+        A chat message in a linked channel that is for Cadence, or might be
+        (addressing.for_cadence, the same rule as the web app): Cadence
+        answers in the channel from everything the project holds (command
+        "ask": who is writing, their tasks, the task they talk about). True
+        when handled here; False sends it on as before (the lab's agent).
+        While the answer is written Discord shows "Cadence is typing…".
+        """
+        found = self._manager.link_for_channel(getattr(channel, "id", 0) or 0)
+        if found is None:
+            return False
+        bot, link = found
+        place = f"discord:{link.text_channel_id}"
+        routed = for_cadence(text, follow_ups=self._follow_ups, place=place,
+                             member_names=bot.roster_text(link).values(), tagged=tagged)
+        if routed is None:
+            return False
+        question, maybe = routed
+        request_id = uuid.uuid4().hex
+        message = CoordinatorCommandMessage(
+            event="coordinator_command", command="ask", member_id=author_id,
+            args={"question": question, "said": text, **({"maybe": True} if maybe else {})},
+            channel="discord", request_id=request_id,
+        )
+        if maybe:  # it may end in silence: no "typing"
+            answer = await self._send_to(channel.id, request_id, message)
+        else:
+            async with channel.typing():
+                answer = await self._send_to(channel.id, request_id, message)
+        if answer is None:
+            self._late[request_id] = (channel, maybe)
+            while len(self._late) > LATE_ANSWER_LIMIT:
+                self._late.pop(next(iter(self._late)))
+            if not maybe:
+                await self._say(channel, ASK_SLOW, place)
+            return True
+        if maybe and not answer.get("ok"):
+            return True
+        await self._say(channel, answer.get("text") or ("" if maybe else UNAVAILABLE), place)
+        return True
+
+    async def _say(self, channel: Any, text: str, place: str) -> None:
+        if not text:
+            return
+        try:
+            # No mentions: Cadence's words never ping anyone.
+            await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+            self._follow_ups.answered(place)
+        except discord.HTTPException:
+            logger.exception("Could not post Cadence's answer in %s", place)
+
     async def _send(self, interaction: discord.Interaction, request_id: str, message) -> dict | None:
-        found = self._manager.link_for_channel(interaction.channel_id or 0)
+        return await self._send_to(interaction.channel_id or 0, request_id, message)
+
+    async def _send_to(self, channel_id: int, request_id: str, message) -> dict | None:
+        found = self._manager.link_for_channel(channel_id)
         if found is None:
             return {"event": "coordinator_notice", "ok": False, "text": NOT_LINKED}
         bot, link = found
@@ -197,6 +261,10 @@ class CoordinatorBridge:
         future = self._waiting.get(data.get("requestId", ""))
         if future is not None and not future.done():
             future.set_result(data)
+        elif event == "coordinator_notice" and data.get("requestId", "") in self._late:
+            channel, maybe = self._late.pop(data["requestId"])
+            if data.get("ok") or not maybe:
+                await self._say(channel, str(data.get("text", "")), f"discord:{getattr(channel, 'id', '')}")
         # A coordinator_state nobody waits for is for the web app: ignored here.
 
     async def _show_mirror(self, session: "ScopeSession", data: dict) -> None:

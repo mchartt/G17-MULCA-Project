@@ -157,3 +157,13 @@
 .docs-list__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .docs-list__confirm { display: inline-flex; gap: .3rem; }
 @media (max-width: 560px) { .docs-list__item { grid-template-columns: auto minmax(0, 1fr); } .docs-list__item > :nth-child(n + 3) { grid-column: 2; } }
+
+/* Linking by drawing: a dot on the right of each note, dragged onto the note that waits. */
+.jam__port { position: absolute; z-index: 2; width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 2px solid var(--act); cursor: crosshair; touch-action: none; opacity: .55; transition: opacity .12s, transform .12s; }
+.jam__port:hover, .jam__board:hover .jam__port { opacity: 1; }
+.jam__port:hover { transform: scale(1.2); }
+.jam__wires .jam__hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
+.jam__link:hover .jam__wire { stroke: var(--act); stroke-width: 2.5; }
+.jam__wire--draft { stroke: var(--act); stroke-dasharray: 5 4; }
+.note--target { outline: 3px solid var(--act); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .jam__port { transition: none; } }

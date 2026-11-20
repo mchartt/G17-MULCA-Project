@@ -9,6 +9,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { faCheck, faLink, faMinus, faPlus, faUpRightAndDownLeftFromCenter } from "../lib/icons";
 import type { MemberId, Proposal } from "../lib/types";
+import { Capped } from "./Capped";
 import { layoutDependencies } from "./graph";
 import { waitingOn, type Task } from "./plan";
 
@@ -75,10 +76,12 @@ type Props = {
   nameOf: (id?: MemberId | null) => string | undefined;
   onNew: () => void;
   onLink: (taskId: string | null) => void;
+  /** Drawn on the board: `to` now waits on `from` too. */
+  onConnect?: (from: string, to: string) => void;
   onAnswer: (proposalId: string, action: "confirm" | "not_now") => void;
 };
 
-export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onAnswer }: Props) {
+export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onConnect, onAnswer }: Props) {
   const withIds = tasks.filter((t) => t.task_id);
   const ideas = suggestions(proposals).filter((s) => withIds.some((t) => t.task_id === s.from) && withIds.some((t) => t.task_id === s.to));
   const rows = waitingOn(tasks);
@@ -87,7 +90,7 @@ export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onAn
   return (
     <section className="page jam-page" aria-label="Dependencies">
       <header className="page__head">
-        <p className="muted">When a task needs another one finished first, it waits on it. Drag the notes to arrange the board.</p>
+        <p className="muted">When a task needs another one finished first, it waits on it. Drag a note to move it; drag its dot onto another note to link them; click an arrow to change it.</p>
         <div className="page__actions">
           {withIds.length > 1 && <button className="btn btn--soft btn--small" onClick={() => onLink(null)}><FontAwesomeIcon icon={faLink} /> Link tasks</button>}
           <button className="btn btn--primary btn--small" onClick={onNew}><FontAwesomeIcon icon={faPlus} /> New task</button>
@@ -113,7 +116,7 @@ export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onAn
       {withIds.length === 0 ? (
         <p className="muted register__empty">No tasks yet. Add one with “New task”; when tasks need each other, Cadence suggests the link here.</p>
       ) : (
-        <Board tasks={withIds} ideas={ideas} nameOf={nameOf} onLink={onLink} />
+        <Board tasks={withIds} ideas={ideas} nameOf={nameOf} onLink={onLink} onConnect={onConnect} />
       )}
 
       <section className="page__section" aria-labelledby="deps-list">
@@ -121,41 +124,51 @@ export function DependenciesPage({ tasks, proposals, nameOf, onNew, onLink, onAn
         {rows.length === 0 ? (
           <p className="muted small">Nothing waits on anything yet.</p>
         ) : (
-          <ul className="deps">
-            {rows.map((row) => (
+          <Capped
+            className="deps"
+            limit={4}
+            title="What waits on what"
+            items={rows}
+            render={(row) => (
               <li key={row.task.task_id ?? row.task.title} className="deps__row">
-                <p>
-                  <strong>{row.task.title}</strong>{" "}
+                <p className="deps__head">
+                  <strong>{row.task.title}</strong>
                   <span className={row.waiting ? "tag tag--warn" : "tag"}>{row.task.status === "done" ? "Done" : row.waiting ? "Waiting" : "Ready to start"}</span>
                   {row.task.task_id && <button className="link-btn" aria-label={`Change what ${row.task.title} waits on`} onClick={() => onLink(row.task.task_id!)}>Change</button>}
                 </p>
                 <ul className="deps__needs" aria-label={`${row.task.title} waits on`}>
-                  {row.needs.map((n) => (
-                    <li key={n.task.task_id ?? n.task.title}>
-                      {n.done ? <FontAwesomeIcon icon={faCheck} aria-hidden="true" /> : <span className="deps__open" aria-hidden="true" />}
-                      {n.task.title} <span className="muted small">{n.done ? "done" : STATUS_NAMES[n.task.status] ?? n.task.status}</span>
-                      <span className="deps__why muted small">
-                        {row.task.dependency_sources?.[n.task.task_id ?? ""]
-                          ? `Linked ${row.task.dependency_sources[n.task.task_id!].replace(/^card \w+/, "from a card")}`
-                          : "Origin of this link not recorded"}
-                      </span>
-                    </li>
-                  ))}
+                  {row.needs.map((n) => {
+                    const source = row.task.dependency_sources?.[n.task.task_id ?? ""];
+                    const why = source ? `Linked ${source.replace(/^card \w+/, "from a card")}` : "Origin of this link not recorded";
+                    return (
+                      <li key={n.task.task_id ?? n.task.title}>
+                        {n.done ? <FontAwesomeIcon icon={faCheck} aria-hidden="true" /> : <span className="deps__open" aria-hidden="true" />}
+                        <span className="deps__need">{n.task.title}</span>
+                        <span className="muted small">{n.done ? "done" : STATUS_NAMES[n.task.status] ?? n.task.status}</span>
+                        <details className="deps__why">
+                          <summary className="small">Why?</summary>
+                          <span className="muted small">{why}</span>
+                        </details>
+                      </li>
+                    );
+                  })}
                 </ul>
               </li>
-            ))}
-          </ul>
+            )}
+          />
         )}
       </section>
     </section>
   );
 }
 
-function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggestion[]; nameOf: (id?: MemberId | null) => string | undefined; onLink: (taskId: string) => void }) {
+function Board({ tasks, ideas, nameOf, onLink, onConnect }: { tasks: Task[]; ideas: Suggestion[]; nameOf: (id?: MemberId | null) => string | undefined; onLink: (taskId: string) => void; onConnect?: (from: string, to: string) => void }) {
   const auto = useMemo(() => startPositions(tasks, ideas), [tasks, ideas]);
   const [moved, setMoved] = useState<Record<string, Point>>(savedPositions);
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
-  const drag = useRef<{ kind: "note" | "pan"; id?: string; start: Point; origin: Point; moved: boolean } | null>(null);
+  const drag = useRef<{ kind: "note" | "pan" | "wire"; id?: string; start: Point; origin: Point; moved: boolean } | null>(null);
+  // A link being drawn: from the dot of a note to the pointer (canvas coordinates).
+  const [wire, setWire] = useState<{ from: string; to: Point; over: string | null } | null>(null);
   const board = useRef<HTMLDivElement>(null);
   const pos = (id: string): Point => moved[id] ?? auto[id] ?? { x: PAD, y: PAD };
   const waiting = new Set(waitingOn(tasks).filter((w) => w.waiting).map((w) => w.task.task_id));
@@ -174,8 +187,24 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
   }, [tasks, moved, auto]);
   useEffect(() => fit(), [tasks.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const down = (e: ReactPointerEvent, kind: "note" | "pan", id?: string) => {
+  /** The pointer in canvas coordinates (the canvas is panned and zoomed). */
+  const onCanvas = (e: { clientX: number; clientY: number }): Point => {
+    const box = board.current?.getBoundingClientRect();
+    return { x: (e.clientX - (box?.left ?? 0) - view.x) / view.zoom, y: (e.clientY - (box?.top ?? 0) - view.y) / view.zoom };
+  };
+  /** The note under the pointer, if any (its id). */
+  const noteAt = (e: { clientX: number; clientY: number }) =>
+    (document.elementFromPoint?.(e.clientX, e.clientY)?.closest("[data-task]") as HTMLElement | null)?.dataset.task ?? null;
+
+  const down = (e: ReactPointerEvent, kind: "note" | "pan" | "wire", id?: string) => {
     if (e.button !== 0) return;
+    if (kind === "wire" && id) {
+      e.stopPropagation();
+      drag.current = { kind, id, start: { x: e.clientX, y: e.clientY }, origin: pos(id), moved: false };
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      setWire({ from: id, to: onCanvas(e), over: null });
+      return;
+    }
     const origin = kind === "note" && id ? pos(id) : { x: view.x, y: view.y };
     drag.current = { kind, id, start: { x: e.clientX, y: e.clientY }, origin, moved: false };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
@@ -187,12 +216,23 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
     const dx = e.clientX - d.start.x;
     const dy = e.clientY - d.start.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+    if (d.kind === "wire") {
+      const over = noteAt(e);
+      setWire({ from: d.id!, to: onCanvas(e), over: over && over !== d.id ? over : null });
+      return;
+    }
     if (d.kind === "pan") setView((v) => ({ ...v, x: d.origin.x + dx, y: d.origin.y + dy }));
     else if (d.id) setMoved((m) => ({ ...m, [d.id!]: { x: Math.max(0, d.origin.x + dx / view.zoom), y: Math.max(0, d.origin.y + dy / view.zoom) } }));
   };
-  const up = () => {
+  const up = (e?: ReactPointerEvent) => {
     const d = drag.current;
     drag.current = null;
+    if (d?.kind === "wire") {
+      const target = e ? noteAt(e) : null;
+      setWire(null);
+      if (target && target !== d.id) onConnect?.(d.id!, target);
+      return;
+    }
     if (d?.kind === "note" && d.moved) keepPositions(moved);
     if (d?.kind === "note" && !d.moved && d.id) onLink(d.id);
   };
@@ -241,8 +281,8 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
         className="jam__board"
         onPointerDown={(e) => down(e, "pan")}
         onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={up}
+        onPointerUp={(e) => up(e)}
+        onPointerCancel={() => up()}
         onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.08 : 0.92); } }}
       >
         <div className="jam__canvas" style={{ width: size.w, height: size.h, transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}>
@@ -252,8 +292,19 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
               <marker id="jam-arrow-idea" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" className="jam__head jam__head--idea" /></marker>
             </defs>
             {edges.map((e) => (
-              <path key={`${e.from}-${e.to}`} d={curve(pos(e.from), pos(e.to))} className={`jam__wire${e.done ? " jam__wire--done" : ""}`} markerEnd="url(#jam-arrow)" />
+              <g key={`${e.from}-${e.to}`} className="jam__link">
+                {/* A wide invisible stroke makes the arrow easy to click: it opens the waiting task's links. */}
+                <path d={curve(pos(e.from), pos(e.to))} className="jam__hit" onPointerDown={(ev) => ev.stopPropagation()} onClick={() => onLink(e.to)} />
+                <path d={curve(pos(e.from), pos(e.to))} className={`jam__wire${e.done ? " jam__wire--done" : ""}`} markerEnd="url(#jam-arrow)" />
+              </g>
             ))}
+            {wire && (
+              <path
+                d={`M ${pos(wire.from).x + NOTE_W} ${pos(wire.from).y + NOTE_H / 2} L ${wire.to.x} ${wire.to.y}`}
+                className="jam__wire jam__wire--draft"
+                markerEnd="url(#jam-arrow)"
+              />
+            )}
             {ideas.map((s) => (
               <path key={s.proposalId} d={curve(pos(s.from), pos(s.to))} className="jam__wire jam__wire--idea" markerEnd="url(#jam-arrow-idea)" />
             ))}
@@ -265,7 +316,8 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
             return (
               <button
                 key={t.task_id}
-                className={`note note--${status}`}
+                data-task={t.task_id}
+                className={`note note--${status}${wire?.over === t.task_id ? " note--target" : ""}`}
                 style={{ left: p.x, top: p.y, width: NOTE_W, height: NOTE_H, ["--tilt" as string]: `${((i % 5) - 2) * 0.6}deg` }}
                 onPointerDown={(e) => down(e, "note", t.task_id!)}
                 title={t.title}
@@ -277,6 +329,20 @@ function Board({ tasks, ideas, nameOf, onLink }: { tasks: Task[]; ideas: Suggest
                 </span>
                 <span className="sr-only">Change what it waits on</span>
               </button>
+            );
+          })}
+          {onConnect && tasks.map((t) => {
+            const p = pos(t.task_id!);
+            return (
+              // Pointer only: with the keyboard, the note itself opens the same links in a popup.
+              <span
+                key={`port-${t.task_id}`}
+                className="jam__port"
+                style={{ left: p.x + NOTE_W - 9, top: p.y + NOTE_H / 2 - 9 }}
+                title={`Drag onto the task that waits on “${t.title}”`}
+                aria-hidden="true"
+                onPointerDown={(e) => down(e, "wire", t.task_id!)}
+              />
             );
           })}
         </div>

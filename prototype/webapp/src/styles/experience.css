@@ -173,7 +173,9 @@
 .chat__empty code { font-size: var(--t-xs); padding: .05rem .35rem; border-radius: 6px; background: var(--subtle); }
 .bubble { box-shadow: var(--shadow-soft); }
 .chat .card { box-shadow: var(--shadow-card); }
-.composer { box-shadow: var(--shadow-card); border-color: var(--line-s); border-radius: 18px; }
+.composer { box-shadow: var(--shadow-card); border-color: var(--line-s); border-radius: 18px; align-items: flex-end; padding: .35rem .35rem .35rem 1rem; }
+/* One line as tall as the send button, so the two sit on the same line; it grows up to six lines, then scrolls. */
+.composer textarea { min-height: 2.5rem; max-height: 9.5rem; line-height: 1.4rem; padding: .55rem 0; overflow-y: auto; box-sizing: border-box; }
 
 /* The tour: a floating card beside the element it explains. */
 .tour { position: fixed; z-index: 70; padding: 1.1rem 1.2rem 1rem; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-lift), 0 0 0 1px var(--line-s); display: grid; gap: .45rem; animation: pop 450ms var(--spring) both; transition: top 450ms var(--ease), left 450ms var(--ease); }
@@ -235,9 +237,6 @@
 
 /* Notices: a long answer scrolls inside its banner, the chat keeps its room. */
 .console__notices .banner { max-height: 7.5rem; overflow-y: auto; overflow-wrap: anywhere; }
-.banner--info { display: flex; align-items: flex-start; justify-content: space-between; gap: .4rem 1rem; flex-wrap: nowrap; width: 100%; }
-.banner--info > span { min-width: 0; flex: 1; }
-.banner--info .link-btn { position: sticky; top: 0; flex: none; padding-top: 0; }
 
 /* Cards: the answer row and the Why / Helpful / Not now row wrap instead of spilling. */
 .card__meta, .card__actions, .card__foot { flex-wrap: wrap; }
@@ -319,3 +318,79 @@
   .settings__row { flex-wrap: wrap; }
   .settings__inline { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Cadence's short answers to an action: a toast over the page, bottom right, never a banner that pushes it down. */
+.console > .console__main { position: relative; }
+.toast { position: absolute; z-index: 40; right: 1.25rem; top: 4.25rem; width: min(26rem, calc(100% - 2.5rem)); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .6rem; align-items: start; padding: .7rem .6rem .7rem 1rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line-s); border-left: 3px solid var(--act); border-radius: 14px; box-shadow: var(--shadow-card), 0 8px 24px rgba(15, 23, 42, .12); }
+.toast__text { margin: 0; font-size: var(--t-sm); line-height: 1.4; overflow-wrap: anywhere; white-space: pre-line; text-wrap: pretty; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.toast--open .toast__text { display: block; -webkit-line-clamp: none; max-height: 33vh; overflow-y: auto; }
+.toast__actions { display: flex; align-items: center; gap: .2rem; }
+.toast__actions .link-btn { font-size: var(--t-xs); white-space: nowrap; }
+.toast__close { width: 1.9rem; height: 1.9rem; }
+
+/* Members beyond the first three: one row that opens the whole team in a popup. */
+.members__more { display: flex; align-items: center; gap: .5rem; width: 100%; margin-top: .45rem; padding: .3rem .4rem; border: 0; border-radius: var(--r-sm); background: none; color: var(--act); font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
+.members__more:hover { background: var(--subtle); }
+.members__more:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.members__stack { display: inline-flex; }
+.members__stack .avatar + .avatar { margin-left: -.45rem; }
+.avatar--tiny { width: 1.35rem; height: 1.35rem; font-size: .55rem; border: 2px solid var(--surface); }
+.members--all { max-height: min(24rem, 55vh); overflow-y: auto; margin: .2rem 0 .4rem; padding: .2rem .4rem; }
+.members__find { width: 100%; margin-bottom: .6rem; }
+/* The room code: one line (code + copy), the label drops to an icon when the rail is narrow. */
+.room { container-type: inline-size; gap: .55rem; }
+.room .invite { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .5rem; padding: .4rem .4rem .4rem .7rem; }
+.room .invite code { font-size: clamp(.78rem, 7cqi, .95rem); letter-spacing: .08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0; }
+.room .invite .btn { justify-self: end; white-space: nowrap; }
+@container (max-width: 13.5rem) { .invite__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .room .invite .btn { width: 2rem; padding: 0; justify-content: center; } }
+
+/* Lists capped in place; the rest opens in a popup. */
+.capped__more { justify-self: start; font-size: var(--t-xs); margin-top: .2rem; }
+.capped__all { max-height: min(28rem, 60vh); overflow-y: auto; margin-bottom: .6rem; padding-right: .3rem; }
+/* A topic's summary: three lines in the card, whole in the popup. */
+.reflect .topics__summary { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.capped__all .topics__summary { display: block; -webkit-line-clamp: none; }
+
+/* Link tasks: what it waits on as removable chips, then a short searchable checklist. */
+.link__now { display: grid; gap: .45rem; padding: .7rem .8rem; border-radius: 12px; background: var(--subtle); }
+.link__now p { margin: 0; }
+.link__chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
+.link__chips li { display: inline-flex; align-items: center; gap: .25rem; max-width: 100%; padding: .2rem .25rem .2rem .65rem; border-radius: var(--r-pill); background: var(--surface); border: 1px solid var(--line); font-size: var(--t-xs); }
+.link__chips li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link__remove { width: 1.5rem; height: 1.5rem; border: 0; border-radius: 50%; background: none; color: var(--ink2); cursor: pointer; font-size: 1rem; line-height: 1; }
+.link__remove:hover { background: var(--subtle); color: var(--ink); }
+.link__remove:focus-visible { outline: var(--focus); outline-offset: 1px; }
+.link__find { width: 100%; margin-bottom: .4rem; }
+.link__list { display: grid; gap: .1rem; max-height: min(15rem, 40vh); overflow-y: auto; padding-right: .3rem; }
+
+/* In words: one compact row per waiting task; the origin of a link behind "Why?". */
+.deps__row { padding: .6rem .9rem; }
+.deps__head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; margin: 0; }
+.deps__head .link-btn { margin-left: auto; }
+.deps__needs { margin-top: .3rem; }
+.deps__needs li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: .45rem; }
+.deps__need { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deps__why { grid-column: 1 / -1; padding-left: 1.05rem; }
+.deps__why summary { cursor: pointer; color: var(--act); width: max-content; list-style: none; }
+.deps__why summary::-webkit-details-marker { display: none; }
+.deps__why:not([open]) { grid-column: auto; padding-left: 0; }
+
+/* Catch up: from when, one line, "In brief", then the facts; the raw messages stay closed. */
+.catchup { gap: .9rem; }
+.catchup__from { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .5rem; }
+.catchup__from > .small { color: var(--ink2); margin-right: .1rem; }
+.catchup__day input { height: 1.75rem; padding: 0 .6rem; font: inherit; font-size: var(--t-xs); color: var(--ink2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-pill); }
+.catchup__day input:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.catchup__line { margin: 0; font-weight: 500; }
+.catchup__brief { padding: .85rem 1rem; border-radius: 14px; background: var(--ag-bg); }
+.catchup__brief h3 { margin-bottom: .35rem; }
+.catchup__brief ul { list-style: disc; padding-left: 1.1rem; display: grid; gap: .35rem; }
+.catchup__by { margin: .5rem 0 0; color: var(--ag-fg); }
+.catchup h3 .count { font-variant-numeric: tabular-nums; margin-left: .3rem; font-size: var(--t-xs); font-weight: 500; color: var(--ink2); }
+.catchup__facts li { overflow-wrap: anywhere; }
+.catchup__facts p { margin: .15rem 0 0; }
+.catchup__place { border-top: 1px solid var(--line-s); padding: .55rem 0; }
+.catchup__place summary { cursor: pointer; font-weight: 600; font-size: var(--t-sm); }
+.catchup__place .catchup__messages { margin-top: .5rem; max-height: 14rem; overflow-y: auto; }
+@media (max-width: 760px) { .toast { position: fixed; top: auto; bottom: calc(5.5rem + env(safe-area-inset-bottom)); right: 1rem; width: calc(100vw - 2rem); } }
+.chat__log:focus-visible { outline: var(--focus); outline-offset: -3px; }

@@ -51,7 +51,7 @@ test("first steps, team, language and an edited goal", async ({ browser }) => {
   await ada.getByLabel("Cadence writes in").selectOption("it");
   await expect(ada.getByLabel("Cadence writes in")).toHaveValue("it");
   await ada.keyboard.press("Escape");
-  await expect(ada.locator(".banner--info")).toContainText("Cadence now writes in Italian.");
+  await expect(ada.locator(".toast")).toContainText("Cadence now writes in Italian.");
 
   // The brief, from the setup step, then the charter card; confirming it ends the setup.
   await steps.getByRole("button", { name: /Paste the brief or upload the file/ }).click();

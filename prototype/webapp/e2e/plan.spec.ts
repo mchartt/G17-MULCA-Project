@@ -17,7 +17,7 @@ test("planning, task status, check-in and why with source", async ({ browser }) 
 
   // Check-in on an empty plan: on track, no card.
   await askCadence(ada, "Check-in");
-  await expect(ada.locator(".banner--info")).toContainText("on track");
+  await expect(ada.locator(".toast")).toContainText("on track");
 
   // Two tasks by hand, then Find owners: one card with owners and reasons; nobody owns them before Confirm.
   for (const title of ["Server API", "UI screens"]) {
@@ -88,5 +88,5 @@ test("calendar: Add to my calendar saves a file a calendar app can import", asyn
   const text = readFileSync(await file.path(), "utf8");
   expect(text).toContain("BEGIN:VCALENDAR");
   expect(text).toContain("SUMMARY:Milestone: Demo");
-  await expect(ada.locator(".banner--info")).toContainText("Calendar file saved");
+  await expect(ada.locator(".toast")).toContainText("Calendar file saved");
 });

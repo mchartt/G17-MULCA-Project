@@ -1,6 +1,6 @@
 import { parseAgentText, type Inline } from "../lib/agentText";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { faCompass, faPaperPlane } from "../lib/icons";
 import type { Answer, Click, Person } from "../lib/types";
 import { mentionParts, parseSlash, suggest } from "../lib/slash";
@@ -28,6 +28,13 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
   const [picked, setPicked] = useState(0);
   const pick = hints[Math.min(picked, hints.length - 1)];
   const end = useRef<HTMLDivElement>(null);
+  // The box is one line and grows with what is typed (up to its max-height in the CSS).
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
@@ -72,7 +79,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
 
   return (
     <section className="chat" aria-label="Group chat" data-tour="chat">
-      <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions">
+      <div className="chat__log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Messages" tabIndex={0}>
         {space.timeline.length === 0 && (
           <div className="chat__empty">
             <span className="chat__empty-mark" aria-hidden="true"><FontAwesomeIcon icon={faCompass} /></span>
@@ -115,7 +122,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
         <textarea
           id="composer-input"
           ref={input}
-          rows={2}
+          rows={1}
           value={draft}
           onChange={(e) => { setDraft(e.target.value); setPicked(0); }}
           onKeyDown={onKey}

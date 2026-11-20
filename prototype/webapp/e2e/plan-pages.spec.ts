@@ -41,7 +41,7 @@ test("quick actions, pages and dependencies", async ({ page }) => {
   await popup.getByLabel("Name").fill("Test the API");
   await popup.getByLabel("Description (optional)").fill("Run the contract tests");
   await popup.getByLabel("Due date").fill("2020-01-01");
-  await popup.getByLabel("Build the API").check();
+  await popup.getByLabel("Build the API", { exact: true }).check();
   await popup.getByRole("button", { name: "Add task" }).click();
   await expect(page.getByText("Task added: “Test the API”.")).toBeVisible();
   // Late today: the Tasks page shows it under Due soon, with "Late".
@@ -59,13 +59,13 @@ test("quick actions, pages and dependencies", async ({ page }) => {
 
   // Removing the link by hand, then a loop: the server refuses and says why.
   await list.getByRole("button", { name: "Change what Test the API waits on" }).click();
-  await popup.getByLabel("Build the API").uncheck();
+  await popup.getByLabel("Build the API", { exact: true }).uncheck();
   await popup.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Nothing waits on anything yet.")).toBeVisible();
 
   await page.getByRole("button", { name: "Link tasks" }).click();
   await popup.getByLabel("Task").selectOption({ label: "Test the API" });
-  await popup.getByLabel("Build the API").check();
+  await popup.getByLabel("Build the API", { exact: true }).check();
   await popup.getByRole("button", { name: "Save" }).click();
   await expect(list.getByText("Waiting")).toBeVisible();
 

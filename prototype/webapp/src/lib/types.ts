@@ -39,6 +39,8 @@ export type CatchUp = {
   here?: CatchUpChannel;
   tasks_done?: CatchUpTask[];
   tasks_added?: CatchUpTask[];
+  /** "In brief": the topics of those messages, summed up by Cadence (only with args.recap). */
+  topics?: { title: string; summary: string }[];
 };
 export type CatchUpChannel = { channel: string; total: number; messages: { speaker: string; text: string; at: number }[] };
 export type CatchUpTask = { task_id: string; title: string; owner_id?: MemberId | null; at?: number | null };

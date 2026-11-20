@@ -199,6 +199,7 @@ export function WaitsOnDialog({ open, tasks, taskId, onClose, onSave }: { open: 
   const id = useId();
   const [chosen, setChosen] = useState("");
   const [waits, setWaits] = useState<Set<string>>(new Set());
+  const [find, setFind] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -209,6 +210,7 @@ export function WaitsOnDialog({ open, tasks, taskId, onClose, onSave }: { open: 
     if (!open) return;
     setChosen(taskId ?? "");
     setWaits(taskId ? current(taskId) : new Set());
+    setFind("");
     setError(null);
     setBusy(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,10 +219,15 @@ export function WaitsOnDialog({ open, tasks, taskId, onClose, onSave }: { open: 
   const open_tasks = tasks.filter((t) => t.task_id && t.status !== "done");
   // Offered: the other open tasks, and any task it already waits on (even done), so saving never drops one silently.
   const offered = tasks.filter((t) => t.task_id && t.task_id !== chosen && (t.status !== "done" || waits.has(t.task_id)));
+  const query = find.trim().toLowerCase();
+  const listed = query ? offered.filter((t) => t.title.toLowerCase().includes(query)) : offered;
+  const picked = offered.filter((t) => waits.has(t.task_id!));
+  const title = tasks.find((t) => t.task_id === chosen)?.title ?? "";
 
   function pick(taskKey: string) {
     setChosen(taskKey);
     setWaits(current(taskKey));
+    setFind("");
     setError(null);
   }
 
@@ -234,31 +241,54 @@ export function WaitsOnDialog({ open, tasks, taskId, onClose, onSave }: { open: 
     e.preventDefault();
     if (!chosen || busy) return;
     setBusy(true);
-    const result = await onSave(chosen, offered.filter((t) => waits.has(t.task_id!)).map((t) => t.task_id!));
+    const result = await onSave(chosen, picked.map((t) => t.task_id!));
     setBusy(false);
     setError(result);
   }
 
   return (
     <Dialog open={open} title="Link tasks" onClose={onClose}>
-      <form className="form" onSubmit={submit}>
-        <p className="muted small">A task that waits on another cannot start until the other is done.</p>
+      <form className="form link" onSubmit={submit}>
         <label htmlFor={`${id}-task`}>Task</label>
         <select id={`${id}-task`} className="field-select" value={chosen} onChange={(e) => pick(e.target.value)}>
           <option value="">Choose a task…</option>
           {open_tasks.map((t) => <option key={t.task_id} value={t.task_id}>{t.title}</option>)}
         </select>
-        <fieldset className="form__waits" disabled={!chosen}>
+        {chosen && (
+          <div className="link__now" aria-live="polite">
+            <p className="small">
+              {picked.length === 0 ? <>“{title}” can start now: it waits on nothing.</> : <>“{title}” starts only after:</>}
+            </p>
+            {picked.length > 0 && (
+              <ul className="link__chips" aria-label="It waits on">
+                {picked.map((t) => (
+                  <li key={t.task_id}>
+                    <span>{t.title}</span>
+                    <button type="button" className="link__remove" aria-label={`Remove ${t.title}`} onClick={() => toggle(t.task_id!)}>×</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        <fieldset className="form__waits link__pick" disabled={!chosen}>
           <legend>Waits on</legend>
+          {offered.length > 5 && (
+            <input className="link__find" type="search" placeholder="Find a task" aria-label="Find a task" value={find} onChange={(e) => setFind(e.target.value)} />
+          )}
           {offered.length === 0 ? (
             <p className="muted small">No other open task.</p>
+          ) : listed.length === 0 ? (
+            <p className="muted small">No task matches “{find}”.</p>
           ) : (
-            offered.map((t) => (
-              <label key={t.task_id} className="check">
-                <input type="checkbox" checked={waits.has(t.task_id!)} onChange={() => toggle(t.task_id!)} />
-                {t.title}
-              </label>
-            ))
+            <div className="link__list">
+              {listed.map((t) => (
+                <label key={t.task_id} className="check">
+                  <input type="checkbox" checked={waits.has(t.task_id!)} onChange={() => toggle(t.task_id!)} />
+                  {t.title}
+                </label>
+              ))}
+            </div>
           )}
         </fieldset>
         {error && <p className="form__error" role="alert">{error}</p>}

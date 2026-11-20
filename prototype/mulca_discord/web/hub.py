@@ -32,6 +32,8 @@ from typing import Any, Protocol
 
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
+from ..addressing import MAX_QUESTION_CHARS as MAX_ADDRESSED_CHARS
+from ..addressing import FollowUps, addressed
 from ..courses import DEFAULT_COURSE
 from ..muca_client import MucaConnectionLost
 from ..sessions import Scope, ScopeSession, SessionRegistry
@@ -51,15 +53,13 @@ MAX_MESSAGE_CHARS = 4000
 # group's text and the chat history keep what the member wrote.
 WEB_MENTION = re.compile(r"@(coordinator|cadence)\b", re.IGNORECASE)
 SERVER_NAME_MENTION = "@MULCA"
-# "@coordinator why ..." / "@coordinator perché ..." typed in the chat: answered
-# from the decision log (command "why"), not by the lab's agent, which cannot
-# read the log. Only routes a question: it never changes any state.
-TYPED_WHY = re.compile(r"^\s*@(coordinator|cadence)\b[\s,:]*(?P<question>(why|perch[eé]|perche)\b.*)$", re.IGNORECASE | re.DOTALL)
-# Spec 2.6, "@coordinator": a question to the coordinator is answered only
-# from the saved tasks, milestones and decisions, with the source (command
-# "ask"). A question is a message that mentions the coordinator and has a
-# question mark; any other mention still goes to the lab's agent, as above.
-MAX_QUESTION_CHARS = 500
+# A message that calls Cadence ("@cadence", "Cadence, ...", "... right,
+# cadence?", see addressing.py) is answered by the coordinator from
+# everything the project holds (command "ask"), not by the lab's agent, which
+# cannot read the plan. For a short while after Cadence answered, the next
+# messages are offered to it as "maybe": it answers a follow-up and stays
+# silent when the members talk among themselves. Only routing: no state change.
+MAX_QUESTION_CHARS = MAX_ADDRESSED_CHARS
 
 UNAVAILABLE = "The coordinator is not available right now. The chat still works; try the command again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in the chat: no need to try again."
@@ -134,6 +134,7 @@ class WebHub:
         self._locks: dict[int, asyncio.Lock] = {}
         self._channels: dict[int, WebChannel] = {}
         self._waiting: dict[str, asyncio.Future] = {}
+        self._follow_ups = FollowUps()
 
     # ------------------------------------------------------------------
     # Groups and members
@@ -260,15 +261,14 @@ class WebHub:
         stored = self.store.add_message(member.group_id, member.id, text)
         await self.broadcast(member.group_id, {"type": "message", "message": self.message_json(stored)})
 
-        typed_why = TYPED_WHY.match(text)
-        if typed_why:
-            await self._answer_in_chat(member, "why", typed_why["question"].strip())
-            return
-
         question = typed_question(text)
         if question:
-            await self._answer_in_chat(member, "ask", question)
+            await self._answer_in_chat(member, question)
             return
+        if self._follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
+            # Maybe for Cadence: offered to it (it may stay silent), and also kept in the
+            # group's normal chat below, so the server's history sees it either way.
+            asyncio.create_task(self._answer_in_chat(member, text[:MAX_QUESTION_CHARS], maybe=True))
 
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
@@ -285,11 +285,22 @@ class WebHub:
             logger.exception("MUCA-Server unreachable; message kept in the web chat only")
             await self.broadcast(member.group_id, {"type": "status", "coordinator": "unavailable"})
 
-    async def _answer_in_chat(self, member: Member, command: str, question: str) -> None:
-        """The answer to "why" or "ask", posted in the chat for the whole group."""
-        answer = await self.command(member, command, {"question": question})
+    async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False) -> None:
+        """Cadence's answer, posted in the chat for the whole group; a "maybe" left unanswered posts nothing."""
+        args = {"question": question, **({"maybe": True} if maybe else {})}
+        try:
+            answer = await self.command(member, "ask", args)
+        except Exception:
+            if maybe:
+                logger.exception("follow-up offered to Cadence failed")
+                return
+            raise
+        text = answer.get("text") or ("" if maybe else UNAVAILABLE)
+        if not text:
+            return
         channel = self._channels.setdefault(member.group_id, WebChannel(self, self.store.group(member.group_id)))
-        await channel.send(answer.get("text") or UNAVAILABLE)
+        await channel.send(text)
+        self._follow_ups.answered(str(member.group_id))
 
     async def rename_group(self, member: Member, name: str) -> dict:
         """Project settings: a new name for the space; every open tab of the group shows it."""
@@ -461,10 +472,8 @@ def _answer(data: dict) -> dict:
 
 
 def typed_question(text: str) -> str:
-    """ "@coordinator who does the slides?" -> "who does the slides?"; "" when it is not a question to the coordinator."""
-    if "?" not in text or WEB_MENTION.search(text) is None:
-        return ""
-    return " ".join(WEB_MENTION.sub(" ", text).split()).lstrip(",: ")[:MAX_QUESTION_CHARS]
+    """ "Cadence, who does the slides?" -> "who does the slides?"; "" when the message does not call Cadence."""
+    return addressed(text) or ""
 
 
 def _clean(text: str, limit: int) -> str:

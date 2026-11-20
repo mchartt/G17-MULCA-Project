@@ -20,7 +20,7 @@ from muca_server.cognition.memory.sqlite import db_path_for
 from muca_server.sessions import DefaultSessionComponentsFactory
 
 from mulca_discord.web import WebHub, WebStore, create_web_app
-from mulca_discord.web.hub import TYPED_WHY, typed_question
+from mulca_discord.web.hub import typed_question
 from mulca_discord.web.server_data import delete_conversation, http_base
 from tests.test_coordinator_discord import AnswerEverything, Factory, FakeChat
 from tests.test_muca_client import free_port
@@ -65,22 +65,10 @@ async def stack(tmp_path):
         await task
 
 
-def test_typed_why_matches_only_a_question_to_the_coordinator():
-    assert TYPED_WHY.match("@coordinator why did we drop X?")["question"] == "why did we drop X?"
-    assert TYPED_WHY.match("@Coordinator, perché abbiamo scelto SUS?")["question"].startswith("perché")
-    assert TYPED_WHY.match("@coordinator: Perche Figma?")
-    assert TYPED_WHY.match("@coordinator hello") is None
-    assert TYPED_WHY.match("why @coordinator") is None
-    assert TYPED_WHY.match("@coordinatorwhy") is None
-
-
-def test_a_question_to_the_coordinator_is_a_mention_with_a_question_mark():
+def test_a_message_that_calls_cadence_is_a_question_to_it():
     assert typed_question("@coordinator who does the slides?") == "who does the slides?"
-    assert typed_question("Hey @Cadence, when is the demo?") == "Hey , when is the demo?"
-    assert typed_question("@coordinator: chi fa le slide?") == "chi fa le slide?"
-    assert typed_question("@coordinator hello") == ""           # no question: the lab's agent answers
-    assert typed_question("who does the slides?") == ""         # not addressed to the coordinator
-    assert len(typed_question("@coordinator " + "x" * 900 + "?")) == 500
+    assert typed_question("Cadence, when is the demo?") == "when is the demo?"
+    assert typed_question("who does the slides?") == ""  # not addressed to Cadence
 
 
 def test_http_base_from_the_websocket_url():
@@ -100,8 +88,8 @@ async def test_a_typed_question_is_answered_from_what_is_saved_in_the_chat(stack
     tab = await Tab.open(ws_url, ada["token"])
     await tab.send(type="message", text="@Cadence who does the slides?")
     answer = await tab.wait_for(lambda e: e["type"] == "message" and e["message"]["author"] is None)
-    # Nothing saved yet: the server says so without a model call, and the lab's agent never answered.
-    assert answer["message"]["text"].startswith("Nothing saved answers this.")
+    # Cadence answers from the project (the fake model's answer), and the lab's agent never answered.
+    assert answer["message"]["text"] == "Nobody owns the slides yet."
     await asyncio.sleep(0.3)
     agent_messages = [e for e in tab.seen if e["type"] == "message" and e["message"]["author"] is None]
     assert len(agent_messages) == 1
@@ -110,18 +98,18 @@ async def test_a_typed_question_is_answered_from_what_is_saved_in_the_chat(stack
     await tab.ws.close()
 
 
-async def test_typed_why_is_answered_from_the_log_in_the_chat(stack):
+async def test_a_follow_up_right_after_cadence_answered_is_offered_to_it(stack):
     hub, _, http, ws_url = stack
     async with httpx.AsyncClient(base_url=http) as api:
         ada = (await api.post("/api/groups", json={"groupName": "Team 17", "displayName": "Ada"})).json()
     tab = await Tab.open(ws_url, ada["token"])
-    await tab.send(type="message", text="@coordinator why did we pick SUS?")
-    answer = await tab.wait_for(lambda e: e["type"] == "message" and e["message"]["author"] is None)
-    # Empty log: the server says so without a model call, and the lab's agent never answered.
-    assert answer["message"]["text"] == "No decision has been recorded yet."
-    await asyncio.sleep(0.3)
-    agent_messages = [e for e in tab.seen if e["type"] == "message" and e["message"]["author"] is None]
-    assert len(agent_messages) == 1
+    await tab.send(type="message", text="cadence who does the slides?")
+    await tab.wait_for(lambda e: e["type"] == "message" and e["message"]["author"] is None)
+    await tab.send(type="message", text="and the poster?")  # does not name Cadence: a follow-up
+    await tab.wait_for(
+        lambda e: e["type"] == "message" and e["message"]["author"] is None
+        and len([x for x in tab.seen if x["type"] == "message" and x["message"]["author"] is None]) == 2
+    )
     await tab.ws.close()
 
 

@@ -351,16 +351,16 @@ async def test_a_frame_that_does_not_validate_still_answers_its_request(hub):
     assert sent[1]["type"] == "error"
 
 
-async def test_mentions_of_the_coordinator_reach_muca_server_under_its_agent_name(hub):
+async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_lab_agent(hub):
     """
-    MUCA-Server's respond_when_addressed knows the agent as "MULCA": "@coordinator"
-    and "@Cadence" are forwarded under that name, so the agent answers; the
-    web chat keeps the member's own words. Found live on Render, 15/11.
-    A mention with a question mark is not forwarded: it is answered from what
-    is saved (command "ask", tests/test_web_limits.py).
+    Matteo, 20/11: "@Cadence ...", "Cadence, ..." and "@coordinator ..." call
+    Cadence, with or without a question mark: the coordinator answers from the
+    project (command "ask", tests/test_web_limits.py); nothing is forwarded to
+    the lab's agent, which cannot read the plan. Other messages reach
+    MUCA-Server as before. The web chat keeps the member's own words.
     """
     group, member, _ = hub.create_group("Team", "Ada")
-    sent = []
+    sent, asked = [], []
 
     class Client:
         async def send_participants(self, roster, modality):
@@ -372,13 +372,23 @@ async def test_mentions_of_the_coordinator_reach_muca_server_under_its_agent_nam
     async def run(group_id, action):
         await action(Client())
 
+    async def command(member, name, args):
+        asked.append((name, args))
+        return {"type": "notice", "ok": True, "text": "Hello everyone!"}
+
     hub._run = run
+    hub.command = command
     await hub.post_message(member, "@Cadence say hello to the group")
-    await hub.post_message(member, "@coordinator, ciao")
+    await hub.post_message(member, "Cadence, ciao")
+    # Right after Cadence answered: a message that does not name it reaches MUCA-Server
+    # as usual and is also offered to Cadence as "maybe" (it may stay silent).
     await hub.post_message(member, "no mention here")
-    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [
-        ("@MULCA say hello to the group", True),
-        ("@MULCA, ciao", True),
-        ("no mention here", False),
+    await asyncio.sleep(0.05)
+    assert asked == [
+        ("ask", {"question": "say hello to the group"}),
+        ("ask", {"question": "ciao"}),
+        ("ask", {"question": "no mention here", "maybe": True}),
     ]
-    assert [m.text for m in hub.store.history(group.id)] == ["@Cadence say hello to the group", "@coordinator, ciao", "no mention here"]
+    assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("no mention here", False)]
+    members_said = [m.text for m in hub.store.history(group.id) if m.text != "Hello everyone!"]
+    assert members_said == ["@Cadence say hello to the group", "Cadence, ciao", "no mention here"]

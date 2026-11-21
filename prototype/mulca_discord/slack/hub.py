@@ -28,6 +28,7 @@ import uuid
 
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
+from ..addressing import FollowUps, for_cadence
 from ..coordinator.card_content import why_text
 from ..coordinator.cards import split_action
 from ..coordinator.texts import catchup_text, mirror_text
@@ -49,6 +50,10 @@ USER_MENTION = re.compile(r"<@([A-Z0-9]+)>")
 CHANNEL_ONLY = "The coordinator works in a channel, not in a direct message. Invite it to your group's channel."
 UNAVAILABLE = "The coordinator is not available right now. Try again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in this channel: no need to try again."
+# Slack has no "typing" for bots: this line stands for it, then becomes the answer.
+THINKING = "_Cadence is thinking…_"
+# A late answer that has not come after this long: the thinking line says so.
+LATE_ANSWER_SECONDS = 180
 
 
 class SlackReply:
@@ -96,6 +101,19 @@ class SlackHub:
         self._cards: dict[str, str] = {}
         # proposal id -> the last proposal seen, for "Why?" (this run only)
         self._proposals: dict[str, dict] = {}
+        # Messages for Cadence (addressing.for_cadence, as on the web app):
+        # follow-ups per channel, and late answers: request id ->
+        # (channel, the "thinking" message's timestamp or "", maybe).
+        self._follow_ups = FollowUps()
+        self._late: dict[str, tuple[str, str, bool]] = {}
+        self._answers: set[asyncio.Task] = set()
+
+    async def wait_for_answers(self) -> None:
+        """Wait for the follow-ups being answered in the background (tests, shutdown)."""
+        # Only the unfinished ones: awaiting finished tasks never yields, so the
+        # done-callbacks that empty the set would never run (a busy loop).
+        while pending := [t for t in self._answers if not t.done()]:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     # ------------------------------------------------------------------
     # Going out
@@ -116,6 +134,20 @@ class SlackHub:
             lambda m: MENTION if m[1] == self._api.bot_user else f"@{roster.get(m[1], 'someone')}", text
         )
 
+        routed = for_cadence(readable, follow_ups=self._follow_ups, place=channel,
+                             member_names=roster.values(), tagged=mentions_bot)
+        if routed is not None:
+            question, maybe, also_chat = routed
+            if not also_chat:
+                await self._answer_in_channel(channel, user, question, maybe, said=readable)
+                return
+            # A follow-up: asked in the background, started before the user_text
+            # below so the server's R10 claims it first; the proactive judge reads it.
+            task = asyncio.create_task(self._answer_in_channel(channel, user, question, maybe, said=readable))
+            self._answers.add(task)
+            task.add_done_callback(self._answers.discard)
+            await asyncio.sleep(0)
+
         async def action(client) -> None:
             await client.send_participants(_participants(roster), modality="text")
             await client.send_user_text(
@@ -129,6 +161,56 @@ class SlackHub:
             await self._run(channel, action)
         except (ConnectionError, OSError, MucaConnectionLost):
             logger.exception("MUCA-Server unreachable; Slack message not delivered")
+
+    async def _answer_in_channel(self, channel: str, user: str, question: str, maybe: bool, said: str = "") -> None:
+        """
+        Cadence answers in the channel from everything the project holds
+        (command "ask": who asks, their tasks, the task they talk about). A
+        sure call shows "Cadence is thinking…" at once, then that line becomes
+        the answer; a "maybe" may end in silence, so it shows nothing first.
+        """
+        thinking = "" if maybe else await self._api.post(channel, THINKING)
+        sent: list[str] = []
+
+        def build(request_id: str) -> CoordinatorCommandMessage:
+            sent.append(request_id)
+            return CoordinatorCommandMessage(
+                event="coordinator_command", command="ask", member_id=ids.member_id(user),
+                args={"question": question, "said": said or question, **({"maybe": True} if maybe else {})},
+                channel="slack", request_id=request_id,
+            )
+
+        answer = await self._ask(channel, user, build)
+        if answer is None:  # late: the "thinking" line stays until it comes
+            self._late[sent[0]] = (channel, thinking, maybe)
+            while len(self._late) > 50:
+                self._late.pop(next(iter(self._late)))
+            asyncio.get_running_loop().call_later(
+                LATE_ANSWER_SECONDS, lambda: asyncio.ensure_future(self.give_up(sent[0]))
+            )
+            return
+        await self._say(channel, thinking, answer, maybe)
+
+    async def give_up(self, request_id: str) -> None:
+        """A late answer that never came: the thinking line becomes "unavailable"."""
+        found = self._late.pop(request_id, None)
+        if found is None or found[2]:
+            return
+        try:
+            await self._say(found[0], found[1], {"ok": False, "text": UNAVAILABLE}, False)
+        except Exception:
+            logger.exception("Could not say a late answer failed in Slack channel %s", found[0])
+
+    async def _say(self, channel: str, thinking: str, answer: dict, maybe: bool) -> None:
+        text = str(answer.get("text") or "")
+        if maybe and (not answer.get("ok") or not text):
+            return
+        text = text or UNAVAILABLE
+        if thinking:
+            await self._api.update(channel, thinking, to_mrkdwn(text))
+        else:
+            await self._api.post(channel, to_mrkdwn(text))
+        self._follow_ups.answered(channel)
 
     async def on_command(self, channel: str, user: str, text: str, *, is_dm: bool = False) -> str:
         """/coordinator <text>: runs it and returns the private answer for the member."""
@@ -245,6 +327,12 @@ class SlackHub:
         future = self._waiting.get(data.get("requestId", ""))
         if future is not None and not future.done():
             future.set_result(data)
+        elif event == "coordinator_notice" and data.get("requestId", "") in self._late:
+            where, thinking, maybe = self._late.pop(data["requestId"])
+            try:
+                await self._say(where, thinking, data, maybe)
+            except Exception:
+                logger.exception("Could not post a late answer in Slack channel %s", where)
 
     async def _show_card(self, channel: str, proposal: dict) -> None:
         """Update the card if we know its message; otherwise post it while it is pending."""

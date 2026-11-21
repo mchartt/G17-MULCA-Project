@@ -19,7 +19,6 @@ def test_cadence_is_called_with_or_without_at():
 
 def test_talking_about_cadence_is_not_calling_it():
     assert addressed("who does the slides?") is None
-    assert addressed("I told Cadence about it yesterday") is None
     assert addressed("cadences of the sprint are weekly") is None
     assert addressed("@coordinatorwhy") is None
 
@@ -71,7 +70,7 @@ def test_a_clear_call_is_sure_a_passing_mention_is_only_maybe():
         "the demo is on friday, right cadence?",
     ]
     never = ["Secondo voi dobbiamo migliorare Cadence?", "ragazzi, vi piace cadence?", "what do you all think of cadence?",
-             "Ho modificato il codice del coordinator.", "I told Cadence about it yesterday", "Mi aiuti a capire cosa manca?"]
+             "Ho modificato il codice del coordinator.", "Mi aiuti a capire cosa manca?"]
     for text in sure:
         assert call(text)[1] is True, text
     for text in maybe:
@@ -85,3 +84,27 @@ def test_a_clear_call_to_cadence_inside_a_group_message_still_counts():
 
     assert call("Cadence, secondo voi... no, secondo te il piano regge?")[1] is True
     assert call("@cadence ragazzi chiedono chi fa le slide")[1] is True
+
+
+def test_a_stretched_greeting_before_the_name_is_a_call():
+    """20/11 screenshot: "Oii Cadence, sono al 30%..." reached the lab's agent, not Cadence."""
+    from mulca_discord.addressing import call
+
+    assert call("Oii Cadence, sono al 30% della mia task.") == ("sono al 30% della mia task.", True)
+    assert call("Ehiii cadence, mi senti?") == ("mi senti?", True)
+    assert call("heyyy Cadence quanto manca alla demo") == ("quanto manca alla demo", True)
+    assert call("Cadence ma funzioni?") == ("ma funzioni?", True)
+    # Talking about Cadence is still not a sure call.
+    assert call("Cadence ieri ha risposto male.") == ("ieri ha risposto male.", False)
+    assert call("oggi Cadence era lenta") == ("oggi Cadence era lenta", False)
+
+
+def test_the_name_anywhere_is_offered_as_maybe_so_the_server_decides():
+    """Matteo, 20/11: Cadence notices it is named anywhere, and the model stays silent on talk about it."""
+    from mulca_discord.addressing import call
+
+    for text in ["Cadence è troppo forte", "Secondo me Cadence è inutile", "Mannaggia mi sa che cadence non basta",
+                 "I told Cadence about it yesterday", "puoi dirmi tu cadence chi fa le slide"]:
+        assert call(text)[1] is False, text  # maybe: the hub offers the whole message
+    assert call("le cadences dello sprint sono settimanali") is None
+    assert call("ho scritto a support@cadence.io") is None

@@ -48,6 +48,11 @@ def install_coordinator(
     bridge = CoordinatorBridge(manager)
     bridge.attach()
     CardButton.bridge = bridge
+    # Messages for Cadence in linked channels are answered by the coordinator
+    # (bots added later get it from the manager, runtime.py).
+    manager.coordinator_chat = bridge
+    for bot in manager.bots:
+        bot.coordinator_chat = bridge
     # Like the lab's add_view: no API call, just the custom_id -> class mapping,
     # so cards posted before a restart answer again at once.
     manager.primary.client.add_dynamic_items(CardButton)

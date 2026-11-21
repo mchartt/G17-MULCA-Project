@@ -131,9 +131,11 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
         assert await hub.on_command("D1", CHIARA, "plan", is_dm=True) == CHANNEL_ONLY
         assert "Coordinator commands" in await hub.on_command("C1", CHIARA, "dance")
 
-        # A message with a mention reaches the agent, which answers in the channel.
+        # A message with a mention is for Cadence (as on the web app): "thinking"
+        # first, then that same line becomes the coordinator's answer.
         await hub.on_message({"type": "message", "channel": "C1", "user": CHIARA, "text": f"<@{BOT}> hello <@{DARIO}>"})
-        await until(lambda: any("@coordinator hello @Dario" in p["text"] for p in slack.posts))
+        await until(lambda: slack.posts and slack.posts[0]["text"] == "Nobody owns the slides yet.")
+        assert len(slack.posts) == 1  # the thinking line was replaced, not followed
         # The bot's own posts, edits and DMs are not messages of the group.
         before = len(slack.posts)
         for ignored in ({"bot_id": "B1"}, {"subtype": "message_changed"}, {"channel_type": "im"}, {"user": BOT}):

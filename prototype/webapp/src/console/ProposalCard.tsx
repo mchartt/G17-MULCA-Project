@@ -2,6 +2,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useId, useState, type ReactNode } from "react";
 import { faBellSlash, faCheck, faCircleQuestion, faCompass, faHandshake, faThumbsUp, faXmark } from "../lib/icons";
 import type { Answer, Click, Proposal, MemberId } from "../lib/types";
+import { inline } from "../lib/agentText";
 
 // What each kind of card is called (muca_server docs/PROTOCOL.md, "Group Coordinator").
 const KIND_TITLES: Record<string, string> = {
@@ -97,7 +98,7 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
         {need && <span className="card__need">{need}</span>}
         {possible && <span className="card__tentative" title="Cadence inferred this from the chat and the plan: confirm it or say no.">Not confirmed yet</span>}
       </header>
-      {proposal.rationale && <p className="card__why">{proposal.rationale}</p>}
+      {proposal.rationale && <p className="card__why">{rich(proposal.rationale)}</p>}
       <CardBody proposal={proposal} memberName={memberName} />
       {context && (
         <section id={whyId} className="card__whybox" aria-label="Why the coordinator stepped in" hidden={!whyOpen}>
@@ -177,7 +178,7 @@ function CardBody({ proposal, memberName }: { proposal: Proposal; memberName: (i
     return (
       <div className="card__field">
         <h4>What is late or at risk</h4>
-        <ul>{(payload.findings ?? []).map((f) => <li key={f}>{f}</li>)}</ul>
+        <ul>{(payload.findings ?? []).map((f) => <li key={f}>{rich(f)}</li>)}</ul>
       </div>
     );
   }
@@ -353,4 +354,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export function formatDate(iso: string): string {
   const date = new Date(`${iso}T12:00:00`);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/**
+ * A card's reason and findings are Cadence's words, read like its chat replies:
+ * "**30%**" in bold, never the asterisks (20/11 screenshot). Plain text only,
+ * never HTML.
+ */
+function rich(text: string): ReactNode {
+  return inline(text).map((p, n) => (p.bold ? <strong key={n}>{p.text}</strong> : <span key={n}>{p.text}</span>));
 }

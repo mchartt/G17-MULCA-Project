@@ -252,6 +252,10 @@ class WebHub:
                 "messages": [self.message_json(m) for m in self.store.history(group.id)],
             }
         )
+        # The cards still waiting for a click, after the history: a reload or a
+        # member who joins later must still be able to answer them.
+        for proposal in self.store.open_proposals(group.id):
+            await socket.send_json({"type": "proposal", "proposal": proposal})
 
     def disconnect(self, socket: Socket, member: Member) -> None:
         self._sockets.get(member.group_id, set()).discard(socket)
@@ -487,6 +491,7 @@ class WebHub:
         data = browser_safe(data)
         if event == "coordinator_proposal":
             proposal = data.get("proposal", {})
+            self.store.save_proposal(group.id, proposal)
             await self.broadcast(group.id, {"type": "proposal", "proposal": proposal})
             if proposal.get("status") == "pending":
                 # A new card is Cadence speaking too: "Sì, fallo" typed under it is

@@ -411,3 +411,53 @@ async def test_a_follow_up_refused_as_busy_posts_nothing(hub):
     await hub.post_message(member, "and then?")  # a follow-up, refused as busy
     said = [m.text for m in hub.store.history(group.id)]
     assert said == ["Cadence, ciao", "Hello everyone!", "and then?"]
+
+
+# ----------------------------------------------------------------------
+# Cards survive a reload (live test 20/11)
+# ----------------------------------------------------------------------
+
+
+def test_the_store_keeps_only_the_cards_still_waiting(tmp_path):
+    store = WebStore(tmp_path / "w.db")
+    group = store.create_group("Team")
+    other = store.create_group("Other")
+    store.save_proposal(group.id, {"proposal_id": "p1", "status": "pending", "expires_at": 2000.0}, at=1.0)
+    store.save_proposal(group.id, {"proposal_id": "p2", "status": "pending", "expires_at": 500.0}, at=2.0)
+    store.save_proposal(group.id, {"proposal_id": "p3", "status": "pending"}, at=3.0)
+    store.save_proposal(group.id, {"proposal_id": "p3", "status": "applied"}, at=4.0)
+    store.save_proposal(other.id, {"proposal_id": "p4", "status": "pending"}, at=5.0)
+    store.save_proposal(group.id, {"status": "pending"})  # no id: ignored
+    assert [p["proposal_id"] for p in store.open_proposals(group.id, now=1000.0)] == ["p1"]
+    store.delete_group(group.id)
+    assert store.open_proposals(group.id, now=1000.0) == []
+
+
+async def test_a_tab_that_reconnects_gets_the_pending_cards_after_the_history(hub):
+    group, member, _ = hub.create_group("Team", "Ada")
+
+    class Scope:
+        conversation_id = group.conversation_id
+
+    class Session:
+        scope = Scope()
+
+    card = {"proposal_id": "p1", "kind": "progress", "status": "pending", "payload": {}}
+    await hub._on_coordinator_event(Session(), {"event": "coordinator_proposal", "proposal": card})
+
+    seen = []
+
+    class Sock:
+        async def send_json(self, data):
+            seen.append(data)
+
+    hub.registry._reconnect_delays = (0.0,)
+    await hub.connect(Sock(), member)
+    assert [e["type"] for e in seen[:2]] == ["hello", "proposal"]
+    assert seen[1]["proposal"]["proposal_id"] == "p1"
+
+    # Once answered it is no longer sent again.
+    await hub._on_coordinator_event(Session(), {"event": "coordinator_proposal", "proposal": {**card, "status": "applied"}})
+    seen.clear()
+    await hub.connect(Sock(), member)
+    assert [e["type"] for e in seen if e["type"] == "proposal"] == []

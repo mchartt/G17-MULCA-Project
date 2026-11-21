@@ -3,6 +3,7 @@ import { useId, useState, type ReactNode } from "react";
 import { faBellSlash, faCheck, faCircleQuestion, faCompass, faHandshake, faThumbsUp, faXmark } from "../lib/icons";
 import { cardLang } from "../lib/lang";
 import type { Answer, Click, Proposal, MemberId } from "../lib/types";
+import { inline } from "../lib/agentText";
 
 // Every word on a card, in the two languages Cadence writes in. The card's
 // own language comes from cardLang (the group's choice, else what Cadence
@@ -248,7 +249,7 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
         {need && <span className="card__need">{need}</span>}
         {possible && <span className="card__tentative" title={w.tentativeHint}>{w.tentative}</span>}
       </header>
-      {proposal.rationale && <p className="card__why">{proposal.rationale}</p>}
+      {proposal.rationale && <p className="card__why">{rich(proposal.rationale)}</p>}
       <CardBody proposal={proposal} memberName={memberName} w={w} />
       {context && (
         <section id={whyId} className="card__whybox" aria-label={w.whyBox} hidden={!whyOpen}>
@@ -328,7 +329,7 @@ function CardBody({ proposal, memberName, w }: { proposal: Proposal; memberName:
     return (
       <div className="card__field">
         <h4>{payload.requested === true ? w.asked : w.atRisk}</h4>
-        <ul>{(payload.findings ?? []).map((f) => <li key={f}>{f}</li>)}</ul>
+        <ul>{(payload.findings ?? []).map((f) => <li key={f}>{rich(f)}</li>)}</ul>
       </div>
     );
   }
@@ -504,4 +505,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export function formatDate(iso: string, locale = "en-GB"): string {
   const date = new Date(`${iso}T12:00:00`);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleDateString(locale, { day: "numeric", month: "short" });
+}
+
+/**
+ * A card's reason and findings are Cadence's words, read like its chat replies:
+ * "**30%**" in bold, never the asterisks (20/11 screenshot). Plain text only,
+ * never HTML.
+ */
+function rich(text: string): ReactNode {
+  return inline(text).map((p, n) => (p.bold ? <strong key={n}>{p.text}</strong> : <span key={n}>{p.text}</span>));
 }

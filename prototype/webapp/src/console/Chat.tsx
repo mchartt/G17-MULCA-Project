@@ -104,6 +104,7 @@ export function Chat({ space, onSay, onCommand, onAnswer, disabled }: Props) {
                 key={`p-${item.id}`}
                 proposal={space.proposals[item.id]}
                 agentName={space.agentName}
+                language={space.state?.language ?? ""}
                 memberName={(id) => nameOf(id, space) ?? "a member"}
                 onAnswer={(click) => onAnswer(item.id, click)}
               />

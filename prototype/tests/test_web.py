@@ -422,6 +422,78 @@ async def test_a_follow_up_refused_as_busy_posts_nothing(hub):
     assert said == ["Cadence, ciao", "Hello everyone!", "and then?"]
 
 
+# ----------------------------------------------------------------------
+# Cards survive a reload (live test 20/11)
+# ----------------------------------------------------------------------
+
+
+def test_the_store_keeps_only_the_cards_still_waiting(tmp_path):
+    store = WebStore(tmp_path / "w.db")
+    group = store.create_group("Team")
+    other = store.create_group("Other")
+    store.save_proposal(group.id, {"proposal_id": "p1", "status": "pending", "expires_at": 2000.0}, at=1.0)
+    store.save_proposal(group.id, {"proposal_id": "p2", "status": "pending", "expires_at": 500.0}, at=2.0)
+    store.save_proposal(group.id, {"proposal_id": "p3", "status": "pending"}, at=3.0)
+    store.save_proposal(group.id, {"proposal_id": "p3", "status": "applied"}, at=4.0)
+    store.save_proposal(other.id, {"proposal_id": "p4", "status": "pending"}, at=5.0)
+    store.save_proposal(group.id, {"status": "pending"})  # no id: ignored
+    assert [p["proposal_id"] for p in store.open_proposals(group.id, now=1000.0)] == ["p1"]
+    store.delete_group(group.id)
+    assert store.open_proposals(group.id, now=1000.0) == []
+
+
+async def test_a_tab_that_reconnects_gets_the_pending_cards_after_the_history(hub):
+    group, member, _ = hub.create_group("Team", "Ada")
+
+    class Scope:
+        conversation_id = group.conversation_id
+
+    class Session:
+        scope = Scope()
+
+    card = {"proposal_id": "p1", "kind": "progress", "status": "pending", "payload": {}}
+    await hub._on_coordinator_event(Session(), {"event": "coordinator_proposal", "proposal": card})
+
+    seen = []
+
+    class Sock:
+        async def send_json(self, data):
+            seen.append(data)
+
+    hub.registry._reconnect_delays = (0.0,)
+    await hub.connect(Sock(), member)
+    assert [e["type"] for e in seen[:2]] == ["hello", "proposal"]
+    assert seen[1]["proposal"]["proposal_id"] == "p1"
+
+    # Once answered it is no longer sent again.
+    await hub._on_coordinator_event(Session(), {"event": "coordinator_proposal", "proposal": {**card, "status": "applied"}})
+    seen.clear()
+    await hub.connect(Sock(), member)
+    assert [e["type"] for e in seen if e["type"] == "proposal"] == []
+
+
+async def test_a_follow_up_without_the_name_shows_thinking_even_if_cadence_stays_silent(hub):
+    """Matteo, 21/11: follow-ups got an answer after 10-30 s with no sign at all."""
+    group, member, _ = hub.create_group("Team", "Ada")
+    seen = []
+
+    async def silent(member, command, args=None, **_):
+        seen.append({"type": "asked", "maybe": (args or {}).get("maybe", False)})
+        return {"type": "notice", "ok": True, "text": ""}
+
+    async def record(group_id, data):
+        seen.append(data)
+
+    hub.command = silent
+    hub.broadcast = record
+    await hub._answer_in_chat(member, "e per quando?", maybe=True)
+    assert seen == [
+        {"type": "typing", "on": True},
+        {"type": "asked", "maybe": True},
+        {"type": "typing", "on": False},
+    ]
+
+
 async def test_a_late_answer_to_cadence_is_still_posted_in_the_chat(hub):
     """20/11: an answer that came after the 60 s wait was dropped with its request."""
     group, member, _ = hub.create_group("Team", "Ada")
@@ -474,9 +546,9 @@ async def test_cadence_thinking_is_on_while_it_answers_and_off_after(hub):
     await hub.wait_for_answers()
     assert frames == ["message", ("typing", True), "message", ("typing", False)]
     frames.clear()
-    await hub.post_message(member, "ok grazie")  # a maybe follow-up: no banner
+    await hub.post_message(member, "ok grazie")  # a maybe follow-up: the banner too (Matteo, 21/11)
     await hub.wait_for_answers()
-    assert ("typing", True) not in frames
+    assert frames.index(("typing", True)) < frames.index(("typing", False))
 
 
 async def test_a_late_answer_that_never_comes_ends_in_a_visible_error(hub):

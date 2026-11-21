@@ -267,6 +267,10 @@ class WebHub:
                 "messages": [self.message_json(m) for m in self.store.history(group.id)],
             }
         )
+        # The cards still waiting for a click, after the history: a reload or a
+        # member who joins later must still be able to answer them.
+        for proposal in self.store.open_proposals(group.id):
+            await socket.send_json({"type": "proposal", "proposal": proposal})
 
     def disconnect(self, socket: Socket, member: Member) -> None:
         self._sockets.get(member.group_id, set()).discard(socket)
@@ -353,14 +357,15 @@ class WebHub:
         """
         Cadence's answer, posted in the chat for the whole group; a "maybe" left
         unanswered posts nothing. A sure call shows "Cadence is thinking…" to
-        everyone until its answer is in the chat, or the failure is said; not a
-        "maybe", which may end in silence (a line then nothing would flicker).
+        everyone until its answer is in the chat, or the failure is said; so does a
+        "maybe" too (a follow-up without the name): its answer took 10-30 s
+        with no sign at all and the group thought Cadence was not answering
+        (Matteo, 21/11); a thinking line that ends in silence is the lesser evil.
         """
         args = {"question": question, "said": said or question, **({"maybe": True} if maybe else {})}
         request_id = uuid.uuid4().hex
         group_id = member.group_id
-        if not maybe:
-            await self._think(group_id, +1)
+        await self._think(group_id, +1)
         late = False
         try:
             try:
@@ -385,7 +390,7 @@ class WebHub:
             await self._say(group_id, answer.get("text") or ("" if maybe else UNAVAILABLE))
         finally:
             # Off once the answer is in the chat (or the failure said), not before.
-            if not maybe and not late:
+            if not late:
                 await self._think(group_id, -1)
 
     async def _think(self, group_id: int, step: int) -> None:
@@ -408,7 +413,7 @@ class WebHub:
         group_id, maybe = found
         if not maybe:
             await self._say(group_id, UNAVAILABLE)
-            await self._think(group_id, -1)
+        await self._think(group_id, -1)
 
     async def _say(self, group_id: int, text: str) -> None:
         """Cadence speaks in the group's chat (nothing for an empty text)."""
@@ -566,6 +571,7 @@ class WebHub:
         data = browser_safe(data)
         if event == "coordinator_proposal":
             proposal = data.get("proposal", {})
+            self.store.save_proposal(group.id, proposal)
             await self.broadcast(group.id, {"type": "proposal", "proposal": proposal})
             if proposal.get("status") == "pending":
                 # A new card is Cadence speaking too: "Sì, fallo" typed under it is
@@ -584,8 +590,7 @@ class WebHub:
             _, maybe = self._late.pop(data["requestId"])
             if data.get("ok") or not maybe:
                 await self._say(group.id, str(data.get("text", "")))
-            if not maybe:
-                await self._think(group.id, -1)
+            await self._think(group.id, -1)
 
     async def _show_mirror(self, group_id: int, data: dict) -> None:
         """A message written on Discord or Slack: kept in the history, shown to everyone."""

@@ -15,6 +15,7 @@ to explain and to test.
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import sqlite3
 import time
@@ -57,6 +58,14 @@ CREATE TABLE IF NOT EXISTS web_message (
     author_name TEXT,           -- only for a mirrored message: who wrote it there
     text TEXT NOT NULL,
     created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS web_proposal (
+    proposal_id TEXT PRIMARY KEY,
+    group_id INTEGER NOT NULL REFERENCES web_group(id) ON DELETE CASCADE,
+    status TEXT NOT NULL,
+    expires_at REAL,            -- NULL: no expiry given
+    frame TEXT NOT NULL,        -- the card as the browser received it (JSON)
+    updated_at REAL NOT NULL
 );
 """
 
@@ -228,6 +237,43 @@ class WebStore:
             "SELECT * FROM web_message WHERE group_id = ? ORDER BY id DESC LIMIT ?", (group_id, limit)
         ).fetchall()
         return [_message(r) for r in reversed(rows)]
+
+    # -- cards --------------------------------------------------------
+    # A card reaches the browser only as a live event. Kept here so a tab that
+    # (re)connects gets the cards still waiting for a click: without them a
+    # reload hid a pending card while MUCA-Server kept it open (and refused a
+    # second one on the same thing), so nobody could confirm it (test 20/11).
+
+    def save_proposal(self, group_id: int, proposal: dict, at: float | None = None) -> None:
+        proposal_id = str(proposal.get("proposal_id") or "")
+        if not proposal_id:
+            return
+        expires = proposal.get("expires_at")
+        with self._db:
+            self._db.execute(
+                "INSERT INTO web_proposal (proposal_id, group_id, status, expires_at, frame, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(proposal_id) DO UPDATE SET "
+                "status = excluded.status, expires_at = excluded.expires_at, frame = excluded.frame, "
+                "updated_at = excluded.updated_at",
+                (
+                    proposal_id,
+                    group_id,
+                    str(proposal.get("status") or ""),
+                    float(expires) if isinstance(expires, (int, float)) else None,
+                    json.dumps(proposal),
+                    at or time.time(),
+                ),
+            )
+
+    def open_proposals(self, group_id: int, now: float | None = None) -> list[dict]:
+        """The group's cards still waiting for a click, oldest first."""
+        now = now or time.time()
+        rows = self._db.execute(
+            "SELECT frame FROM web_proposal WHERE group_id = ? AND status = 'pending' "
+            "AND (expires_at IS NULL OR expires_at > ?) ORDER BY updated_at",
+            (group_id, now),
+        ).fetchall()
+        return [json.loads(r["frame"]) for r in rows]
 
     def rename_group(self, group_id: int, name: str) -> Group | None:
         """A member's own action (Project settings): the space's new name."""

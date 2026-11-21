@@ -96,6 +96,7 @@ test("a dependency on new work names who delivers it, when the chat said so", ()
     ...possible,
     payload: { ...possible.payload, title: "Rivedere il RASD", depends_on_title: "Dati del RASD", depends_on_owner_id: 2, helper_id: null },
   };
+  // Italian titles: the card speaks Italian (live test 20/11).
   render(<ProposalCard proposal={rasd} agentName="Cadence" onAnswer={vi.fn()} memberName={names} />);
-  expect(screen.getByText("Delivered by").parentElement).toHaveTextContent("Delivered bySara");
+  expect(screen.getByText("Consegna di").parentElement).toHaveTextContent("Consegna diSara");
 });

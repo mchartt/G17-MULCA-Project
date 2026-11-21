@@ -117,16 +117,17 @@ async def test_one_project_across_the_web_and_discord(web, coordinator_server): 
         assert seen["message"]["author"] == {"id": 0, "name": "Chiara"}
         assert seen["message"]["text"] == "Shall we book the lab for Tuesday?"
 
-        # Web -> Discord: one line with the author's name.
+        # Web -> Discord: nothing. Chat is copied one way only, into the web space
+        # (21/11); checked below, once the card has gone through the same path.
         await tab.send(type="message", text="Tuesday works for me")
         await tab.wait_for(lambda e: e["type"] == "message" and e["message"]["text"] == "Tuesday works for me")
-        await until(lambda: "**Ada** · Web: Tuesday works for me" in channel.lines)
 
         # A card made on the web is posted on Discord and confirmed there.
         await tab.send(type="command", command="kickoff", args={"text": "Deliver by 2 Dec."}, requestId="k1")
         await tab.wait_for(lambda e: e["type"] == "reply" and e["requestId"] == "k1" and e["answer"]["ok"])
         card = await tab.wait_for(lambda e: e["type"] == "proposal")
         await until(lambda: len(channel.cards) == 1)
+        assert not any("· Web:" in line for line in channel.lines)
         dario = member(9002)
         await bridge.click(dario, "confirm", card["proposal"]["proposal_id"])
         assert dario.said[-1] == "Confirmed and saved."

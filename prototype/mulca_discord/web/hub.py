@@ -310,7 +310,7 @@ class WebHub:
             # respond_when_addressed answer it a second time (7.6).
             self._answer_later(member, text[:MAX_QUESTION_CHARS], maybe=True, said=text)
             return
-        if self.follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
+        if self.follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values(), member.id):
             # Maybe for Cadence: offered to it (it may stay silent), and ALSO sent on
             # as user_text below. Without it the plan opener never heard its answers
             # and CS3/CS7 never saw these lines (a pending card opens this window).
@@ -370,6 +370,8 @@ class WebHub:
         args = {"question": question, "said": said or question, **({"maybe": True} if maybe else {})}
         request_id = uuid.uuid4().hex
         group_id = member.group_id
+        # Whom the answer is for: only their next messages count as follow-ups.
+        self.follow_ups.asked(str(group_id), member.id)
         await self._think(group_id, +1)
         late = False
         try:
@@ -578,10 +580,8 @@ class WebHub:
             proposal = data.get("proposal", {})
             self.store.save_proposal(group.id, proposal)
             await self.broadcast(group.id, {"type": "proposal", "proposal": proposal})
-            if proposal.get("status") == "pending":
-                # A new card is Cadence speaking too: "Sì, fallo" typed under it is
-                # offered to Cadence as maybe (it points to the card; the click saves).
-                self.follow_ups.answered(str(group.id))
+            # A card opens no follow-up window (21/11): it is for the whole group,
+            # and for three minutes every line under it was offered to Cadence.
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
             self.calendar.save_state(group.id, data.get("state", {}))

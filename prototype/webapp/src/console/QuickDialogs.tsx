@@ -178,7 +178,7 @@ export function OwnersDialog({ open, tasks, onClose, onFind }: { open: boolean; 
       )}
       {error && <p className="form__error" role="alert">{error}</p>}
       <div className="form__actions">
-        <button type="button" className="btn btn--soft" onClick={onClose}>Close</button>
+        <button type="button" className="btn btn--soft" onClick={onClose}>{ownerless.length > 0 ? "Cancel" : "Close"}</button>
         {ownerless.length > 0 && (
           <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void find()}>
             {busy ? "Asking Cadence…" : "Ask Cadence to propose owners"}

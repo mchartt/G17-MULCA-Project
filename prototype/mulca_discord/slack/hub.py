@@ -135,7 +135,7 @@ class SlackHub:
         )
 
         routed = for_cadence(readable, follow_ups=self._follow_ups, place=channel,
-                             member_names=roster.values(), tagged=mentions_bot)
+                             member_names=roster.values(), tagged=mentions_bot, member=user)
         offered = routed is not None and routed[2]  # a follow-up: asked AND sent on as chat
         if routed is not None:
             question, maybe, also_chat = routed
@@ -171,6 +171,7 @@ class SlackHub:
         sure call shows "Cadence is thinking…" at once, then that line becomes
         the answer; a "maybe" may end in silence, so it shows nothing first.
         """
+        self._follow_ups.asked(channel, user)  # only this member's next messages are follow-ups
         thinking = "" if maybe else await self._api.post(channel, THINKING)
         sent: list[str] = []
 

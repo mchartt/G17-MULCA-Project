@@ -36,18 +36,32 @@ def test_another_person_called_is_not_for_cadence():
     assert not calls_someone_else("Brunos are cool", names)
 
 
-def test_follow_ups_last_a_few_minutes_after_cadence_answered():
+def test_follow_ups_last_a_few_minutes_after_cadence_answered_and_only_for_that_member():
     now = [0.0]
     follow = FollowUps(window=180, clock=lambda: now[0])
-    assert not follow.is_follow_up("g1", "and by when?")
+    assert not follow.is_follow_up("g1", "and by when?", member=7)
+    follow.asked("g1", 7)
     follow.answered("g1")
     now[0] = 60
-    assert follow.is_follow_up("g1", "and by when?")
-    assert not follow.is_follow_up("g2", "and by when?")  # another group
-    assert not follow.is_follow_up("g1", "Bruno, by when?", ["Bruno"])
-    assert not follow.is_follow_up("g1", "   ")
+    assert follow.is_follow_up("g1", "and by when?", member=7)
+    # 21/11, four members in one chat: the others' lines are not follow-ups.
+    assert not follow.is_follow_up("g1", "and by when?", member=8)
+    assert not follow.is_follow_up("g2", "and by when?", member=7)  # another group
+    assert not follow.is_follow_up("g1", "Bruno, by when?", ["Bruno"], member=7)
+    assert not follow.is_follow_up("g1", "   ", member=7)
     now[0] = 200
-    assert not follow.is_follow_up("g1", "and by when?")
+    assert not follow.is_follow_up("g1", "and by when?", member=7)
+
+
+def test_what_cadence_says_unasked_opens_no_follow_up_window():
+    follow = FollowUps(window=180, clock=lambda: 0.0)
+    follow.answered("g1")  # a card, the plan opener, a progress question: nobody asked
+    assert not follow.is_follow_up("g1", "blu o verde?", member=7)
+    # ...and it closes the window of an earlier answer: the talk has moved on.
+    follow.asked("g1", 7)
+    follow.answered("g1")
+    follow.answered("g1")
+    assert not follow.is_follow_up("g1", "e per quando?", member=7)
 
 
 def test_a_clear_call_is_sure_a_passing_mention_is_only_maybe():

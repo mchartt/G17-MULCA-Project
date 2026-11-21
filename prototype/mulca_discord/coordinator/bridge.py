@@ -31,13 +31,13 @@ import discord
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import FollowUps, for_cadence
+from ..links import Link
 from ..sessions import Scope, SessionRegistry
 from .cards import CardButton, card_view, proposal_embed, why_text
 from .texts import mirror_text
 
 if TYPE_CHECKING:
     from ..runtime import BotManager, BotRuntime
-    from ..links import Link
     from ..sessions import ScopeSession
 
 logger = logging.getLogger(__name__)
@@ -248,7 +248,37 @@ class CoordinatorBridge:
             logger.exception("Could not post Cadence's answer in %s", place)
 
     async def _send(self, interaction: discord.Interaction, request_id: str, message) -> dict | None:
-        return await self._send_to(interaction.channel_id or 0, request_id, message)
+        channel_id = interaction.channel_id or 0
+        if self._manager.link_for_channel(channel_id) is None:
+            problem = await self._serve(interaction)
+            if problem:
+                return {"event": "coordinator_notice", "ok": False, "text": problem}
+        return await self._send_to(channel_id, request_id, message)
+
+    async def _serve(self, interaction: discord.Interaction) -> str:
+        """
+        One step, as on Slack: a /coordinator command in a channel the bot
+        does not serve yet makes it serve that text channel (the lab's link,
+        with no voice and the server's default listening mode), so a member
+        never has to know `/mulca link`. Returns "" when the channel is
+        served now, else the sentence for the member. `/mulca link` stays
+        for voice or another listening mode. The lab's study welcome
+        (messages.INTRO_MESSAGE) is not posted: it is not Cadence's.
+        """
+        channel = getattr(interaction, "channel", None)
+        guild_id = getattr(interaction, "guild_id", None)
+        bots = getattr(self._manager, "bots", None)
+        if channel is None or guild_id is None or not bots:
+            return NOT_LINKED  # a DM, or no bot running
+        bot = self._manager.primary
+        link = Link(text_channel_id=channel.id, guild_id=guild_id, bot_id=bot.user_id)
+        problems = bot.store.conflicts(link)
+        if problems:
+            return "Cadence cannot work in this channel: " + " ".join(problems)
+        previous = bot.store.save(link, created_by=getattr(interaction.user, "id", None))
+        await bot.apply_link(link, previous)
+        logger.info("coordinator: now serving channel %s (first /coordinator command there)", channel.id)
+        return ""
 
     async def _send_to(self, channel_id: int, request_id: str, message, *, errors_as_notice: bool = False) -> dict | None:
         """

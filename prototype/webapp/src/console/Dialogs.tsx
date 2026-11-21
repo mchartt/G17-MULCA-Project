@@ -202,9 +202,23 @@ export function DeleteDialog({ open, spaceName, onClose, onDelete }: { open: boo
  * How to bring Cadence into the group's Discord server or Slack workspace.
  * Honest about the condition: it works only where the Cadence bot is installed.
  */
-export function ConnectDialog({ open, code, onClose }: { open: boolean; code: string; onClose: () => void }) {
+export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: boolean; code: string; onClose: () => void; onPersonalCode?: () => Promise<string> }) {
   const command = `/coordinator link ${code}`;
   const [copied, setCopied] = useState(false);
+  // "Be yourself there": the server's answer to the "me" command, shown as it is
+  // when it holds no code (a refusal), else as the command to write in the channel.
+  const [mine, setMine] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const meCommand = mine?.match(/\/coordinator me [A-Z0-9]+/)?.[0] ?? null;
+  useEffect(() => {
+    if (!open) setMine(null); // a code is shown once: the next visit asks for a new one
+  }, [open]);
+  const personal = async () => {
+    if (!onPersonalCode) return;
+    setAsking(true);
+    setMine(await onPersonalCode());
+    setAsking(false);
+  };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(command);
@@ -227,6 +241,16 @@ export function ConnectDialog({ open, code, onClose }: { open: boolean; code: st
             <strong>Link the channel to this space</strong>
             <span className="muted small">In the channel where the group talks, write:</span>
             <span className="connect__command"><code>{command}</code><button type="button" className="btn btn--soft btn--small" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button></span>
+          </li>
+          <li>
+            <strong>Be yourself there</strong>
+            <span className="muted small">So your tasks and profile follow you: get your personal code and write it once in that channel. It works once and for 15 minutes. Never share it: whoever uses it acts as you.</span>
+            {meCommand ? (
+              <span className="connect__command"><code>{meCommand}</code></span>
+            ) : (
+              onPersonalCode && <button type="button" className="btn btn--soft btn--small" disabled={asking} onClick={() => void personal()}>{asking ? "Asking…" : "Get my personal code"}</button>
+            )}
+            {mine && !meCommand && <span className="form__error" role="alert">{mine}</span>}
           </li>
           <li>
             <strong>Talk as usual</strong>

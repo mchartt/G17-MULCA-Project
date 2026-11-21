@@ -400,6 +400,10 @@ async def test_a_message_that_calls_cadence_is_answered_by_cadence_not_by_the_la
         ("ask", {"question": "no mention here", "said": "no mention here", "maybe": True}),
     ]
     assert [(s["text"], s["mentions_assistant"]) for s in sent] == [("anyone here?", False), ("no mention here", False)]
+    # The follow-up's user_text says it was also offered to Cadence's ask, so the
+    # server's R10 does not depend on which of the two arrives first (21/11: the
+    # ask runs in the background and the second answer, once two cards, still came).
+    assert [s["offered_to_ask"] for s in sent] == [False, True]
     members_said = [m.text for m in hub.store.history(group.id) if m.text != "Hello everyone!"]
     assert members_said == ["anyone here?", "@Cadence say hello to the group", "Cadence, ciao", "no mention here"]
 

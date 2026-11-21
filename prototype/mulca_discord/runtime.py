@@ -1023,9 +1023,11 @@ class BotRuntime:
         # follow-up) is answered by the coordinator from the project, like on
         # the web app; everything else goes on as before.
         coordinator = self.coordinator_chat
+        offered_to_ask = False  # a follow-up the coordinator also asked Cadence about
         if link is not None and coordinator is not None and not attachments:
             if await coordinator.chat(channel, message.author.id, content, tagged=tagged):
                 return
+            offered_to_ask = coordinator.offered(content)
 
         roster = self.roster_text(link) if link is not None else {}
         if link is not None and not roster:
@@ -1104,6 +1106,8 @@ class BotRuntime:
                 text=readable_mentions(content, self.client.user, my_roles),
                 mentions_assistant=tagged,
                 attachments=attached,
+                # Only when set: the lab's call stays as it was otherwise.
+                **({"offered_to_ask": True} if offered_to_ask else {}),
             )
 
         try:

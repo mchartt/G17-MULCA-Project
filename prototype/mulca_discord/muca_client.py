@@ -428,7 +428,10 @@ class MucaWsClient:
         text: str,
         mentions_assistant: bool = False,
         attachments=(),
+        offered_to_ask: bool = False,
     ) -> None:
+        # offered_to_ask: this text was also sent to Cadence's ask as a possible
+        # follow-up; the server then lets nobody else answer it (its rule R10).
         await self._send(
             UserTextMessage(
                 event="user_text",
@@ -436,6 +439,7 @@ class MucaWsClient:
                 speaker_name=speaker_name,
                 text=text,
                 mentions_assistant=mentions_assistant,
+                offered_to_ask=offered_to_ask,
                 attachments=[
                     Attachment(
                         name=attachment.name,

@@ -73,6 +73,8 @@ class CoordinatorBridge:
         # answers that came late: request id -> (channel, maybe).
         self._follow_ups = FollowUps()
         self._answers: set[asyncio.Task] = set()
+        # Follow-ups also sent to Cadence's ask, until runtime.py marks their user_text.
+        self._offered: set[str] = set()
         self._late: dict[str, tuple[Any, bool]] = {}
 
     def attach(self) -> None:
@@ -176,7 +178,9 @@ class CoordinatorBridge:
             return False
         question, maybe, also_chat = routed
         if also_chat:
-            # Started before the caller sends the user_text, so the ask claims it first.
+            # Asked in the background; the caller marks its user_text with
+            # offered(text), so the server's R10 holds whichever arrives first.
+            self._offered.add(text)
             task = asyncio.create_task(self._answer(channel, author_id, text, question, maybe, place))
             self._answers.add(task)
             task.add_done_callback(self._answers.discard)
@@ -184,6 +188,13 @@ class CoordinatorBridge:
             return False
         await self._answer(channel, author_id, text, question, maybe, place)
         return True
+
+    def offered(self, text: str) -> bool:
+        """True once for a message chat() also sent to Cadence's ask as a follow-up."""
+        if text in self._offered:
+            self._offered.discard(text)
+            return True
+        return False
 
     async def wait_for_answers(self) -> None:
         """Wait for the follow-ups being answered in the background (tests, shutdown)."""

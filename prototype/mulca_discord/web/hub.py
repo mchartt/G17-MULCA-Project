@@ -297,6 +297,7 @@ class WebHub:
         # Answers run in the background (the socket reads the member's next
         # message at once, so "Cadence, mi senti?" typed under the banner is
         # shown, not held for up to 60 s); the server answers them in order.
+        offered = False  # also sent to Cadence's ask as a possible follow-up
         called = call(text)
         if called and called[1]:
             self._answer_later(member, called[0], said=text)
@@ -314,9 +315,12 @@ class WebHub:
             # as user_text below. Without it the plan opener never heard its answers
             # and CS3/CS7 never saw these lines (a pending card opens this window).
             # The double reply seen on 20/11 (the lab's agent answering too) is
-            # stopped on the server: R10, the ask claims the text first (it is
-            # started before the user_text below).
+            # stopped on the server: R10. The user_text below says it was
+            # offered (offered_to_ask), so the server knows whichever of the
+            # two arrives first (the ask runs in the background: on 21/11 the
+            # message still got a second answer, and once two cards).
             self._answer_later(member, text[:MAX_QUESTION_CHARS], maybe=True, said=text)
+            offered = True
 
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
@@ -325,6 +329,7 @@ class WebHub:
                 speaker_name=member.display_name,
                 text=WEB_MENTION.sub(SERVER_NAME_MENTION, text),
                 mentions_assistant=WEB_MENTION.search(text) is not None,
+                offered_to_ask=offered,
             )
 
         try:

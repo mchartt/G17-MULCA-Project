@@ -136,13 +136,14 @@ class SlackHub:
 
         routed = for_cadence(readable, follow_ups=self._follow_ups, place=channel,
                              member_names=roster.values(), tagged=mentions_bot)
+        offered = routed is not None and routed[2]  # a follow-up: asked AND sent on as chat
         if routed is not None:
             question, maybe, also_chat = routed
             if not also_chat:
                 await self._answer_in_channel(channel, user, question, maybe, said=readable)
                 return
-            # A follow-up: asked in the background, started before the user_text
-            # below so the server's R10 claims it first; the proactive judge reads it.
+            # A follow-up: asked in the background; the user_text below says so
+            # (offered_to_ask), so the server's R10 holds whichever arrives first.
             task = asyncio.create_task(self._answer_in_channel(channel, user, question, maybe, said=readable))
             self._answers.add(task)
             task.add_done_callback(self._answers.discard)
@@ -155,6 +156,7 @@ class SlackHub:
                 speaker_name=roster.get(user, "member"),
                 text=readable,
                 mentions_assistant=mentions_bot,
+                offered_to_ask=offered,
             )
 
         try:

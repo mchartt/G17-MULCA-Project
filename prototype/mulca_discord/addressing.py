@@ -126,9 +126,16 @@ class FollowUps:
     for the whole group, three minutes after anything Cadence said it was
     offered every line, answered remarks the members made to each other ("ci
     servono dati veri", "blu o verde?") and turned "facciamo il questionario"
-    into a card before CS5 could suggest an owner. What Cadence says unasked
-    (a card, the plan opener, a progress question) opens no window at all.
+    into a card before CS5 could suggest an owner.
+
+    A line Cadence writes unasked (the plan opener, "no card", a progress
+    question) is for the whole group: the ONE next message, whoever writes it,
+    is offered too, because it is most likely a reply to that line (Slack,
+    21/11: "why for a minute only?" under Cadence's own message got silence).
+    A card opens no window: its buttons are the reply.
     """
+
+    ANYONE = object()  # the next message of any member, once
 
     def __init__(self, *, window: float = FOLLOW_UP_SECONDS, clock: Callable[[], float] = time.monotonic) -> None:
         self._window = window
@@ -141,12 +148,16 @@ class FollowUps:
         self._asker[group] = member
 
     def answered(self, group: str) -> None:
-        """Cadence just spoke in this group: to the member noted by asked(), or unasked."""
-        self._answered[group] = (self._clock(), self._asker.pop(group, None))
+        """Cadence just wrote a line in this group: to the member noted by asked(), or unasked."""
+        self._answered[group] = (self._clock(), self._asker.pop(group, self.ANYONE))
 
     def is_follow_up(self, group: str, text: str, member_names: Iterable[str] = (), member: object = None) -> bool:
         at, who = self._answered.get(group, (None, None))
-        if at is None or who is None or member != who or self._clock() - at > self._window:
+        if at is None or self._clock() - at > self._window:
+            return False
+        if who is self.ANYONE:
+            del self._answered[group]  # once: the message after this one is the group's again
+        elif member != who:
             return False
         return bool(text.strip()) and not calls_someone_else(text, member_names)
 

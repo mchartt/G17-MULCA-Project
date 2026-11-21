@@ -114,10 +114,12 @@ class WebChannel:
         stored = self._hub.store.add_message(self._group.id, None, text)
         reply = WebReply(self, stored.id, text)
         await self._hub.broadcast(self._group.id, {"type": "message", "message": self._hub.message_json(stored)})
-        # Not a follow-up window here: an unasked message (the plan opener's
-        # question, a CS6 progress question) is answered in the normal chat, so
-        # the reply goes on as user_text and the server routes it (the opener
-        # hears it; MUCA-Server reads a reply to a progress question however late).
+        # Every line Cadence writes notes the follow-up window (addressing.FollowUps):
+        # an answer opens it for the member who asked; an unasked line (the plan
+        # opener, a progress question) for the one next message, which is most
+        # likely a reply to it. That message still goes on as user_text too, so
+        # the opener and the server's late-reply reading hear it as before.
+        self._hub.follow_ups.answered(str(self._group.id))
         return reply
 
     async def update(self, reply: WebReply) -> None:
@@ -427,8 +429,7 @@ class WebHub:
         if not text:
             return
         channel = self._channels.setdefault(group_id, WebChannel(self, self.store.group(group_id)))
-        await channel.send(text)
-        self.follow_ups.answered(str(group_id))
+        await channel.send(text)  # it notes the follow-up window (WebChannel.send)
 
     def groups_with_close_deadlines(self, today: date | None = None) -> list[int]:
         """Groups whose saved plan has an open task with an owner due between yesterday and in two days."""

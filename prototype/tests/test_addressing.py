@@ -53,15 +53,20 @@ def test_follow_ups_last_a_few_minutes_after_cadence_answered_and_only_for_that_
     assert not follow.is_follow_up("g1", "and by when?", member=7)
 
 
-def test_what_cadence_says_unasked_opens_no_follow_up_window():
+def test_a_line_cadence_writes_unasked_makes_the_one_next_message_a_follow_up():
+    # Slack, 21/11: "why for a minute only?" under Cadence's own line got silence.
     follow = FollowUps(window=180, clock=lambda: 0.0)
-    follow.answered("g1")  # a card, the plan opener, a progress question: nobody asked
-    assert not follow.is_follow_up("g1", "blu o verde?", member=7)
-    # ...and it closes the window of an earlier answer: the talk has moved on.
+    follow.answered("g1")  # the plan opener, "no card", a progress question: nobody asked
+    assert follow.is_follow_up("g1", "why for a minute only?", member=7)
+    # Once: the message after it is the group's again (21/11, four members in one chat).
+    assert not follow.is_follow_up("g1", "blu o verde?", member=8)
+    assert not follow.is_follow_up("g1", "so?", member=7)
+    # An answer to a member keeps its window for that member only.
     follow.asked("g1", 7)
     follow.answered("g1")
-    follow.answered("g1")
-    assert not follow.is_follow_up("g1", "e per quando?", member=7)
+    assert follow.is_follow_up("g1", "e per quando?", member=7)
+    assert follow.is_follow_up("g1", "e chi lo fa?", member=7)
+    assert not follow.is_follow_up("g1", "ok", member=8)
 
 
 def test_a_clear_call_is_sure_a_passing_mention_is_only_maybe():

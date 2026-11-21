@@ -138,7 +138,7 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     assert added_items == [CardButton] and CardButton.bridge is bridge
     (group,) = groups
     assert isinstance(group, CoordinatorGroup) and group.name == "coordinator"
-    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "kickoff", "link", "plan", "planning", "profile", "task", "unlink", "why"]
+    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "kickoff", "link", "me", "plan", "planning", "profile", "task", "unlink", "why"]
     CardButton.bridge = None
     SessionRegistry.on_coordinator_event = None
 
@@ -163,11 +163,55 @@ def test_answer_text():
     assert answer_text({"event": "coordinator_state"}) == "Done."
 
 
-async def test_a_command_outside_a_linked_channel_is_refused():
+async def test_a_command_with_no_bot_running_or_in_a_dm_is_refused():
     manager = SimpleNamespace(bots=[], link_for_channel=lambda channel_id: None)
     interaction = SimpleNamespace(channel_id=5, user=SimpleNamespace(id=1))
     answer = await CoordinatorBridge(manager).send_command(interaction, "state")
     assert answer["text"] == NOT_LINKED
+    # A direct message has no server: nothing is linked.
+    bot = SimpleNamespace(user_id=9, store=None)
+    manager = SimpleNamespace(bots=[bot], primary=bot, link_for_channel=lambda channel_id: None)
+    dm = SimpleNamespace(channel_id=5, channel=SimpleNamespace(id=5), guild_id=None, user=SimpleNamespace(id=1))
+    assert (await CoordinatorBridge(manager).send_command(dm, "state"))["text"] == NOT_LINKED
+
+
+async def test_the_first_coordinator_command_makes_the_bot_serve_the_channel():
+    """One step, as on Slack: no /mulca link first (21/11)."""
+    saved, applied = [], []
+
+    class Store:
+        def conflicts(self, link):
+            return []
+
+        def save(self, link, *, created_by=None):
+            saved.append((link, created_by))
+            return None
+
+    async def apply_link(link, previous):
+        applied.append((link, previous))
+
+    bot = SimpleNamespace(user_id=9, store=Store(), apply_link=apply_link)
+    # Still not found after saving: the command then answers NOT_LINKED, which
+    # shows the bridge went on to send it (the real manager finds the new link).
+    manager = SimpleNamespace(bots=[bot], primary=bot, link_for_channel=lambda channel_id: None)
+    interaction = SimpleNamespace(channel_id=42, channel=SimpleNamespace(id=42), guild_id=7, user=SimpleNamespace(id=1))
+    answer = await CoordinatorBridge(manager).send_command(interaction, "link", {"code": "ABCDEFGHJK"})
+    ((link, created_by),) = saved
+    assert (link.text_channel_id, link.guild_id, link.bot_id, link.voice_channel_id, link.listening_mode) == (42, 7, 9, None, "")
+    assert created_by == 1 and applied == [(link, None)]
+    assert answer["text"] == NOT_LINKED
+
+
+async def test_a_channel_that_cannot_be_served_says_why():
+    class Store:
+        def conflicts(self, link):
+            return ["This voice channel is already linked."]
+
+    bot = SimpleNamespace(user_id=9, store=Store())
+    manager = SimpleNamespace(bots=[bot], primary=bot, link_for_channel=lambda channel_id: None)
+    interaction = SimpleNamespace(channel_id=42, channel=SimpleNamespace(id=42), guild_id=7, user=SimpleNamespace(id=1))
+    answer = await CoordinatorBridge(manager).send_command(interaction, "state")
+    assert answer["ok"] is False and answer["text"].startswith("Cadence cannot work in this channel:")
 
 
 # ----------------------------------------------------------------------

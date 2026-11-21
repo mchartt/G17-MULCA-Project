@@ -286,6 +286,12 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     void ask({ type: "command", command: "catchup", args: { seen: true } });
   };
 
+  /** A personal code to be the same member on Discord or Slack (the server's "me" command). */
+  const personalCode = async () => {
+    const answer = await ask({ type: "command", command: "me" });
+    return answer.type === "notice" ? answer.text : "No code could be made. Try again in a moment.";
+  };
+
   /** Find owners: Cadence proposes an owner for every open task with none, as one card. */
   const findOwners = async () => {
     setDialog(null);
@@ -537,7 +543,7 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
         </>
       )}
       {touring && view === "chat" && <Tour onClose={() => { setTouring(false); document.getElementById("composer-input")?.focus(); }} />}
-      <ConnectDialog open={dialog === "connect"} code={room} onClose={() => setDialog(null)} />
+      <ConnectDialog open={dialog === "connect"} code={room} onClose={() => setDialog(null)} onPersonalCode={personalCode} />
       <ProjectSettingsDialog
         open={dialog === "settings"}
         name={space.group?.name ?? ""}

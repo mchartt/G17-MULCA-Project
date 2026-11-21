@@ -71,7 +71,7 @@ class ChatFrame(BaseModel):
 
 class CommandFrame(BaseModel):
     type: Literal["command"]
-    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone", "approach", "document", "reflection"]
+    command: Literal["profile", "kickoff", "state", "planning", "checkin", "task", "why", "ask", "catchup", "language", "charter", "milestone", "approach", "document", "reflection", "me"]
     args: dict = Field(default_factory=dict)
     request_id: str = Field(default="", alias="requestId", max_length=64)
 

@@ -5,6 +5,7 @@
   /coordinator kickoff text                             assignment -> charter card
   /coordinator plan                                     the project state, only for you
   /coordinator link code                                share the project with a web space
+  /coordinator me code                                  be the same member here as on the web
   /coordinator unlink                                   back to this channel's own plan
   /coordinator catchup                                  what you missed in the other channels
 
@@ -140,6 +141,13 @@ class CoordinatorGroup(app_commands.Group):
     async def link(self, interaction: discord.Interaction, code: str) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         answer = await self._bridge.send_command(interaction, "link", {"code": code})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="me", description="Be the same member here as on the web (your tasks and profile follow you).")
+    @app_commands.describe(code="Your personal code: get it in the web app, under “Connect Slack or Discord”")
+    async def me(self, interaction: discord.Interaction, code: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "me", {"code": code})
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
     @app_commands.command(name="unlink", description="Stop sharing the project with the web space.")

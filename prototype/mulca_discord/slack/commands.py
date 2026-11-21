@@ -37,6 +37,7 @@ HELP = (
     "• `/coordinator plan`: show the project (only you see it)\n"
     "• `/coordinator profile <discipline> | <skills, comma separated> | <weekly hours>`\n"
     "• `/coordinator link <invite code>`: share the project with a web space\n"
+    "• `/coordinator me <personal code>`: be the same member here as on the web (get the code in the web app)\n"
     "• `/coordinator unlink` · `/coordinator catchup`\n"
     "You can also write `@coordinator` in the channel to ask it something."
 )
@@ -94,7 +95,14 @@ def _link(rest: str) -> tuple[str, dict]:
     return "link", {"code": rest.split()[0]}
 
 
+def _me(rest: str) -> tuple[str, dict]:
+    if not rest:
+        raise Usage("Write your personal code: `/coordinator me ABC234`. You get it in the web app, under “Connect Slack or Discord”.")
+    return "me", {"code": rest.split()[0]}
+
+
 PARSERS: dict[str, Callable[[str], tuple[str, dict]]] = {
+    "me": _me,
     "kickoff": _kickoff,
     "planning": _planning,
     "task": _task,

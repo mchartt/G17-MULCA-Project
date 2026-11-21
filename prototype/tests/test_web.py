@@ -461,3 +461,25 @@ async def test_a_tab_that_reconnects_gets_the_pending_cards_after_the_history(hu
     seen.clear()
     await hub.connect(Sock(), member)
     assert [e["type"] for e in seen if e["type"] == "proposal"] == []
+
+
+async def test_a_follow_up_without_the_name_shows_thinking_even_if_cadence_stays_silent(hub):
+    """Matteo, 21/11: follow-ups got an answer after 10-30 s with no sign at all."""
+    group, member, _ = hub.create_group("Team", "Ada")
+    seen = []
+
+    async def silent(member, command, args=None):
+        seen.append({"type": "asked", "maybe": (args or {}).get("maybe", False)})
+        return {"type": "notice", "ok": True, "text": ""}
+
+    async def record(group_id, data):
+        seen.append(data)
+
+    hub.command = silent
+    hub.broadcast = record
+    await hub._answer_in_chat(member, "e per quando?", maybe=True)
+    assert seen == [
+        {"type": "typing", "on": True},
+        {"type": "asked", "maybe": True},
+        {"type": "typing", "on": False},
+    ]

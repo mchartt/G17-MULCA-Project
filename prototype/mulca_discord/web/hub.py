@@ -315,15 +315,14 @@ class WebHub:
 
     async def _answer_in_chat(self, member: Member, question: str, *, maybe: bool = False) -> None:
         """Cadence's answer, posted in the chat for the whole group; a "maybe" left unanswered posts nothing."""
-        if maybe:
-            await self._post_answer(member, question, maybe=True)
-            return
-        # A sure call: everyone sees Cadence is working on it ("Cadence is thinking…"),
-        # cleared once the answer is in the chat (or on failure). Not for a "maybe",
-        # which may end in silence: a typing line followed by nothing would flicker.
+        # Everyone sees Cadence is working on it ("Cadence is thinking…"), cleared
+        # once the answer is in the chat, or when it chose silence or failed. Also
+        # for a "maybe" (a follow-up without the name): its answer took 10-30 s
+        # with no sign at all, and the group thought Cadence was not answering
+        # (Matteo, 21/11). A thinking line that ends in silence is the lesser evil.
         await self.broadcast(member.group_id, {"type": "typing", "on": True})
         try:
-            await self._post_answer(member, question, maybe=False)
+            await self._post_answer(member, question, maybe=maybe)
         finally:
             await self.broadcast(member.group_id, {"type": "typing", "on": False})
 

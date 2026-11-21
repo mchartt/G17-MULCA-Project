@@ -100,6 +100,8 @@ export type Proposal = {
     // M4 cards (plan, checkin, blocker)
     items?: { title: string; owner_id?: MemberId | null; reason?: string; due_date?: string | null }[];
     findings?: string[];
+    /** A check-in a member asked for in words ("Cadence, segna X al 50%"): titled as an update. */
+    requested?: boolean;
     helper_id?: MemberId | null;
     // CS7 v2 (blocker) and K3 (revisit)
     certainty?: "blocked" | "possible";

@@ -72,13 +72,19 @@ class SlackReply:
 class SlackChannel:
     """A Slack channel as a reply target (what a Discord channel is for dispatch.py)."""
 
-    def __init__(self, api: SlackApi, channel_id: str) -> None:
+    def __init__(self, api: SlackApi, channel_id: str, on_sent=None) -> None:
         self.api = api
         self.id = channel_id
+        # Called after a line Cadence wrote unasked (the plan opener, a progress
+        # question): the hub notes the follow-up window (addressing.FollowUps).
+        self._on_sent = on_sent
 
     async def send(self, content: str | None = None, **_) -> SlackReply:
         text = content or ""
-        return SlackReply(self, await self.api.post(self.id, to_mrkdwn(text)), text)
+        reply = SlackReply(self, await self.api.post(self.id, to_mrkdwn(text)), text)
+        if self._on_sent is not None and text.strip():
+            self._on_sent(self.id)
+        return reply
 
 
 class SlackHub:
@@ -135,14 +141,15 @@ class SlackHub:
         )
 
         routed = for_cadence(readable, follow_ups=self._follow_ups, place=channel,
-                             member_names=roster.values(), tagged=mentions_bot)
+                             member_names=roster.values(), tagged=mentions_bot, member=user)
+        offered = routed is not None and routed[2]  # a follow-up: asked AND sent on as chat
         if routed is not None:
             question, maybe, also_chat = routed
             if not also_chat:
                 await self._answer_in_channel(channel, user, question, maybe, said=readable)
                 return
-            # A follow-up: asked in the background, started before the user_text
-            # below so the server's R10 claims it first; the proactive judge reads it.
+            # A follow-up: asked in the background; the user_text below says so
+            # (offered_to_ask), so the server's R10 holds whichever arrives first.
             task = asyncio.create_task(self._answer_in_channel(channel, user, question, maybe, said=readable))
             self._answers.add(task)
             task.add_done_callback(self._answers.discard)
@@ -155,6 +162,7 @@ class SlackHub:
                 speaker_name=roster.get(user, "member"),
                 text=readable,
                 mentions_assistant=mentions_bot,
+                offered_to_ask=offered,
             )
 
         try:
@@ -169,6 +177,7 @@ class SlackHub:
         sure call shows "Cadence is thinking…" at once, then that line becomes
         the answer; a "maybe" may end in silence, so it shows nothing first.
         """
+        self._follow_ups.asked(channel, user)  # only this member's next messages are follow-ups
         thinking = "" if maybe else await self._api.post(channel, THINKING)
         sent: list[str] = []
 
@@ -299,7 +308,7 @@ class SlackHub:
             self._waiting.pop(request_id, None)
 
     async def _run(self, channel: str, action) -> ScopeSession:
-        target = self._channels.setdefault(channel, SlackChannel(self._api, channel))
+        target = self._channels.setdefault(channel, SlackChannel(self._api, channel, self._follow_ups.answered))
         return await self.registry.run(
             Scope(conversation_id=PREFIX + channel, bot_name=AGENT_NAME, channel_name=f"slack-{channel}", course=self._course),
             action,

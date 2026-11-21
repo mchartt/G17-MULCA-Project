@@ -118,26 +118,53 @@ def calls_someone_else(text: str, member_names: Iterable[str]) -> bool:
 
 
 class FollowUps:
-    """When Cadence last answered in each group, to offer the next messages to it as "maybe"."""
+    """
+    Whom Cadence last answered in each group, and when: that member's next
+    messages are offered to it as "maybe" (a follow-up without the name).
+
+    Only that member's (21/11, four members in one chat): with a window open
+    for the whole group, three minutes after anything Cadence said it was
+    offered every line, answered remarks the members made to each other ("ci
+    servono dati veri", "blu o verde?") and turned "facciamo il questionario"
+    into a card before CS5 could suggest an owner.
+
+    A line Cadence writes unasked (the plan opener, "no card", a progress
+    question) is for the whole group: the ONE next message, whoever writes it,
+    is offered too, because it is most likely a reply to that line (Slack,
+    21/11: "why for a minute only?" under Cadence's own message got silence).
+    A card opens no window: its buttons are the reply.
+    """
+
+    ANYONE = object()  # the next message of any member, once
 
     def __init__(self, *, window: float = FOLLOW_UP_SECONDS, clock: Callable[[], float] = time.monotonic) -> None:
         self._window = window
         self._clock = clock
-        self._answered: dict[str, float] = {}
+        self._asker: dict[str, object] = {}
+        self._answered: dict[str, tuple[float, object]] = {}
+
+    def asked(self, group: str, member: object) -> None:
+        """This member's message is being answered by Cadence in this group."""
+        self._asker[group] = member
 
     def answered(self, group: str) -> None:
-        """Cadence just answered in this group."""
-        self._answered[group] = self._clock()
+        """Cadence just wrote a line in this group: to the member noted by asked(), or unasked."""
+        self._answered[group] = (self._clock(), self._asker.pop(group, self.ANYONE))
 
-    def is_follow_up(self, group: str, text: str, member_names: Iterable[str] = ()) -> bool:
-        at = self._answered.get(group)
+    def is_follow_up(self, group: str, text: str, member_names: Iterable[str] = (), member: object = None) -> bool:
+        at, who = self._answered.get(group, (None, None))
         if at is None or self._clock() - at > self._window:
+            return False
+        if who is self.ANYONE:
+            del self._answered[group]  # once: the message after this one is the group's again
+        elif member != who:
             return False
         return bool(text.strip()) and not calls_someone_else(text, member_names)
 
 
 def for_cadence(
-    text: str, *, follow_ups: FollowUps, place: str, member_names: Iterable[str] = (), tagged: bool = False
+    text: str, *, follow_ups: FollowUps, place: str, member_names: Iterable[str] = (), tagged: bool = False,
+    member: object = None,
 ) -> tuple[str, bool, bool] | None:
     """
     The one routing rule of Discord and Slack (the web hub follows the same
@@ -146,7 +173,7 @@ def for_cadence(
 
         tagged (an @mention of the bot) or a clear call  -> (question, False, False)
         the name anywhere else                           -> (whole message, True, False)
-        right after Cadence answered in `place`          -> (whole message, True, True)
+        right after Cadence answered `member` in `place`  -> (whole message, True, True)
 
     "maybe" lets the server's model stay silent (talk ABOUT Cadence, members
     talking among themselves). "also as chat": the message is sent on as
@@ -163,6 +190,6 @@ def for_cadence(
         return " ".join(text.split())[:MAX_QUESTION_CHARS], False, False
     if called:
         return text.strip()[:MAX_QUESTION_CHARS], True, False
-    if follow_ups.is_follow_up(place, text, member_names):
+    if follow_ups.is_follow_up(place, text, member_names, member):
         return text.strip()[:MAX_QUESTION_CHARS], True, True
     return None

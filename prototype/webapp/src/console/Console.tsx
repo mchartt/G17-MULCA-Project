@@ -147,12 +147,17 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
     onLeave();
   };
 
+  // A popup that asks Cadence for something closes as soon as its button is
+  // pressed (21/11: "Find owners" stayed open for the 10-30 s the answer takes,
+  // over the chat where the card arrives). A line above the chat says Cadence is
+  // working. If Cadence refuses, the popup opens again with what was typed.
   const kickoff = async (text: string) => {
+    setDialog(null);
+    setNotice("Cadence is reading the assignment…");
     const answer = await ask({ type: "command", command: "kickoff", args: { text } });
-    if (answer.ok) {
-      setDialog(null);
-      return null;
-    }
+    setNotice(null);
+    if (answer.ok) return null;
+    setDialog("kickoff");
     return answer.type === "notice" ? answer.text : "Cadence could not read the assignment.";
   };
 
@@ -167,15 +172,16 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
 
   /** The planning list: owners the group chose are kept, Cadence suggests the others. */
   const planningList = async (items: NewTask[]) => {
+    setDialog(null);
+    setNotice("Cadence is reading the tasks…");
     const answer = await ask({
       type: "command",
       command: "planning",
       args: { items: items.map((i) => ({ title: i.title, owner_id: i.owner, due_date: i.due })) },
     });
-    if (answer.ok) {
-      setDialog(null);
-      return null;
-    }
+    setNotice(null);
+    if (answer.ok) return null;
+    setDialog("planning");
     return answer.type === "notice" ? answer.text : "Cadence could not read the tasks.";
   };
 
@@ -282,10 +288,11 @@ export function Console({ token, onLeave }: { token: string; onLeave: () => void
 
   /** Find owners: Cadence proposes an owner for every open task with none, as one card. */
   const findOwners = async () => {
-    const answer = await ask({ type: "command", command: "planning", args: { owners: true } });
-    if (!answer.ok) return answer.type === "notice" ? answer.text : "Cadence could not suggest owners.";
     setDialog(null);
-    if (answer.type === "notice") setNotice(answer.text);
+    setNotice("Cadence is looking at who could take each task…");
+    const answer = await ask({ type: "command", command: "planning", args: { owners: true } });
+    // Nothing was typed in this popup: a refusal is said above the chat, the popup stays closed.
+    setNotice(answer.type === "notice" ? answer.text : answer.ok ? null : "Cadence could not suggest owners.");
     return null;
   };
 

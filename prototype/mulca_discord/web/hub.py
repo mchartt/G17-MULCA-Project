@@ -114,10 +114,12 @@ class WebChannel:
         stored = self._hub.store.add_message(self._group.id, None, text)
         reply = WebReply(self, stored.id, text)
         await self._hub.broadcast(self._group.id, {"type": "message", "message": self._hub.message_json(stored)})
-        # Not a follow-up window here: an unasked message (the plan opener's
-        # question, a CS6 progress question) is answered in the normal chat, so
-        # the reply goes on as user_text and the server routes it (the opener
-        # hears it; MUCA-Server reads a reply to a progress question however late).
+        # Every line Cadence writes notes the follow-up window (addressing.FollowUps):
+        # an answer opens it for the member who asked; an unasked line (the plan
+        # opener, a progress question) for the one next message, which is most
+        # likely a reply to it. That message still goes on as user_text too, so
+        # the opener and the server's late-reply reading hear it as before.
+        self._hub.follow_ups.answered(str(self._group.id))
         return reply
 
     async def update(self, reply: WebReply) -> None:
@@ -297,6 +299,7 @@ class WebHub:
         # Answers run in the background (the socket reads the member's next
         # message at once, so "Cadence, mi senti?" typed under the banner is
         # shown, not held for up to 60 s); the server answers them in order.
+        offered = False  # also sent to Cadence's ask as a possible follow-up
         called = call(text)
         if called and called[1]:
             self._answer_later(member, called[0], said=text)
@@ -309,14 +312,17 @@ class WebHub:
             # respond_when_addressed answer it a second time (7.6).
             self._answer_later(member, text[:MAX_QUESTION_CHARS], maybe=True, said=text)
             return
-        if self.follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values()):
+        if self.follow_ups.is_follow_up(str(member.group_id), text, self.roster(member.group_id).values(), member.id):
             # Maybe for Cadence: offered to it (it may stay silent), and ALSO sent on
             # as user_text below. Without it the plan opener never heard its answers
             # and CS3/CS7 never saw these lines (a pending card opens this window).
             # The double reply seen on 20/11 (the lab's agent answering too) is
-            # stopped on the server: R10, the ask claims the text first (it is
-            # started before the user_text below).
+            # stopped on the server: R10. The user_text below says it was
+            # offered (offered_to_ask), so the server knows whichever of the
+            # two arrives first (the ask runs in the background: on 21/11 the
+            # message still got a second answer, and once two cards).
             self._answer_later(member, text[:MAX_QUESTION_CHARS], maybe=True, said=text)
+            offered = True
 
         async def action(client) -> None:
             await client.send_participants(self.roster(member.group_id), modality="text")
@@ -325,6 +331,7 @@ class WebHub:
                 speaker_name=member.display_name,
                 text=WEB_MENTION.sub(SERVER_NAME_MENTION, text),
                 mentions_assistant=WEB_MENTION.search(text) is not None,
+                offered_to_ask=offered,
             )
 
         try:
@@ -365,6 +372,8 @@ class WebHub:
         args = {"question": question, "said": said or question, **({"maybe": True} if maybe else {})}
         request_id = uuid.uuid4().hex
         group_id = member.group_id
+        # Whom the answer is for: only their next messages count as follow-ups.
+        self.follow_ups.asked(str(group_id), member.id)
         await self._think(group_id, +1)
         late = False
         try:
@@ -420,8 +429,7 @@ class WebHub:
         if not text:
             return
         channel = self._channels.setdefault(group_id, WebChannel(self, self.store.group(group_id)))
-        await channel.send(text)
-        self.follow_ups.answered(str(group_id))
+        await channel.send(text)  # it notes the follow-up window (WebChannel.send)
 
     def groups_with_close_deadlines(self, today: date | None = None) -> list[int]:
         """Groups whose saved plan has an open task with an owner due between yesterday and in two days."""
@@ -573,10 +581,8 @@ class WebHub:
             proposal = data.get("proposal", {})
             self.store.save_proposal(group.id, proposal)
             await self.broadcast(group.id, {"type": "proposal", "proposal": proposal})
-            if proposal.get("status") == "pending":
-                # A new card is Cadence speaking too: "Sì, fallo" typed under it is
-                # offered to Cadence as maybe (it points to the card; the click saves).
-                self.follow_ups.answered(str(group.id))
+            # A card opens no follow-up window (21/11): it is for the whole group,
+            # and for three minutes every line under it was offered to Cadence.
         elif event == "coordinator_state":
             # The panel of every member follows the state, whoever asked for it.
             self.calendar.save_state(group.id, data.get("state", {}))

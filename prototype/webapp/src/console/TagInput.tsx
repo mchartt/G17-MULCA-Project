@@ -32,6 +32,10 @@ export function TagInput({ id, tags, onChange, placeholder, max = 20, onPending 
     if ((e.key === "Enter" || e.key === ",") && text.trim()) {
       e.preventDefault();
       commit(text);
+    } else if (e.key === "Enter") {
+      // Enter adds a tag here; on an empty field it must not send the whole
+      // form (21/11: one Enter too many saved the profile before its last field).
+      e.preventDefault();
     } else if (e.key === "Backspace" && !text && tags.length) {
       onChange(tags.slice(0, -1));
     }

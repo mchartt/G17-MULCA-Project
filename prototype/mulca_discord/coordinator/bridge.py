@@ -73,6 +73,8 @@ class CoordinatorBridge:
         # answers that came late: request id -> (channel, maybe).
         self._follow_ups = FollowUps()
         self._answers: set[asyncio.Task] = set()
+        # Follow-ups also sent to Cadence's ask, until runtime.py marks their user_text.
+        self._offered: set[str] = set()
         self._late: dict[str, tuple[Any, bool]] = {}
 
     def attach(self) -> None:
@@ -171,12 +173,14 @@ class CoordinatorBridge:
         bot, link = found
         place = f"discord:{link.text_channel_id}"
         routed = for_cadence(text, follow_ups=self._follow_ups, place=place,
-                             member_names=bot.roster_text(link).values(), tagged=tagged)
+                             member_names=bot.roster_text(link).values(), tagged=tagged, member=author_id)
         if routed is None:
             return False
         question, maybe, also_chat = routed
         if also_chat:
-            # Started before the caller sends the user_text, so the ask claims it first.
+            # Asked in the background; the caller marks its user_text with
+            # offered(text), so the server's R10 holds whichever arrives first.
+            self._offered.add(text)
             task = asyncio.create_task(self._answer(channel, author_id, text, question, maybe, place))
             self._answers.add(task)
             task.add_done_callback(self._answers.discard)
@@ -184,6 +188,13 @@ class CoordinatorBridge:
             return False
         await self._answer(channel, author_id, text, question, maybe, place)
         return True
+
+    def offered(self, text: str) -> bool:
+        """True once for a message chat() also sent to Cadence's ask as a follow-up."""
+        if text in self._offered:
+            self._offered.discard(text)
+            return True
+        return False
 
     async def wait_for_answers(self) -> None:
         """Wait for the follow-ups being answered in the background (tests, shutdown)."""
@@ -194,6 +205,7 @@ class CoordinatorBridge:
 
     async def _answer(self, channel: Any, author_id: int, text: str, question: str, maybe: bool, place: str) -> None:
         request_id = uuid.uuid4().hex
+        self._follow_ups.asked(place, author_id)  # only this member's next messages are follow-ups
         message = CoordinatorCommandMessage(
             event="coordinator_command", command="ask", member_id=author_id,
             args={"question": question, "said": text, **({"maybe": True} if maybe else {})},

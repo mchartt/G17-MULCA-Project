@@ -150,3 +150,27 @@ async def test_a_split_replaces_the_task_it_splits(store):
     await router.route_coordinator(click(card["proposal_id"], "confirm"))
     await drain(queue)
     assert sorted(t.title for t in (await store.load_state()).tasks) == ["Run 5 interviews (Ada)", "Run 5 interviews (Bruno)"]
+
+
+async def test_asked_to_drop_a_task_cadence_drafts_a_card_and_the_click_removes_it(store):
+    """22/11 demo run: "drop the task Run the 10 interviews" got an answer that agreed, and no card."""
+    whole = await task(store, "Run the 10 interviews", owner=ADA)
+    router, queue, _ = make(store, answer("The removal is ready on a card.", {"kind": "update_task", "task_id": whole, "drop": True}))
+    notice, (card,) = await ask(router, queue, "Cadence, drop the task Run the 10 interviews, we split it already")
+    assert card["kind"] == "checkin" and card["payload"]["requested"] is True
+    assert card["payload"]["options"][0]["label"] == "Remove “Run the 10 interviews” from the plan"
+    assert len((await store.load_state()).tasks) == 1  # nothing changes before the click
+
+    await router.route_coordinator(choose(card["proposal_id"]))
+    await drain(queue)
+    assert (await store.load_state()).tasks == []
+
+
+async def test_what_a_member_says_about_themselves_is_saved_as_their_profile(store):
+    """The answer to Cadence's welcome question: saved at once, no card (their own words about themselves)."""
+    action = {"kind": "profile", "discipline": "Psychology", "skills": ["interviews", "surveys"], "weekly_hours": 6}
+    router, queue, _ = make(store, answer("Noted. The interview guide could fit you.", action))
+    notice, cards = await ask(router, queue, "psychology, interviews and surveys, 6 hours")
+    assert cards == [] and notice.text.startswith("Noted.")
+    (ada,) = [m for m in (await store.load_state()).members if m.member_id == ADA]
+    assert (ada.discipline, ada.skills, ada.weekly_hours) == ("Psychology", ["interviews", "surveys"], 6)

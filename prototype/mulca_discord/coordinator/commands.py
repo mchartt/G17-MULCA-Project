@@ -143,9 +143,9 @@ class CoordinatorGroup(app_commands.Group):
         answer = await self._bridge.send_command(interaction, "link", {"code": code})
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
-    @app_commands.command(name="me", description="Be the same member here as on the web (your tasks and profile follow you).")
-    @app_commands.describe(code="Your personal code: get it in the web app, under “Connect Slack or Discord”")
-    async def me(self, interaction: discord.Interaction, code: str) -> None:
+    @app_commands.command(name="me", description="Be the same member here as on the web or Slack (your tasks and profile follow you).")
+    @app_commands.describe(code="Your personal code from the web app or from Slack. Leave it empty to get a code here.")
+    async def me(self, interaction: discord.Interaction, code: str = "") -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         answer = await self._bridge.send_command(interaction, "me", {"code": code})
         await interaction.followup.send(answer_text(answer), ephemeral=True)

@@ -32,6 +32,8 @@ export type Names = Record<string, string>;
 export type CatchUp = {
   since: number;
   until: number;
+  /** No earlier catch-up: `since` is seven days ago, not the member's last visit. */
+  first?: boolean;
   linked: boolean;
   decisions: { question: string; choice: string; reason?: string; decided_by?: MemberId; decided_at?: number }[];
   elsewhere: CatchUpChannel[];

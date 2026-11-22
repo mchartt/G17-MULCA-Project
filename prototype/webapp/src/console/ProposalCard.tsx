@@ -330,6 +330,10 @@ function CardBody({ proposal, memberName, w }: { proposal: Proposal; memberName:
       <div className="card__field">
         <h4>{payload.requested === true ? w.asked : w.atRisk}</h4>
         <ul>{(payload.findings ?? []).map((f) => <li key={f}>{rich(f)}</li>)}</ul>
+        {/* Once answered the buttons go: with one option, say what was chosen. */}
+        {proposal.status === "applied" && payload.options?.length === 1 && (
+          <p className="small"><strong>{w.groupChose}:</strong> {payload.options[0].label}</p>
+        )}
       </div>
     );
   }

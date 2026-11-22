@@ -72,7 +72,7 @@ export function CatchUpDialog({ open, summary, catchup, inviteCode, nameOf, onSi
             <input type="date" value={from} max={new Date().toISOString().slice(0, 10)} onChange={(e) => { setFrom(e.target.value); if (e.target.value) onSince(e.target.value); }} />
           </label>
         </div>
-        {catchup?.since !== undefined && !loading && <p className="muted small">Since {day(catchup.since)}.</p>}
+        {catchup?.since !== undefined && !loading && <p className="muted small">{catchup.first && !from ? `Your first catch-up: the last 7 days, since ${day(catchup.since)}.` : `Since ${day(catchup.since)}.`}</p>}
 
         <p role="status" className="catchup__line">{loading ? "Cadence is reading the chat and summing it up…" : summary}</p>
 

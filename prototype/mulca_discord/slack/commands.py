@@ -29,7 +29,7 @@ from .ids import who
 HELP = (
     "*Cadence commands*\n"
     "• `/coordinator link <invite code>`: work here on a project created in the web app\n"
-    "• `/coordinator me <personal code>`: be the same member here as on the web (get the code in the web app)\n"
+    "• `/coordinator me <personal code>`: be the same member here as on the web or on Discord (with no code: get one here)\n"
     "• `/coordinator kickoff <assignment text>`: propose the project charter (in a linked channel)\n"
     "• `/coordinator planning <task>; <task>; …`: suggest who takes each task\n"
     "• `/coordinator checkin`: compare the plan with reality\n"
@@ -96,9 +96,9 @@ def _link(rest: str) -> tuple[str, dict]:
 
 
 def _me(rest: str) -> tuple[str, dict]:
-    if not rest:
-        raise Usage("Write your personal code: `/coordinator me ABC234`. You get it in the web app, under “Connect Slack or Discord”.")
-    return "me", {"code": rest.split()[0]}
+    # With no code the server gives one here, to use in the project's other
+    # channel (the same person on Slack and Discord without a web account).
+    return "me", {"code": rest.split()[0] if rest else ""}
 
 
 PARSERS: dict[str, Callable[[str], tuple[str, dict]]] = {

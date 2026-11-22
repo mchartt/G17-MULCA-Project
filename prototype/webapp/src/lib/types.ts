@@ -101,6 +101,8 @@ export type Proposal = {
     options?: { label: string; argument?: string }[];
     // M4 cards (plan, checkin, blocker)
     items?: { title: string; owner_id?: MemberId | null; reason?: string; due_date?: string | null }[];
+    /** A split asked in words: the task these items replace (it leaves the plan on confirm). */
+    replaces_title?: string;
     findings?: string[];
     /** A check-in a member asked for in words ("Cadence, segna X al 50%"): titled as an update. */
     requested?: boolean;

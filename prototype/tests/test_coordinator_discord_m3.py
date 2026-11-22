@@ -64,7 +64,7 @@ def ids(view):
 
 def test_delegation_card_never_names_an_owner_and_offers_take():
     embed = proposal_embed(DELEGATION)
-    assert embed.title == "Coordinator · One person can do this · Ownership"
+    assert embed.title == "Cadence · One person can do this · Ownership"
     fields = {f.name: f.value for f in embed.fields}
     assert fields == {"Task": "Fix the fonts", "By": "no date yet", "Then back to": "Evaluation protocol"}
     assert ids(card_view(DELEGATION)) == ["coord:take:d1", "coord:reject:d1", "coord:why:d1", "coord:helpful:d1", "coord:not_now:d1"]

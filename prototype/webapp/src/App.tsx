@@ -19,6 +19,9 @@ function redirectInvite() {
   if (location.pathname === "/" && new URLSearchParams(location.search).has("code")) {
     history.replaceState(null, "", `/login${location.search}`);
   }
+  // "/join/<code>", as people type it by hand: the same page, with the code filled in.
+  const typed = location.pathname.match(/^\/join\/([A-Za-z0-9]{4,20})\/?$/);
+  if (typed) history.replaceState(null, "", `/login?code=${typed[1].toUpperCase()}`);
 }
 
 /**

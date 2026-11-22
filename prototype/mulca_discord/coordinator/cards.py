@@ -79,8 +79,8 @@ def proposal_embed(proposal: dict) -> discord.Embed:
     kind = proposal.get("kind")
     payload = proposal.get("payload", {})
     embed = discord.Embed(
-        title=f"Coordinator · {card_title(kind, payload)}",
-        description=f"*{proposal.get('rationale') or 'Proposal from the coordinator.'}*",
+        title=f"Cadence · {card_title(kind, payload, status)}",
+        description=f"*{proposal.get('rationale') or 'Proposal from Cadence.'}*",
         colour=STATUS_COLOURS.get(status, discord.Colour.blurple()),
     )
     for name, value in card_fields(kind, payload, lambda member_id: owner_text(member_id, proposal.get("names"))):

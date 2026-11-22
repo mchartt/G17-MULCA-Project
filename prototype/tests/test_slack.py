@@ -79,7 +79,7 @@ def test_the_text_after_the_slash_command():
     for bad in ("", "dance", "kickoff", "ask", "task two done", "task 2 finished", "profile a | b | many", "link"):
         with pytest.raises(Usage):
             parse(bad)
-    with pytest.raises(Usage, match="Coordinator commands"):
+    with pytest.raises(Usage, match="Cadence commands"):
         parse("help")
     assert "/coordinator link" in HELP
 
@@ -91,12 +91,12 @@ def test_a_card_has_the_same_content_and_buttons_as_on_discord():
     }
     blocks = card_blocks(proposal)
     text = "\n".join(b["text"]["text"] for b in blocks if b["type"] == "section")
-    assert "Coordinator · Owner and date" in text and f"<@{CHIARA}>" in text and "Book the lab" in text
+    assert "Cadence · Owner and date" in text and f"<@{CHIARA}>" in text and "Book the lab" in text
     answers, about = [[e["action_id"] for e in b["elements"]] for b in blocks if b["type"] == "actions"]
     assert answers == ["coord:confirm:ab12", "coord:take:ab12", "coord:reject:ab12"]
     assert about == ["coord:why:ab12", "coord:helpful:ab12", "coord:not_now:ab12"]
     assert all(ACTION_ID.match(a) for a in answers + about)
-    assert card_text(proposal).startswith("Coordinator · Owner and date")
+    assert card_text(proposal).startswith("Cadence · Owner and date")
 
     closed = card_blocks({**proposal, "status": "applied"})
     assert not [b for b in closed if b["type"] == "actions"]
@@ -129,7 +129,7 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
     try:
         # Not in a DM, and a wrong command gets the help.
         assert await hub.on_command("D1", CHIARA, "plan", is_dm=True) == CHANNEL_ONLY
-        assert "Coordinator commands" in await hub.on_command("C1", CHIARA, "dance")
+        assert "Cadence commands" in await hub.on_command("C1", CHIARA, "dance")
 
         # A message with a mention is for Cadence (as on the web app): "thinking"
         # first, then that same line becomes the coordinator's answer.

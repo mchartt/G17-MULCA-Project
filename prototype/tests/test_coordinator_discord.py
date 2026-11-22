@@ -60,7 +60,7 @@ CHARTER = {
 
 def test_a_pending_card_shows_reason_content_status_and_two_buttons():
     embed = proposal_embed(PENDING)
-    assert embed.title == "Coordinator · Project charter"
+    assert embed.title == "Cadence · Project charter"
     assert embed.description == "*Stepping in because you pasted the assignment.*"
     fields = {f.name: f.value for f in embed.fields}
     assert fields["Goal"] == "Ship the coordinator."
@@ -401,7 +401,7 @@ async def test_plan_shows_the_state_embed_or_explains_why_not():
     record = []
     group = CoordinatorGroup(FakeBridge({"event": "coordinator_state", "state": {}}))
     await group.plan.callback(group, an_interaction(record))
-    assert record[1][1]["embed"].title == "Coordinator · Project plan"
+    assert record[1][1]["embed"].title == "Cadence · Project plan"
 
     record.clear()
     group = CoordinatorGroup(FakeBridge(None))

@@ -60,7 +60,7 @@ def test_checkin_card_shows_findings_and_one_button_per_option():
 
 def test_blocker_card_is_proactive():
     embed = proposal_embed(BLOCKER)
-    assert embed.title == "Coordinator · Something is blocked · Dependency"
+    assert embed.title == "Cadence · Something is blocked · Dependency"
     assert {f.name: f.value for f in embed.fields}["Who could help"] == "<@9>"
     assert ids(card_view(BLOCKER)) == ["coord:confirm:e3", "coord:reject:e3", "coord:why:e3", "coord:helpful:e3", "coord:not_now:e3"]
 
@@ -77,7 +77,7 @@ REVISIT = {"proposal_id": "f1", "kind": "revisit", "status": "pending", "rationa
 
 def test_a_possible_dependency_says_it_is_not_confirmed_and_lists_ways_forward():
     embed = proposal_embed(POSSIBLE)
-    assert embed.title == "Coordinator · Possible dependency (not confirmed yet) · Dependency"
+    assert embed.title == "Cadence · Possible dependency (not confirmed yet) · Dependency"
     fields = {f.name: f.value for f in embed.fields}
     assert fields["May wait on"] == "Booking API"
     assert fields["Possible ways forward (ideas, nothing changes by itself)"] == "• Test with mock data\n• A minimal API first"
@@ -85,7 +85,7 @@ def test_a_possible_dependency_says_it_is_not_confirmed_and_lists_ways_forward()
 
 def test_a_revisit_card_recalls_the_decision_and_has_keep_and_reopen_buttons():
     embed = proposal_embed(REVISIT)
-    assert embed.title == "Coordinator · Already decided · Decision"
+    assert embed.title == "Cadence · Already decided · Decision"
     fields = {f.name: f.value for f in embed.fields}
     assert (fields["The group chose"], fields["Because"]) == ("Tabs", "Five sections fit")
     assert fields["What seems new"].startswith("Nothing new so far")

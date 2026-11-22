@@ -79,7 +79,7 @@ model can take some seconds, then the final answer, also private.
 | `CUSTOM_ID`, `CUSTOM_ID_PATTERN` | `coord:<action>:<proposal id>`, action one of confirm, reject, take, not_now, why, choose0–choose2: the button carries everything it needs. |
 | `STATUS_WORDS`, `STATUS_COLOURS` | The status is always written in words (including "Not now: silenced for 30 minutes"); the colour only adds to it. |
 | `KIND_TITLES`, `STRATEGY_NAMES` | Card titles per kind; the strategy in plain words for "Why?". |
-| `proposal_embed(proposal)` | Title "Coordinator · …", the reason in italics, the content of the kind (`_fields`), status and expiry in the footer. A suggested owner is a Discord mention. Long fields are cut to Discord's limit. |
+| `proposal_embed(proposal)` | Title "Cadence · …", the reason in italics, the content of the kind (`_fields`), status and expiry in the footer. A suggested owner is a Discord mention. Long fields are cut to Discord's limit. |
 | `card_view(proposal)` | While pending: charter → Confirm, Reject; task_owner → Confirm (only with a suggested owner), I'll take it, Reject; delegation → I'll take it, Reject (never assigns); decision → one button per option, Reject; plan → Confirm, Reject; checkin → one button per option, Reject; blocker → Confirm, Reject. Proactive cards (task_owner, delegation, decision, blocker) add Why? and Not now on a second row. No buttons once closed. |
 | `why_text(proposal)` | Strategy, topic and the messages behind the card, as a private message. |
 | `CardButton` | A `DynamicItem`: discord.py rebuilds it from the custom_id (`from_custom_id`), also after a restart; `callback` hands "Why?" to `bridge.why` and every other button to `bridge.click`. |

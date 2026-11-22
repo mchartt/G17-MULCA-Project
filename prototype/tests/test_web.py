@@ -181,7 +181,7 @@ async def test_chat_kickoff_card_and_confirm_end_to_end(web):
     assert reply["answer"]["ok"], reply
     card = await tab_a.wait_for(lambda e: e["type"] == "proposal")
     assert card["proposal"]["status"] == "pending"
-    assert card["proposal"]["rationale"].startswith("Stepping in because")
+    assert card["proposal"]["rationale"].startswith("Asked by Bruno: ")  # a member started it (22/11)
 
     # The first valid click applies it; every tab sees the card change.
     await tab_a.send(type="click", proposalId=card["proposal"]["proposal_id"], action="confirm", requestId="c1")

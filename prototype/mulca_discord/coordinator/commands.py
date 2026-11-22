@@ -174,7 +174,7 @@ class CoordinatorGroup(app_commands.Group):
 
 def state_embed(state: dict) -> discord.Embed:
     """The project state as one private embed."""
-    embed = discord.Embed(title="Coordinator · Project plan", colour=discord.Colour.blurple())
+    embed = discord.Embed(title="Cadence · Project plan", colour=discord.Colour.blurple())
     charter = state.get("charter")
     embed.add_field(
         name="Goal",

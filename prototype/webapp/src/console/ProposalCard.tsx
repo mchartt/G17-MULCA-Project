@@ -25,6 +25,8 @@ const WORDS = {
     // A check-in card a member asked for in words ("Cadence, mark X at 50%").
     update: "Update a task",
     possible: "Possible dependency",
+    dependency: "Dependency",
+    replaces: "Replaces",
     proposal: "Proposal",
     // Which shared need a proactive card answers (the three needs the tutor named
     // on 18/11: ownership, dependencies, decisions). Shown as a small label, so
@@ -117,6 +119,8 @@ const WORDS = {
     } as Record<string, string>,
     update: "Aggiornare un'attività",
     possible: "Possibile dipendenza",
+    dependency: "Dipendenza",
+    replaces: "Sostituisce",
     proposal: "Proposta",
     needs: {
       cs5_owner_and_date: "Responsabile",
@@ -221,7 +225,9 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
   const w = WORDS[cardLang(proposal, language)];
   const possible = kind === "blocker" && payload.certainty === "possible";
   const requested = kind === "checkin" && payload.requested === true;
-  const title = givenTitle ?? (possible ? w.possible : requested ? w.update : w.kinds[kind]) ?? w.proposal;
+  // A possible dependency a member confirmed is a dependency: no "not confirmed yet" on it (22/11).
+  const tentative = possible && status !== "applied";
+  const title = givenTitle ?? (possible ? (tentative ? w.possible : w.dependency) : requested ? w.update : w.kinds[kind]) ?? w.proposal;
   const context = payload.context;
   const pending = status === "pending";
   const need = context ? w.needs[context.strategy_id] : undefined;
@@ -247,7 +253,7 @@ export function ProposalCard({ proposal, agentName, onAnswer, memberName = (id) 
         <span className="card__from"><FontAwesomeIcon icon={faCompass} /> {agentName}</span>
         <h3 id={`card-${proposal.proposal_id}`} className="card__title">{title}</h3>
         {need && <span className="card__need">{need}</span>}
-        {possible && <span className="card__tentative" title={w.tentativeHint}>{w.tentative}</span>}
+        {tentative && <span className="card__tentative" title={w.tentativeHint}>{w.tentative}</span>}
       </header>
       {proposal.rationale && <p className="card__why">{rich(proposal.rationale)}</p>}
       <CardBody proposal={proposal} memberName={memberName} w={w} />
@@ -322,6 +328,8 @@ function CardBody({ proposal, memberName, w }: { proposal: Proposal; memberName:
             </span>
           </li>
         ))}
+        {/* A split: the task these replace leaves the plan when the card is confirmed. */}
+        {payload.replaces_title && <li className="muted small">{w.replaces}: {payload.replaces_title}</li>}
       </ul>
     );
   }

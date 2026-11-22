@@ -38,7 +38,7 @@ def to_mrkdwn(text: str) -> str:
 
 def card_text(proposal: dict) -> str:
     """The one-line version of the card (notifications, screen readers)."""
-    return f"Coordinator · {card_title(proposal.get('kind'), proposal.get('payload', {}))}: {proposal.get('rationale') or ''}".strip()
+    return f"Cadence · {card_title(proposal.get('kind'), proposal.get('payload', {}), proposal.get('status', 'pending'))}: {proposal.get('rationale') or ''}".strip()
 
 
 def card_blocks(proposal: dict) -> list[dict]:
@@ -48,7 +48,7 @@ def card_blocks(proposal: dict) -> list[dict]:
     payload = proposal.get("payload", {})
     names = proposal.get("names")
     blocks: list[dict] = [
-        _section(f"*Coordinator · {card_title(kind, payload)}*\n_{proposal.get('rationale') or 'Proposal from the coordinator.'}_")
+        _section(f"*Cadence · {card_title(kind, payload, proposal.get('status', 'pending'))}*\n_{proposal.get('rationale') or 'Proposal from Cadence.'}_")
     ]
     for name, value in card_fields(kind, payload, lambda member: who(member, names)):
         blocks.append(_section(f"*{name}*\n{to_mrkdwn(value) or '—'}"))

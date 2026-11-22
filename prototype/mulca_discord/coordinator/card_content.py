@@ -64,10 +64,17 @@ PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker", "revisit",
 # The "about this card" buttons, on a second row so the answers come first.
 ABOUT_THE_CARD = ("why", "helpful", "not_now")
 
-def card_title(kind: str | None, payload: dict) -> str:
-    """The card's title; a CS7 card the group has not confirmed says so."""
+def card_title(kind: str | None, payload: dict, status: str = "pending") -> str:
+    """
+    The card's title. A CS7 card the group has not confirmed says so, and
+    stops saying it once a member confirmed it (22/11: "not confirmed yet"
+    stayed on a confirmed card). An update a member asked for in words uses
+    the check-in card: it is titled as what it is, as on the web.
+    """
     if kind == "blocker" and payload.get("certainty") == "possible":
-        title = "Possible dependency (not confirmed yet)"
+        title = "Dependency" if status == "applied" else "Possible dependency (not confirmed yet)"
+    elif kind == "checkin" and payload.get("requested") is True:
+        title = "Update a task"
     else:
         title = KIND_TITLES.get(kind or "", "Proposal")
     need = NEED_LABELS.get((payload.get("context") or {}).get("strategy_id", ""))
@@ -120,11 +127,13 @@ def card_fields(kind: str | None, payload: dict, who: Who) -> list[tuple[str, st
                     + (f"\n  _{i['reason']}_" if i.get("reason") else "")
                     for i in payload.get("items", [])
                 ) or "—",
-            )
+            ),
+            # A split: the task these replace leaves the plan on confirm.
+            *([("Replaces", payload["replaces_title"])] if payload.get("replaces_title") else []),
         ]
     if kind == "checkin":
         return [
-            ("What is late or at risk", _bullets(payload.get("findings", []))),
+            ("What was asked" if payload.get("requested") is True else "What is late or at risk", _bullets(payload.get("findings", []))),
             ("Options", "\n".join(f"**{n}.** {o.get('label')}" for n, o in enumerate(payload.get("options", []), start=1)) or "—"),
         ]
     if kind == "blocker":

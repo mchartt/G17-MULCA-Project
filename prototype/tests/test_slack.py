@@ -182,7 +182,7 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
         assert state["state"]["charter"]["confirmed_by"] == chiara  # as text: too big for a browser number
         assert applied["proposal"]["names"][chiara] == "Chiara"
 
-        assert "catch-up" in (await hub.on_command("C1", CHIARA, "catchup")).lower()
+        assert "last 7 days" in await hub.on_command("C1", CHIARA, "catchup")  # the first catch-up
         await tab.ws.close()
     finally:
         await hub.close()

@@ -263,15 +263,24 @@ kind "none" and ask one precise question instead):
 - "update_task": an existing task changes: task_id (from <project>) and only
   what changes: owner_id (new owner), due_date (new date), status ("todo",
   "doing", "done", "blocked") and/or progress (0-100, "a metà" = 50); the
-  rest null. "Ho finito X" = status "done".
+  rest null. "Ho finito X" = status "done". When they ask to REMOVE, delete
+  or drop a task from the plan, drop = true (and nothing else changes).
 - "dependency": task_id = the task that WAITS (or null if it is new: then
   title = its name); the work it waits on is depends_on_task_id (a plan task)
   or, if not in the plan, depends_on_title (its name) with depends_on_owner_id
   = the member who must deliver it, if named. Direction: if A needs B first,
   task_id = A, depends_on = B. Never the same task on both sides.
+- "profile": the member tells you about THEMSELVES (what they study, what
+  they are good at, how many hours a week they have), usually answering your
+  welcome question: discipline (short), skills (a list of short words),
+  weekly_hours (a number, else null). It is saved at once as their own
+  profile, with no card: say in `answer` that you noted it and, in one
+  sentence, which open task of the plan could fit them. Never for what they
+  say about someone else.
 - "none": every other field null, "" or [].
-- items is [] and replaces_task_id null unless kind is "plan"; status and
-  progress are null unless kind is "update_task".
+- items is [] and replaces_task_id null unless kind is "plan"; status,
+  progress and drop are null unless kind is "update_task"; discipline and
+  weekly_hours are null and skills [] unless kind is "profile".
 - Use the members' names, never their ids. Dates as people say them.
 task_ids, milestone_ids, decision_ids: only the ids of the saved items your
 answer actually names or states facts from (not everything you looked at).

@@ -178,7 +178,7 @@ def state_embed(state: dict) -> discord.Embed:
     charter = state.get("charter")
     embed.add_field(
         name="Goal",
-        value=charter["goal"][:1000] if charter else "No charter yet: use /coordinator kickoff.",
+        value=charter["goal"][:1000] if charter else "No charter yet: create the project in the web app, then link this channel with /coordinator link.",
         inline=False,
     )
     names = state.get("names", {})  # id -> name, also for members of a linked channel

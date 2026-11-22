@@ -28,7 +28,9 @@ from .ids import who
 
 HELP = (
     "*Coordinator commands*\n"
-    "• `/coordinator kickoff <assignment text>`: propose the project charter\n"
+    "• `/coordinator link <invite code>`: work here on a project created in the web app\n"
+    "• `/coordinator me <personal code>`: be the same member here as on the web (get the code in the web app)\n"
+    "• `/coordinator kickoff <assignment text>`: propose the project charter (in a linked channel)\n"
     "• `/coordinator planning <task>; <task>; …`: suggest who takes each task\n"
     "• `/coordinator checkin`: compare the plan with reality\n"
     "• `/coordinator task <number> <todo|doing|done|blocked>`: update a task\n"
@@ -36,8 +38,6 @@ HELP = (
     "• `/coordinator ask <question>`: answer from the saved plan, dates and decisions\n"
     "• `/coordinator plan`: show the project (only you see it)\n"
     "• `/coordinator profile <discipline> | <skills, comma separated> | <weekly hours>`\n"
-    "• `/coordinator link <invite code>`: share the project with a web space\n"
-    "• `/coordinator me <personal code>`: be the same member here as on the web (get the code in the web app)\n"
     "• `/coordinator unlink` · `/coordinator catchup`\n"
     "You can also write `@coordinator` in the channel to ask it something."
 )
@@ -130,7 +130,7 @@ def state_text(state: dict) -> str:
     """The project state as one private Slack message (/coordinator plan)."""
     names = state.get("names")
     charter = state.get("charter")
-    lines = ["*Coordinator · Project plan*", f"*Goal*\n{charter['goal'] if charter else 'No charter yet: use `/coordinator kickoff`.'}"]
+    lines = ["*Coordinator · Project plan*", f"*Goal*\n{charter['goal'] if charter else 'No charter yet: create the project in the web app, then link this channel with `/coordinator link`.'}"]
     sections = {
         "Milestones": [f"{m['title']} — {m.get('due_date') or 'no date'}" for m in state.get("milestones", [])],
         "Members": [m["display_name"] + (f" · {m['discipline']}" if m.get("discipline") else "") for m in state.get("members", [])],

@@ -294,7 +294,7 @@ async def coordinator_server(tmp_path):
     await task
 
 
-async def test_kickoff_card_and_confirm_end_to_end(coordinator_server):
+async def test_kickoff_card_and_confirm_end_to_end(coordinator_server, tmp_path):
     channel = Channel()
     registry = SessionRegistry(coordinator_server)
     link = SimpleNamespace(
@@ -317,6 +317,17 @@ async def test_kickoff_card_and_confirm_end_to_end(coordinator_server):
     bridge.attach()
 
     member = SimpleNamespace(channel_id=42, user=SimpleNamespace(id=2))
+    # A project is created on the web (22/11): a channel with none says so and makes no card.
+    refused = await bridge.send_command(member, "kickoff", {"text": "Deliver by 2 Dec."})
+    assert not refused["ok"] and "A project starts in the web app" in refused["text"]
+    assert channel.cards == []
+    # Linked to a web space (its file exists once its members used it), the kickoff works here.
+    from muca_server.cognition.coordination.links import GroupLinks
+    from muca_server.cognition.memory.sqlite import db_path_for
+
+    db_path_for("web:TEAM17CODE", base_dir=str(tmp_path)).touch()
+    GroupLinks(str(tmp_path)).link("channel:42", "TEAM17CODE", member_id=2)
+    await registry.close("channel:42")  # linked behind the server's back: a new session reads the link
     answer = await bridge.send_command(member, "kickoff", {"text": "Deliver by 2 Dec."})
     assert answer["ok"], answer
     assert channel.cards == [{"footer": channel.cards[0]["footer"], "buttons": True}]

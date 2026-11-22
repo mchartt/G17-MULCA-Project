@@ -143,16 +143,12 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
         await asyncio.sleep(0.2)
         assert len(slack.posts) == before
 
-        # Kickoff -> a card with buttons; a click confirms it and the card is updated in place.
-        assert "Charter card posted" in await hub.on_command("C1", CHIARA, "kickoff Deliver by 2 Dec.")
-        await until(lambda: len(slack.cards()) == 1)
-        card = slack.cards()[0]
-        confirm = next(e["action_id"] for b in card["blocks"] if b["type"] == "actions" for e in b["elements"] if "confirm" in e["action_id"])
-        assert await hub.on_action("C1", DARIO, confirm, "ignored") == "Confirmed and saved."
-        await until(lambda: card["blocks"][-1]["elements"][0]["text"] == "Confirmed")
-        assert "Ship the coordinator." in await hub.on_command("C1", CHIARA, "plan")
-        assert await hub.on_action("C1", "U0STRANGER", confirm) == "Only members of this group can use the coordinator here."
-        assert await hub.on_action("C1", DARIO, "coord:dance:zz") == "This button is not known to the coordinator."
+        # A project is created on the web (22/11): a channel with none says so and makes no card.
+        refused = await hub.on_command("C1", CHIARA, "kickoff Deliver by 2 Dec.")
+        assert "A project starts in the web app" in refused and "/coordinator link" in refused
+        await asyncio.sleep(0.2)
+        assert slack.cards() == []
+        assert "No charter yet" in await hub.on_command("C1", CHIARA, "plan")
 
         # Link the channel to a web space: the web's (empty) project is now the shared one.
         async with httpx.AsyncClient(base_url=http) as api:
@@ -172,15 +168,21 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
         # A card made on the web appears on Slack and is confirmed there.
         await tab.send(type="command", command="kickoff", args={"text": "Deliver by 2 Dec."}, requestId="k1")
         await tab.wait_for(lambda e: e["type"] == "reply" and e["requestId"] == "k1" and e["answer"]["ok"])
-        await until(lambda: len(slack.cards()) == 2)
+        await until(lambda: len(slack.cards()) == 1)
         assert not any("· Web:" in str(p.get("text", "")) for p in slack.posts)
-        shared = next(e["action_id"] for b in slack.cards()[1]["blocks"] if b["type"] == "actions" for e in b["elements"] if "confirm" in e["action_id"])
+        card = slack.cards()[0]
+        shared = next(e["action_id"] for b in card["blocks"] if b["type"] == "actions" for e in b["elements"] if "confirm" in e["action_id"])
         assert await hub.on_action("C1", CHIARA, shared) == "Confirmed and saved."
         applied = await tab.wait_for(lambda e: e["type"] == "proposal" and e["proposal"]["status"] == "applied")
         state = await tab.wait_for(lambda e: e["type"] == "state" and e["state"].get("charter"))
         chiara = str(ids.member_id(CHIARA))
         assert state["state"]["charter"]["confirmed_by"] == chiara  # as text: too big for a browser number
         assert applied["proposal"]["names"][chiara] == "Chiara"
+        # The card is updated in place; the plan shows the charter; strangers and unknown buttons are refused.
+        await until(lambda: card["blocks"][-1]["elements"][0]["text"] == "Confirmed")
+        assert "Ship the coordinator." in await hub.on_command("C1", CHIARA, "plan")
+        assert await hub.on_action("C1", "U0STRANGER", shared) == "Only members of this group can use the coordinator here."
+        assert await hub.on_action("C1", DARIO, "coord:dance:zz") == "This button is not known to the coordinator."
 
         assert "last 7 days" in await hub.on_command("C1", CHIARA, "catchup")  # the first catch-up
         await tab.ws.close()

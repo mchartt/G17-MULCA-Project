@@ -117,6 +117,42 @@ def calls_someone_else(text: str, member_names: Iterable[str]) -> bool:
     return False
 
 
+# A question that reads as asked to the assistant ("hai suggerimenti su come
+# approcciare tutto?", "mi consigli da dove partire?", "any tips?"): second
+# person singular or a request for advice. Group test 23/11: two such lines,
+# written by members other than the one Cadence had just answered, got no
+# answer at all (Cadence had answered Gabriele, then Matteo asked).
+ASKS_ASSISTANT = re.compile(
+    r"\b(hai (?:qualche |dei |degli |un )?(?:suggeriment|consigl|idee|un'idea|idea)\w*|"
+    r"mi (?:consigli|suggerisci|aiuti|spieghi|dici|ricordi)\w*|(?:ci )?(?:consigli|suggerisci)\b|"
+    r"puoi|potresti|sai (?:dirmi|se|come|quando|chi)|secondo te|che ne pensi|cosa ne pensi|cosa mi consigli|"
+    r"can you|could you|do you (?:have|know|think)|any (?:tips|suggestions|ideas|advice)|what do you (?:think|suggest)|"
+    r"what would you)",
+    re.IGNORECASE,
+)
+# Words that turn a question to the group ("qualcuno sa ...?", "raga, ...?").
+TO_THE_GROUP = re.compile(
+    r"\b(qualcuno|qualcun|raga|ragazzi|ragazze|tutti|voi|vostr\w*|avete|sapete|potete|anyone|everyone|guys|you all|y'all)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_the_assistant(text: str, member_names: Iterable[str] = ()) -> bool:
+    """
+    True for a question that reads as asked to Cadence, not to the group or to
+    a member: a "?", a second-person or advice cue (ASKS_ASSISTANT), no word
+    for the group, no member's name anywhere in it.
+    """
+    if "?" not in text or not ASKS_ASSISTANT.search(text) or TO_THE_GROUP.search(text):
+        return False
+    lower = text.lower()
+    for name in member_names:
+        first = name.strip().split(" ")[0].lower() if name.strip() else ""
+        if first and re.search(rf"\b{re.escape(first)}\b", lower):
+            return False
+    return not calls_someone_else(text, member_names)
+
+
 class FollowUps:
     """
     Whom Cadence last answered in each group, and when: that member's next
@@ -133,6 +169,12 @@ class FollowUps:
     is offered too, because it is most likely a reply to that line (Slack,
     21/11: "why for a minute only?" under Cadence's own message got silence).
     A card opens no window: its buttons are the reply.
+
+    Another member's line in the window is offered only when it reads as a
+    question to Cadence (asks_the_assistant: "hai suggerimenti su come
+    approcciare tutto?"), never a remark to the others ("blu o verde?"). Group
+    test 23/11: such a question from Matteo, right after Cadence answered
+    Gabriele, got no answer at all.
     """
 
     ANYONE = object()  # the next message of any member, once
@@ -158,7 +200,7 @@ class FollowUps:
         if who is self.ANYONE:
             del self._answered[group]  # once: the message after this one is the group's again
         elif member != who:
-            return False
+            return asks_the_assistant(text, member_names)
         return bool(text.strip()) and not calls_someone_else(text, member_names)
 
 

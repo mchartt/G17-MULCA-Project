@@ -69,6 +69,29 @@ def test_a_line_cadence_writes_unasked_makes_the_one_next_message_a_follow_up():
     assert not follow.is_follow_up("g1", "ok", member=8)
 
 
+def test_another_members_question_to_cadence_is_offered_in_the_window():
+    """Group test 23/11: Cadence had just answered Gabriele; Matteo's and Marco's questions to it got nothing."""
+    names = ["Gabriele", "Matteo", "Marco"]
+    now = [0.0]
+    follow = FollowUps(window=180, clock=lambda: now[0])
+    follow.asked("g1", 1)
+    follow.answered("g1")
+    now[0] = 50
+    assert follow.is_follow_up("g1", "ok perfetto hai suggerimenti su come approcciare tutto?", names, member=2)
+    assert follow.is_follow_up("g1", "hai suggerimenti su come approcciare i wireframe?", names, member=3)
+    assert follow.is_follow_up("g1", "mi consigli da dove partire?", names, member=3)
+    assert follow.is_follow_up("g1", "any tips for the demo?", names, member=3)
+    # Remarks and questions to the others stay theirs (21/11: "blu o verde?").
+    assert not follow.is_follow_up("g1", "blu o verde?", names, member=2)
+    assert not follow.is_follow_up("g1", "qualcuno sa come si esporta un video da figma?", names, member=2)
+    assert not follow.is_follow_up("g1", "raga avete suggerimenti?", names, member=2)
+    assert not follow.is_follow_up("g1", "hai finito i wireframe Marco?", names, member=2)
+    assert not follow.is_follow_up("g1", "Marco, mi consigli tu?", names, member=2)
+    assert not follow.is_follow_up("g1", "hai suggerimenti.", names, member=2)  # not a question
+    now[0] = 200
+    assert not follow.is_follow_up("g1", "hai suggerimenti su come approcciare tutto?", names, member=2)
+
+
 def test_a_clear_call_is_sure_a_passing_mention_is_only_maybe():
     """Matteo, 20/11: "Cadence ieri ha risposto male" talks about Cadence; it is offered as maybe, never a sure call."""
     from mulca_discord.addressing import call

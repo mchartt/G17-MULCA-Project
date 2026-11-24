@@ -150,8 +150,11 @@ export type ProjectState = {
 export type Notice = { type: "notice"; ok: boolean; text: string; catchup?: CatchUp; reflection?: Reflection };
 export type Answer = Notice | { type: "state"; ok: boolean; state: ProjectState };
 
+/** A card sent with the history: when it was posted (seconds, like a message's ts) and how it stands now. */
+export type HistoryCard = { ts: number; proposal: Proposal };
+
 export type ServerEvent =
-  | { type: "hello"; agentName: string; group: Group; me: Person; members: Person[]; messages: ChatMessage[]; thinking?: boolean }
+  | { type: "hello"; agentName: string; group: Group; me: Person; members: Person[]; messages: ChatMessage[]; thinking?: boolean; cards?: HistoryCard[] }
   | { type: "message"; message: ChatMessage }
   | { type: "members"; members: Person[] }
   /** The space was renamed (Project settings): every open tab shows the new name. */

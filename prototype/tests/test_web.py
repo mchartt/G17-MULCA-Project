@@ -568,3 +568,72 @@ async def test_a_late_answer_that_never_comes_ends_in_a_visible_error(hub):
     await hub._give_up(request_id)
     assert [m.text for m in hub.store.history(group.id)][-1] == HUB_UNAVAILABLE
     assert hub._thinking[group.id] == 0
+
+
+# ----------------------------------------------------------------------
+# Answered cards come back with the history (demo room 24/11)
+# ----------------------------------------------------------------------
+
+
+def test_the_card_history_keeps_answered_cards_where_they_were_posted(tmp_path):
+    store = WebStore(tmp_path / "w.db")
+    group = store.create_group("Team")
+    store.save_proposal(group.id, {"proposal_id": "plan", "status": "pending"}, at=10.0)
+    store.save_proposal(group.id, {"proposal_id": "plan", "status": "applied"}, at=40.0)  # confirmed later
+    store.save_proposal(group.id, {"proposal_id": "no", "status": "rejected"}, at=20.0)
+    store.save_proposal(group.id, {"proposal_id": "late", "status": "snoozed"}, at=25.0)
+    store.save_proposal(group.id, {"proposal_id": "old", "status": "expired"}, at=5.0)
+    store.save_proposal(group.id, {"proposal_id": "gone", "status": "pending", "expires_at": 500.0}, at=6.0)
+    store.save_proposal(group.id, {"proposal_id": "open", "status": "pending"}, at=30.0)
+    cards = store.card_history(group.id, now=1000.0)
+    # Each card at the time it was posted, not when it was answered.
+    assert [(at, p["proposal_id"]) for at, p in cards] == [(10.0, "plan"), (20.0, "no"), (25.0, "late"), (30.0, "open")]
+    assert cards[0][1]["status"] == "applied"  # with its outcome
+
+
+def test_a_card_saved_before_created_at_existed_falls_back_to_its_last_update(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "w.db"
+    db = sqlite3.connect(path)
+    db.executescript(
+        "CREATE TABLE web_proposal (proposal_id TEXT PRIMARY KEY, group_id INTEGER NOT NULL, status TEXT NOT NULL, "
+        "expires_at REAL, frame TEXT NOT NULL, updated_at REAL NOT NULL);"
+        "INSERT INTO web_proposal VALUES ('p1', 1, 'applied', NULL, '{\"proposal_id\": \"p1\", \"status\": \"applied\"}', 7.0);"
+    )
+    db.commit()
+    db.close()
+    store = WebStore(path)  # adds the column
+    group = store.create_group("Team")
+    assert group.id == 1
+    assert [(at, p["proposal_id"]) for at, p in store.card_history(group.id, now=100.0)] == [(7.0, "p1")]
+
+
+async def test_a_tab_that_reconnects_gets_the_answered_cards_with_the_history(hub):
+    group, member, _ = hub.create_group("Team", "Ada")
+
+    class Scope:
+        conversation_id = group.conversation_id
+
+    class Session:
+        scope = Scope()
+
+    card = {"proposal_id": "p1", "kind": "task_owner", "status": "pending", "payload": {}}
+    await hub._on_coordinator_event(Session(), {"event": "coordinator_proposal", "proposal": card})
+    await hub._on_coordinator_event(Session(), {"event": "coordinator_proposal", "proposal": dict(card, status="applied")})
+
+    seen = []
+
+    class Sock:
+        async def send_json(self, data):
+            seen.append(data)
+
+    hub.registry._reconnect_delays = (0.0,)
+    await hub.connect(Sock(), member)
+    hello = seen[0]
+    assert hello["type"] == "hello"
+    assert [c["proposal"]["proposal_id"] for c in hello["cards"]] == ["p1"]
+    assert hello["cards"][0]["proposal"]["status"] == "applied"
+    assert isinstance(hello["cards"][0]["ts"], float)
+    # An answered card is not sent again as a live card.
+    assert [e["type"] for e in seen[1:]].count("proposal") == 0

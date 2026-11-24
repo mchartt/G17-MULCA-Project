@@ -1,6 +1,6 @@
 // Everything the console shows, rebuilt from the adapter's events by one pure
 // function (easy to test, easy to explain: event in, new state out).
-import type { ChatMessage, Group, MemberId, Names, Person, ProjectState, Proposal, ServerEvent } from "../lib/types";
+import type { ChatMessage, Group, HistoryCard, MemberId, Names, Person, ProjectState, Proposal, ServerEvent } from "../lib/types";
 
 export type TimelineItem = { kind: "message"; message: ChatMessage } | { kind: "proposal"; id: string };
 
@@ -44,11 +44,16 @@ export function reduce(space: Space, event: ServerEvent): Space {
         // A reconnect may have missed the "off": the server says where it stands
         // (a tab opened mid-answer shows it too; an older server sends nothing: off).
         thinking: event.thinking === true,
-        // History replaces the timeline; cards already seen this session stay where they were.
+        // History replaces the timeline. The server's cards go back between the
+        // messages at the time they were posted, answered ones with their outcome
+        // (before, a reload showed a chat of confirmed cards as plain text: demo
+        // room 24/11); cards seen this session that it did not send stay at the end.
         timeline: [
-          ...event.messages.map((m) => ({ kind: "message" as const, message: m })),
-          ...space.timeline.filter((t) => t.kind === "proposal"),
+          ...mergeByTime(event.messages, event.cards ?? []),
+          ...space.timeline.filter((t) => t.kind === "proposal" && !(event.cards ?? []).some((c) => c.proposal.proposal_id === t.id)),
         ],
+        proposals: { ...space.proposals, ...Object.fromEntries((event.cards ?? []).map((c) => [c.proposal.proposal_id, c.proposal])) },
+        names: Object.assign({}, space.names, ...(event.cards ?? []).map((c) => c.proposal.names ?? {})),
       };
     case "message": {
       // A streamed reply arrives several times with the same id and a longer text.
@@ -83,6 +88,18 @@ export function reduce(space: Space, event: ServerEvent): Space {
     default:
       return space;
   }
+}
+
+/** Messages and cards in one timeline, by time; on a tie the message comes first (a card answers it). */
+function mergeByTime(messages: ChatMessage[], cards: HistoryCard[]): TimelineItem[] {
+  const out: TimelineItem[] = [];
+  let c = 0;
+  for (const m of messages) {
+    while (c < cards.length && cards[c].ts < m.ts) out.push({ kind: "proposal", id: cards[c++].proposal.proposal_id });
+    out.push({ kind: "message", message: m });
+  }
+  while (c < cards.length) out.push({ kind: "proposal", id: cards[c++].proposal.proposal_id });
+  return out;
 }
 
 /** A member's name: from this space, or from a linked channel (Discord, Slack). */

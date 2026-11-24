@@ -10,6 +10,25 @@ test("hello sets group, me, members and the history", () => {
   expect(s.timeline).toHaveLength(1);
 });
 
+test("hello puts the answered cards back between the messages, at the time they were posted", () => {
+  const at = (id: number, ts: number): ChatMessage => ({ ...msg(id, `m${id}`), ts });
+  const card = (id: string, status: Proposal["status"]): Proposal => ({ proposal_id: id, kind: "task_owner", status, payload: {}, names: { "7": "Matteo" } });
+  const hello = {
+    type: "hello" as const, agentName: "Cadence", group: { id: 1, name: "T", inviteCode: "ABC" }, me: { id: 1, name: "Ada" }, members: [],
+    messages: [at(1, 10), at(2, 20), at(3, 30)],
+    cards: [{ ts: 20, proposal: card("a", "applied") }, { ts: 25, proposal: card("b", "pending") }, { ts: 99, proposal: card("c", "rejected") }],
+  };
+  const s = reduce(emptySpace, hello);
+  expect(s.timeline.map((t) => (t.kind === "message" ? t.message.id : t.id))).toEqual([1, 2, "a", "b", 3, "c"]);
+  expect(s.proposals.a.status).toBe("applied");
+  expect(s.names["7"]).toBe("Matteo");
+  // The live event that follows for a waiting card changes it in place, no second copy.
+  const again = reduce(s, { type: "proposal", proposal: card("b", "pending") });
+  expect(again.timeline.filter((t) => t.kind === "proposal" && t.id === "b")).toHaveLength(1);
+  // A reconnect sends them again: still one copy each.
+  expect(reduce(again, hello).timeline).toHaveLength(6);
+});
+
 test("a streamed reply updates the same message instead of adding one", () => {
   let s = reduce(emptySpace, { type: "message", message: msg(7, "Step", null) });
   s = reduce(s, { type: "message", message: msg(7, "Stepping in because…", null) });

@@ -41,7 +41,7 @@ from ..sessions import Scope, ScopeSession, SessionRegistry
 from .accounts import Accounts, User
 from .calendar import CalendarFeeds
 from .server_data import delete_conversation
-from .store import Group, Member, WebStore
+from .store import HISTORY_LIMIT, Group, Member, WebStore
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +257,15 @@ class WebHub:
 
     async def _hello(self, socket: Socket, member: Member) -> None:
         group = self.store.group(member.group_id)
+        history = self.store.history(group.id)
+        # An answered card older than the first message shown would sit alone
+        # at the top of a long chat: it stays out, like the messages around it.
+        start = history[0].created_at if len(history) >= HISTORY_LIMIT else 0.0
+        cards = [
+            {"ts": at, "proposal": p}
+            for at, p in self.store.card_history(group.id)
+            if at >= start or p.get("status") == "pending"
+        ]
         await socket.send_json(
             {
                 "type": "hello",
@@ -266,7 +275,10 @@ class WebHub:
                 # Cadence is answering right now (a tab opened or reconnected mid-answer).
                 "thinking": self._thinking.get(group.id, 0) > 0,
                 "members": self._members_json(group.id),
-                "messages": [self.message_json(m) for m in self.store.history(group.id)],
+                "messages": [self.message_json(m) for m in history],
+                # The cards with the time they were posted: the browser puts each
+                # one back between the messages, answered ones with their outcome.
+                "cards": cards,
             }
         )
         # The cards still waiting for a click, after the history: a reload or a

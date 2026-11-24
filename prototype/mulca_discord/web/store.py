@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS web_proposal (
     status TEXT NOT NULL,
     expires_at REAL,            -- NULL: no expiry given
     frame TEXT NOT NULL,        -- the card as the browser received it (JSON)
-    updated_at REAL NOT NULL
+    updated_at REAL NOT NULL,
+    created_at REAL             -- when the card was first posted (its place in the chat)
 );
 """
 
@@ -126,6 +127,9 @@ class WebStore:
         # Databases made before mirrored messages existed.
         if "author_name" not in {row[1] for row in self._db.execute("PRAGMA table_info(web_message)")}:
             self._db.execute("ALTER TABLE web_message ADD COLUMN author_name TEXT")
+        # Databases made before answered cards came back with the history (24/11).
+        if "created_at" not in {row[1] for row in self._db.execute("PRAGMA table_info(web_proposal)")}:
+            self._db.execute("ALTER TABLE web_proposal ADD COLUMN created_at REAL")
 
     def close(self) -> None:
         self._db.close()
@@ -251,8 +255,8 @@ class WebStore:
         expires = proposal.get("expires_at")
         with self._db:
             self._db.execute(
-                "INSERT INTO web_proposal (proposal_id, group_id, status, expires_at, frame, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(proposal_id) DO UPDATE SET "
+                "INSERT INTO web_proposal (proposal_id, group_id, status, expires_at, frame, updated_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(proposal_id) DO UPDATE SET "
                 "status = excluded.status, expires_at = excluded.expires_at, frame = excluded.frame, "
                 "updated_at = excluded.updated_at",
                 (
@@ -261,6 +265,7 @@ class WebStore:
                     str(proposal.get("status") or ""),
                     float(expires) if isinstance(expires, (int, float)) else None,
                     json.dumps(proposal),
+                    at or time.time(),
                     at or time.time(),
                 ),
             )
@@ -274,6 +279,24 @@ class WebStore:
             (group_id, now),
         ).fetchall()
         return [json.loads(r["frame"]) for r in rows]
+
+    def card_history(self, group_id: int, now: float | None = None) -> list[tuple[float, dict]]:
+        """
+        The group's cards for the chat history, each with the time it was
+        posted, oldest first: the ones someone answered (with their outcome,
+        "Confirmed by Matteo") and the ones still waiting for a click. Before,
+        only the waiting ones came back, after every message, so a chat full of
+        confirmed cards reopened as plain text (demo room, 24/11). A card saved
+        before created_at existed falls back to its last update.
+        """
+        now = now or time.time()
+        rows = self._db.execute(
+            "SELECT frame, COALESCE(created_at, updated_at) AS at FROM web_proposal "
+            "WHERE group_id = ? AND (status IN ('applied', 'rejected', 'snoozed') "
+            "OR (status = 'pending' AND (expires_at IS NULL OR expires_at > ?))) ORDER BY at",
+            (group_id, now),
+        ).fetchall()
+        return [(float(r["at"]), json.loads(r["frame"])) for r in rows]
 
     def rename_group(self, group_id: int, name: str) -> Group | None:
         """A member's own action (Project settings): the space's new name."""

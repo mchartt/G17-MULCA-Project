@@ -27,7 +27,6 @@ Kinds (MUCA-Server docs/PROTOCOL.md, "Group Coordinator"):
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import discord
@@ -43,6 +42,7 @@ from .card_content import (  # noqa: F401  (re-exported: tests and bridge.py imp
     card_fields,
     card_title,
     clip,
+    status_line,
     why_text,
 )
 from .texts import owner_text
@@ -85,11 +85,7 @@ def proposal_embed(proposal: dict) -> discord.Embed:
     )
     for name, value in card_fields(kind, payload, lambda member_id: owner_text(member_id, proposal.get("names"))):
         embed.add_field(name=name, value=clip(value), inline=False)
-    footer = STATUS_WORDS.get(status, status)
-    if status == "pending" and proposal.get("expires_at"):
-        expires = datetime.fromtimestamp(proposal["expires_at"], tz=timezone.utc)
-        footer += f" · expires {expires:%d %b %H:%M} UTC"
-    embed.set_footer(text=footer)
+    embed.set_footer(text=status_line(proposal))
     return embed
 
 

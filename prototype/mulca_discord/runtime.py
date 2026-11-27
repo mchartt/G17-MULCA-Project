@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import discord
 
 from . import courses, messages
+from .names import unique_in_channel
 from .attachments import read_attachments
 from .links import BotRecord, Link, LinkStore, link_for_channel
 from .messages import Notices
@@ -332,7 +333,8 @@ class BotRuntime:
 
         channel = self.client.get_channel(link.text_channel_id)
         names = {member.id: member.display_name for member in _humans(channel)}
-        return spoken_names(names) if link.listening_mode in courses.WAKE_MODES else names
+        # Two people with the same name are two names for the model (names.py).
+        return unique_in_channel(spoken_names(names) if link.listening_mode in courses.WAKE_MODES else names)
 
     def roster_voice(self, link: Link) -> dict[int, str]:
         """
@@ -350,7 +352,8 @@ class BotRuntime:
             else None
         )
         names = {member.id: member.display_name for member in _humans(channel)}
-        return spoken_names(names) if link.listening_mode in courses.WAKE_MODES else names
+        # Two people with the same name are two names for the model (names.py).
+        return unique_in_channel(spoken_names(names) if link.listening_mode in courses.WAKE_MODES else names)
 
     def _can_see(self, user_id: int, channel_id: int) -> bool:
         channel = self.client.get_channel(channel_id)
@@ -1101,7 +1104,8 @@ class BotRuntime:
                 speaker_name=(
                     roster[message.author.id]
                     if first_names
-                    else message.author.display_name
+                    # The roster's name: "Luca 2" when two Lucas are here (names.py).
+                    else roster.get(message.author.id, message.author.display_name)
                 ),
                 text=readable_mentions(content, self.client.user, my_roles),
                 mentions_assistant=tagged,
@@ -1373,6 +1377,9 @@ class BotManager:
 
             runtime.after_ready.append(online)
             runtime.coordinator_chat = getattr(self, "coordinator_chat", None)
+            if runtime.coordinator_chat is not None and hasattr(runtime.coordinator_chat, "warm_up"):
+                # Its linked channels listen from the start (coordinator/bridge.py warm_up).
+                runtime.after_ready.append(runtime.coordinator_chat.warm_up)
             self.bots.append(runtime)
             try:
                 async with client:

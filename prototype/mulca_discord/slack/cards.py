@@ -12,18 +12,17 @@ the card being posted and the click (it also survives a restart).
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 
 from ..coordinator.card_content import (
     ABOUT_THE_CARD,
     BUTTON_LABELS,
     KIND_TITLES,
     OPTION_KINDS,
-    STATUS_WORDS,
     actions_for,
     card_fields,
     card_title,
     clip,
+    status_line,
 )
 from .ids import who
 
@@ -31,39 +30,57 @@ ACTION_ID = re.compile(r"^coord:(?P<action>confirm|reject|take|not_now|why|helpf
 SECTION_LIMIT = 2900  # Slack refuses section texts over 3000 characters
 
 
-def to_mrkdwn(text: str) -> str:
-    """Our texts use **bold** (Discord, web); Slack writes it *bold*."""
-    return re.sub(r"\*\*(.+?)\*\*", r"*\1*", text or "")
+QUOTE = re.compile(r"^&gt;(?= )", re.MULTILINE)
+
+
+def escape(text: str) -> str:
+    """
+    Slack reads "<...>" as a link or a mention and "&" as an entity: a task
+    titled "API <-> UI" or "R&D" would break or vanish. Its docs ask to write
+    the three as &amp; &lt; &gt;. A "> " opening a line stays a quote ("Why?").
+    """
+    text = (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return QUOTE.sub(">", text)
+
+
+def to_mrkdwn(text: str, *, escaped: bool = False) -> str:
+    """
+    Our texts use **bold** (Discord, web); Slack writes it *bold*. The text is
+    escaped first, unless it already was (a card, whose mentions are real).
+    """
+    return re.sub(r"\*\*(.+?)\*\*", r"*\1*", text if escaped else escape(text))
+
+
+def _escaped(value):
+    """A card's payload with every string escaped (ids and numbers untouched)."""
+    if isinstance(value, str):
+        return escape(value)
+    if isinstance(value, list):
+        return [_escaped(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _escaped(item) for key, item in value.items()}
+    return value
 
 
 def card_text(proposal: dict) -> str:
     """The one-line version of the card (notifications, screen readers)."""
-    return f"Cadence · {card_title(proposal.get('kind'), proposal.get('payload', {}), proposal.get('status', 'pending'))}: {proposal.get('rationale') or ''}".strip()
+    return escape(f"Cadence · {card_title(proposal.get('kind'), proposal.get('payload', {}), proposal.get('status', 'pending'))}: {proposal.get('rationale') or ''}".strip())
 
 
 def card_blocks(proposal: dict) -> list[dict]:
     """The card: title, reason in italics, content, status in words, buttons while pending."""
     kind = proposal.get("kind")
     status = proposal.get("status", "pending")
-    payload = proposal.get("payload", {})
-    names = proposal.get("names")
-    blocks: list[dict] = [
-        _section(f"*Cadence · {card_title(kind, payload, proposal.get('status', 'pending'))}*\n_{proposal.get('rationale') or 'Proposal from Cadence.'}_")
-    ]
+    payload = _escaped(proposal.get("payload", {}))
+    names = _escaped(proposal.get("names"))
+    rationale = escape(proposal.get("rationale") or "Proposal from Cadence.")
+    blocks: list[dict] = [_section(f"*Cadence · {escape(card_title(kind, payload, status))}*\n_{rationale}_")]
     for name, value in card_fields(kind, payload, lambda member: who(member, names)):
-        blocks.append(_section(f"*{name}*\n{to_mrkdwn(value) or '—'}"))
-    blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": _status_line(proposal, status)}]})
+        blocks.append(_section(f"*{name}*\n{to_mrkdwn(value, escaped=True) or '—'}"))
+    blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": escape(status_line(proposal))}]})
     if status == "pending":
         blocks += _buttons(kind, payload, proposal["proposal_id"])
     return blocks
-
-
-def _status_line(proposal: dict, status: str) -> str:
-    line = STATUS_WORDS.get(status, status)
-    if status == "pending" and proposal.get("expires_at"):
-        expires = datetime.fromtimestamp(proposal["expires_at"], tz=timezone.utc)
-        line += f" · expires {expires:%d %b %H:%M} UTC"
-    return line
 
 
 def _buttons(kind: str | None, payload: dict, proposal_id: str) -> list[dict]:

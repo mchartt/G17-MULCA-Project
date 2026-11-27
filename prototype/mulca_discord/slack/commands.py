@@ -7,7 +7,8 @@ command and the rest its argument:
     /coordinator kickoff <the assignment text>
     /coordinator planning Server API; UI screens; Slides
     /coordinator checkin
-    /coordinator task 2 done
+    /coordinator task 2 done          /coordinator task add Print the survey
+    /coordinator task 3 waits on 1, 2  /coordinator task 2 due 2026-12-01
     /coordinator why did we drop the notifications?
     /coordinator ask who does the slides?
     /coordinator plan
@@ -34,6 +35,7 @@ HELP = (
     "• `/coordinator planning <task>; <task>; …`: suggest who takes each task\n"
     "• `/coordinator checkin`: compare the plan with reality\n"
     "• `/coordinator task <number> <todo|doing|done|blocked>`: update a task\n"
+    "• `/coordinator task add <title>` · `task <number> waits on <numbers>` · `task <number> due <YYYY-MM-DD>`\n"
     "• `/coordinator why <question>`: answer from the decision log\n"
     "• `/coordinator ask <question>`: answer from the saved plan, dates and decisions\n"
     "• `/coordinator plan`: show the project (only you see it)\n"
@@ -61,11 +63,43 @@ def _planning(rest: str) -> tuple[str, dict]:
     return "planning", {"text": "\n".join(tasks)}
 
 
+TASK_USAGE = (
+    "Use the task's number in `/coordinator plan`:\n"
+    "• `/coordinator task 2 done` (todo, doing, done, blocked)\n"
+    "• `/coordinator task add Print the survey results`\n"
+    "• `/coordinator task 3 waits on 1, 2` (or `waits on nothing`)\n"
+    "• `/coordinator task 2 due 2026-12-01`"
+)
+
+
+def waits_on(text: str) -> list[str]:
+    """ "1, 2" or "1 2" -> ["1", "2"]; "nothing" -> []. Raises Usage on anything else."""
+    text = text.strip().lower()
+    if text in ("nothing", "none", "-"):
+        return []
+    numbers = [part for part in text.replace(",", " ").split() if part != "and"]
+    if not numbers or not all(part.isdigit() for part in numbers):
+        raise Usage(TASK_USAGE)
+    return numbers
+
+
 def _task(rest: str) -> tuple[str, dict]:
-    parts = rest.split()
-    if len(parts) != 2 or not parts[0].isdigit() or parts[1].lower() not in STATUSES:
-        raise Usage("Write the task's number in `/coordinator plan` and its new status: `/coordinator task 2 done`.")
-    return "task", {"task": parts[0], "status": parts[1].lower()}
+    head, _, tail = rest.strip().partition(" ")
+    tail = tail.strip()
+    if head.lower() == "add":
+        if not tail:
+            raise Usage(TASK_USAGE)
+        return "task", {"add": tail}
+    if not head.isdigit() or not tail:
+        raise Usage(TASK_USAGE)
+    low = tail.lower()
+    if low in STATUSES:
+        return "task", {"task": head, "status": low}
+    if low.startswith("waits on "):
+        return "task", {"task": head, "depends_on": waits_on(tail[len("waits on "):])}
+    if low.startswith("due "):
+        return "task", {"task": head, "due": tail[len("due "):].strip()}
+    raise Usage(TASK_USAGE)
 
 
 def _why(rest: str) -> tuple[str, dict]:

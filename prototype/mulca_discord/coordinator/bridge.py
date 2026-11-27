@@ -63,8 +63,10 @@ class CoordinatorBridge:
         self._manager = manager
         # request id -> future woken by the server's answer
         self._waiting: dict[str, asyncio.Future] = {}
-        # proposal id -> the Discord message showing its card (this run only)
-        self._cards: dict[str, discord.Message] = {}
+        # (conversation id, proposal id) -> the Discord message showing the card
+        # there (this run only). Per channel: two Discord channels linked to the
+        # same web space each show their own copy of a group's card.
+        self._cards: dict[tuple[str, str], discord.Message] = {}
         # proposal id -> the last proposal seen, for "Why?" (this run only)
         self._proposals: dict[str, dict] = {}
         # Bot clients whose card buttons are registered (see _register_buttons).
@@ -317,6 +319,36 @@ class CoordinatorBridge:
         finally:
             self._waiting.pop(request_id, None)
 
+    async def warm_up(self, bot) -> int:
+        """
+        Open the session of each channel this bot serves, once it is ready.
+
+        The server sends a card to the sessions of a linked group that are
+        open *now* (LiveGroups): without this, after a restart a Discord
+        channel heard nothing until someone wrote in it, so a card made on
+        the web or on Slack never showed here. Only the roster is sent: no
+        message, no model call of ours. A paused bot opens nothing. Returns
+        how many sessions were opened; a channel that fails is logged and skipped.
+        """
+        if getattr(bot, "paused", False):
+            return 0
+        self._register_buttons(bot.client)
+        opened = 0
+        for link in bot.links():
+            channel = bot.client.get_channel(link.text_channel_id)
+            if channel is None:
+                continue
+
+            async def action(client, link=link) -> None:
+                await client.send_participants(bot.roster_text(link), modality="text")
+
+            try:
+                await bot.registry.run(scope_for(bot, link), action, reply_channel=channel, retry_once=False)
+                opened += 1
+            except Exception:
+                logger.exception("Could not open the session of %s", link.conversation_id)
+        return opened
+
     def _register_buttons(self, client) -> None:
         """
         A card's clicks arrive on the client of the bot that posted it, so
@@ -364,7 +396,8 @@ class CoordinatorBridge:
         proposal_id = proposal.get("proposal_id", "")
         self._proposals[proposal_id] = proposal
         embed, view = proposal_embed(proposal), card_view(proposal)
-        existing = self._cards.get(proposal_id)
+        key = (getattr(getattr(session, "scope", None), "conversation_id", ""), proposal_id)
+        existing = self._cards.get(key)
         try:
             if existing is not None:
                 await existing.edit(embed=embed, view=view)
@@ -372,7 +405,7 @@ class CoordinatorBridge:
             channel = session.replies.channel
             if channel is None or proposal.get("status") != "pending":
                 return  # nothing to show where no card was ever posted
-            self._cards[proposal_id] = await channel.send(
+            self._cards[key] = await channel.send(
                 embed=embed, view=view or discord.utils.MISSING
             )
         except discord.HTTPException:

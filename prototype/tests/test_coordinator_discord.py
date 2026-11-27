@@ -71,7 +71,7 @@ def test_a_pending_card_shows_reason_content_status_and_two_buttons():
     assert ids == ["coord:confirm:abc123", "coord:reject:abc123"]
 
 
-@pytest.mark.parametrize("status,words", [("applied", "Confirmed"), ("rejected", "Rejected"), ("expired", "Expired")])
+@pytest.mark.parametrize("status,words", [("applied", "✓ Confirmed"), ("rejected", "✕ Rejected"), ("expired", "◷ Expired")])
 def test_a_closed_card_says_so_in_words_and_has_no_buttons(status, words):
     closed = dict(PENDING, status=status)
     assert proposal_embed(closed).footer.text == words
@@ -127,7 +127,8 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     registry = SimpleNamespace(on_coordinator_event=None)
     added_items = []
     client = SimpleNamespace(add_dynamic_items=lambda *items: added_items.extend(items))
-    manager = SimpleNamespace(bots=[SimpleNamespace(registry=registry)], primary=SimpleNamespace(client=client))
+    bot = SimpleNamespace(registry=registry, after_ready=[])
+    manager = SimpleNamespace(bots=[bot], primary=SimpleNamespace(client=client))
     groups = []
     tree = SimpleNamespace(add_command=groups.append)
 
@@ -136,9 +137,10 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     assert isinstance(bridge, CoordinatorBridge)
     assert SessionRegistry.on_coordinator_event == bridge.on_event
     assert added_items == [CardButton] and CardButton.bridge is bridge
+    assert bot.after_ready == [bridge.warm_up]  # linked channels listen from the start
     (group,) = groups
     assert isinstance(group, CoordinatorGroup) and group.name == "coordinator"
-    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "kickoff", "link", "me", "plan", "planning", "profile", "task", "unlink", "why"]
+    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "kickoff", "link", "me", "newtask", "plan", "planning", "profile", "task", "unlink", "why"]
     CardButton.bridge = None
     SessionRegistry.on_coordinator_event = None
 
@@ -331,7 +333,7 @@ async def test_kickoff_card_and_confirm_end_to_end(coordinator_server, tmp_path)
     answer = await bridge.send_command(member, "kickoff", {"text": "Deliver by 2 Dec."})
     assert answer["ok"], answer
     assert channel.cards == [{"footer": channel.cards[0]["footer"], "buttons": True}]
-    proposal_id = next(iter(bridge._cards))
+    proposal_id = next(iter(bridge._cards))[1]
 
     followups = []
     click = SimpleNamespace(
@@ -342,7 +344,9 @@ async def test_kickoff_card_and_confirm_end_to_end(coordinator_server, tmp_path)
     )
     await bridge.click(click, "confirm", proposal_id)
     assert followups == ["deferred", "Confirmed and saved."]
-    assert channel.cards[-1] == {"footer": "Confirmed", "buttons": False}
+    # Who answered, by name, as on the web ("Confirmed by …").
+    assert channel.cards[-1]["buttons"] is False
+    assert channel.cards[-1]["footer"].startswith("✓ Confirmed by ")
 
     state = await bridge.send_command(member, "state")
     assert state["state"]["charter"]["goal"] == "Ship the coordinator."

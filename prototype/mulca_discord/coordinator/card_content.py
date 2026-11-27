@@ -10,6 +10,9 @@ in one place. Nothing here imports discord or slack.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timezone
+
+from .texts import member_name
 
 # Writes a member id as text for one channel (see card_fields).
 Who = Callable[[int], str]
@@ -63,6 +66,36 @@ STRATEGY_NAMES = {
 PROACTIVE_KINDS = ("task_owner", "delegation", "decision", "blocker", "revisit", "approach")
 # The "about this card" buttons, on a second row so the answers come first.
 ABOUT_THE_CARD = ("why", "helpful", "not_now")
+
+# A mark before the closed statuses, the same on every channel (the web app
+# writes "Confirmed by Ada" in green): the word carries the meaning, the mark
+# only makes it quicker to spot in a busy channel.
+STATUS_MARKS = {"applied": "✓", "rejected": "✕", "expired": "◷", "snoozed": "◷"}
+
+
+def status_line(proposal: dict, names: dict | None = None) -> str:
+    """
+    The card's status in words, as the web app writes it: "✓ Confirmed by Ada"
+    once a member answered, "Waiting for a member to confirm · expires …" while
+    open. Who answered is a plain name, because the click may have come from
+    another channel (a Discord member is no mention on Slack).
+    """
+    status = proposal.get("status", "pending")
+    line = STATUS_WORDS.get(status, status)
+    by = proposal.get("resolved_by")
+    if by:
+        who = member_name(int(by), names if names is not None else proposal.get("names"))
+        line = {
+            "applied": f"Confirmed by {who}",
+            "rejected": f"Turned down by {who}",
+            "snoozed": f"Not now ({who}): silenced on this topic for 30 minutes",
+        }.get(status, line)
+    if status == "pending" and proposal.get("expires_at"):
+        expires = datetime.fromtimestamp(proposal["expires_at"], tz=timezone.utc)
+        line += f" · expires {expires:%d %b %H:%M} UTC"
+    mark = STATUS_MARKS.get(status)
+    return f"{mark} {line}" if mark else line
+
 
 def card_title(kind: str | None, payload: dict, status: str = "pending") -> str:
     """

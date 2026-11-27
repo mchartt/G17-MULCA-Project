@@ -93,7 +93,7 @@ def test_decision_card_has_one_button_per_option_then_why_and_not_now_on_row_two
 
 def test_a_snoozed_card_says_so_and_has_no_buttons():
     snoozed = dict(DELEGATION, status="snoozed")
-    assert proposal_embed(snoozed).footer.text.startswith("Not now")
+    assert proposal_embed(snoozed).footer.text.startswith("◷ Not now")
     assert card_view(snoozed) is None
 
 

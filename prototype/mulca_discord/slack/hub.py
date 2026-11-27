@@ -134,13 +134,18 @@ class SlackHub:
     # Going out
     # ------------------------------------------------------------------
 
+    def _is_me(self, user: str) -> bool:
+        """Cadence's own Slack user (one per workspace when it is in several, workspaces.py)."""
+        is_me = getattr(self._api, "is_me", None)
+        return is_me(user) if is_me is not None else user == self._api.bot_user
+
     async def on_message(self, event: dict) -> None:
         """A Slack "message" event. Only plain messages written by people in a channel."""
         if event.get("subtype") or event.get("bot_id") or event.get("channel_type") == "im":
             return  # edits, joins, bots (also our own posts), direct messages
         channel, user = event.get("channel", ""), event.get("user", "")
         text = (event.get("text") or "").strip()
-        if not channel or not user or user == self._api.bot_user or not text:
+        if not channel or not user or self._is_me(user) or not text:
             return
         code = invite_in(text)
         if code is not None:
@@ -148,10 +153,10 @@ class SlackHub:
             await self._api.post(channel, await self.on_command(channel, user, f"link {code}"))
             return
         roster = await self._api.roster(channel)
-        mentions_bot = f"<@{self._api.bot_user}>" in text or MENTION in text.lower()
+        mentions_bot = any(self._is_me(m[1]) for m in USER_MENTION.finditer(text)) or MENTION in text.lower()
         # "<@U123>" means nothing to the model: write the person's name.
         readable = USER_MENTION.sub(
-            lambda m: MENTION if m[1] == self._api.bot_user else f"@{roster.get(m[1], 'someone')}", text
+            lambda m: MENTION if self._is_me(m[1]) else f"@{roster.get(m[1], 'someone')}", text
         )
 
         routed = for_cadence(readable, follow_ups=self._follow_ups, place=channel,
@@ -190,7 +195,7 @@ class SlackHub:
         channel, it says in two lines how to start (and opens the channel's
         session, so cards of a linked project reach it).
         """
-        if event.get("user") != self._api.bot_user or not event.get("channel"):
+        if not self._is_me(event.get("user", "")) or not event.get("channel"):
             return
         channel = event["channel"]
         await self._api.post(channel, WELCOME)

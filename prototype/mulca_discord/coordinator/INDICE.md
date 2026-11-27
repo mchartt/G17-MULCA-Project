@@ -36,6 +36,7 @@ member: clicks Confirm        ──> cards.py CardButton.callback
 | `commands.py` | 158 | The switch, `install_coordinator`, the `/coordinator` group, the plan embed. |
 | `bridge.py` | 223 | Sends commands and clicks to MUCA-Server and routes its answers back; answers "Why?". |
 | `cards.py` | 257 | How a proposal looks: embed + persistent buttons, for every kind. |
+| `easy_start.py` | 120 | No commands to start: the greeting when Cadence joins a server, and the one-click voice offer after a pasted link (`VoiceOffer`, same effect as `/coordinator voice`). |
 
 ## `commands.py`
 

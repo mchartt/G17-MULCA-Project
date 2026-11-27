@@ -20,6 +20,8 @@ ROSTER_SECONDS = 300  # how long a channel's member list is reused
 
 class SlackApi(Protocol):
     bot_user: str  # the bot's own Slack user id, e.g. "U0BOT"
+    # Optional: is_me(user) -> bool, when the bot has one user id per workspace
+    # (workspaces.py). Without it the hub compares with bot_user.
 
     async def post(self, channel: str, text: str, blocks: list[dict] | None = None) -> str:
         """Post in the channel; returns the message's timestamp (its id on Slack)."""
@@ -44,12 +46,15 @@ class SdkSlackApi:
     def __init__(self, client: Any) -> None:
         self._client = client  # slack_sdk.web.async_client.AsyncWebClient
         self.bot_user = ""
+        self.team_id = ""  # the workspace this token belongs to (workspaces.py)
         self._rosters: dict[str, tuple[float, dict[str, str]]] = {}
         self._names: dict[str, str | None] = {}  # user id -> name, None for a bot
 
     async def start(self) -> None:
-        """Ask Slack who the bot is (also checks the token)."""
-        self.bot_user = (await self._client.auth_test())["user_id"]
+        """Ask Slack who the bot is and in which workspace (also checks the token)."""
+        me = await self._client.auth_test()
+        self.bot_user = me["user_id"]
+        self.team_id = me.get("team_id", "") or ""
 
     async def post(self, channel: str, text: str, blocks: list[dict] | None = None) -> str:
         response = await self._client.chat_postMessage(channel=channel, text=text, blocks=blocks, unfurl_links=False)

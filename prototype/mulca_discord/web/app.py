@@ -7,6 +7,7 @@ The web adapter's HTTP and WebSocket surface (FastAPI), plus the built frontend.
                        logged-in person (name and profile from the account); without
                        it displayName is required (a guest, as before accounts).
     Accounts (register, log in, profile, my spaces): account_routes.py.
+    Add Cadence to Discord / Slack (install buttons, Slack OAuth): connect_routes.py.
     GET  /api/session  Authorization: Bearer <t>  -> {group, me}           who am I
     GET  /api/health                              -> {ok: true}            is the adapter there
     POST /api/groups/delete {confirm: group name} + Bearer -> {deleted: true}  delete everything (rule 10)
@@ -38,6 +39,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..attachments import MAX_BYTES, MAX_CHARS, extract_text
 from .account_routes import add_account_routes, bearer
+from .connect_routes import add_connect_routes
 from .hub import SpaceFull, WebHub
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,7 @@ def create_web_app(
         return {"ok": True}
 
     add_account_routes(app, hub)
+    add_connect_routes(app)  # "Add Cadence to Discord" / "Add to Slack" (connect_routes.py)
 
     # CS6: groups with a deadline close get their progress assessment even when
     # nobody has opened them since this adapter started (hub.wake_loop).

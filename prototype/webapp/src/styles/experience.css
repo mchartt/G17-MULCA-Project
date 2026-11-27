@@ -207,6 +207,11 @@
 .connect__steps li::before { content: counter(c); position: absolute; left: 0; top: 0; width: 1.7rem; height: 1.7rem; border-radius: 50%; display: grid; place-items: center; background: var(--act-s); color: var(--act); font-weight: 600; font-size: var(--t-xs); }
 .connect__command { display: flex; align-items: center; gap: .5rem; padding: .45rem .5rem .45rem .8rem; border-radius: 10px; background: var(--canvas); }
 .connect__command code { flex: 1; font-size: var(--t-xs); overflow-wrap: anywhere; user-select: all; }
+.connect__places { justify-self: start; }
+.connect__places .seg__item[aria-checked="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-soft), 0 0 0 1px var(--line-s); }
+.connect__add { justify-self: start; text-decoration: none; }
+.connect__more summary { cursor: pointer; font-weight: 600; font-size: var(--t-sm); }
+.connect__more { display: grid; gap: .5rem; }
 
 @media (max-width: 1100px) {
   .flow__grid { grid-template-columns: 1fr; }

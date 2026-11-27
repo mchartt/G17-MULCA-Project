@@ -2005,5 +2005,12 @@ def install_commands(manager: BotManager) -> app_commands.CommandTree:
             await sync_guild(guild)
         except Exception:
             logger.exception("Could not register slash commands in %s", guild)
+        # Cadence (coordinator on): say in the server how to start, once.
+        coordinator = getattr(primary, "coordinator_chat", None)
+        if coordinator is not None and hasattr(coordinator, "greet_guild"):
+            try:
+                await coordinator.greet_guild(guild)
+            except Exception:
+                logger.exception("Could not greet the server %s", guild)
 
     return tree

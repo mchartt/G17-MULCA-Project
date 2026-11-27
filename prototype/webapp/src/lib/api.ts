@@ -105,3 +105,21 @@ export async function calendarLink(token: string): Promise<string> {
   const base = ADAPTER_URL || window.location.origin;
   return `${base}${body.path}`;
 }
+
+/** What the Connect dialog can offer: the "Add to …" addresses, null when this server has none (connect_routes.py). */
+export interface ConnectOptions {
+  discord: string | null;
+  slack: string | null;
+}
+
+export async function connectOptions(): Promise<ConnectOptions> {
+  try {
+    const res = await fetch(`${ADAPTER_URL}/api/connect`, { cache: "no-store" });
+    if (!res.ok) return { discord: null, slack: null };
+    const body = await res.json();
+    const absolute = (url: unknown) => (typeof url === "string" && url ? (url.startsWith("/") ? `${ADAPTER_URL}${url}` : url) : null);
+    return { discord: absolute(body?.discord), slack: absolute(body?.slack) };
+  } catch {
+    return { discord: null, slack: null };
+  }
+}

@@ -1,18 +1,25 @@
 # Trying MULCA on Discord
 
-> **Cadence (the group coordinator) in three steps**, once the bot runs with
-> `MULCA_COORDINATOR_ENABLED=true`:
-> 1. In the group's text channel, **paste the web space's invite link** (the
->    web app shows it under *Connect Slack or Discord*). Cadence answers
->    "Linked to the web space". No `/mulca link` needed.
-> 2. **Talk as usual.** Cards (owner and date, decision, blocker…) appear in
->    the channel, on the web and on a linked Slack channel; one click confirms
->    everywhere. Write *Cadence* or @-mention the bot to ask about the project.
-> 3. **Voice call:** join the voice channel and run **`/coordinator voice`**.
->    Cadence joins, transcribes every turn (`gpt-4o-transcribe`), shows it on
->    the web as "Discord voice", and turns decisions and tasks said aloud into
->    cards. `/coordinator transcript` shows the last hour. It speaks only when
->    called by name.
+> **Cadence (the group coordinator), for a group, no setup:**
+> 1. In the web app, *Connect Slack or Discord* → **Add Cadence to Discord**,
+>    pick your server, *Authorize*. Cadence says in the server how to start.
+> 2. **Paste the web space's invite link** in the group's text channel.
+>    Cadence answers "Linked to the web space".
+> 3. **Voice:** in the same answer Cadence asks whether to listen to your
+>    calls: press the button (one voice channel) or pick the channel in the
+>    menu (several). It joins when someone is in the call, transcribes every
+>    turn (`gpt-4o-transcribe`), shows it on the web as "Discord voice", and
+>    turns decisions and tasks said aloud into cards. It speaks only when
+>    called by name. `/coordinator voice` still works, e.g. after a restart.
+>
+> **Once, for whoever runs the server:** one Discord application for
+> everyone. Set `DISCORD_BOT_TOKEN` (Bot page, *Reset Token*) and
+> `DISCORD_CLIENT_ID` (General Information, *Application ID*) in Render; turn
+> on **Message Content Intent** and **Server Members Intent**. The web app's
+> button is the bot's invite address with the permissions the coordinator
+> and the voice call need (`mulca_discord/web/connect_routes.py`).
+> NOT VERIFIED: voice on the Render server, which uses Azure
+> (MUCA-Server `docs/coordinator/AZURE_SETUP.md`).
 >
 > **Bot avatar:** Developer portal → your application → *General Information*
 > → App Icon: upload `webapp/public/brand/cadence-icon-512.png`; on the *Bot*

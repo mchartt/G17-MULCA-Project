@@ -58,7 +58,9 @@ ADAPTER=$!
 # The chat channels are optional: each starts only if its tokens are set in
 # Render (Environment). They must run here, next to MUCA-Server: linked
 # channels see each other's cards and messages through this one server.
-if [ -n "${SLACK_BOT_TOKEN:-}" ] && [ -n "${SLACK_APP_TOKEN:-}" ]; then
+# Slack: the app-level token, plus either one workspace's bot token (old setup)
+# or the app's OAuth client ("Add to Slack": any number of workspaces).
+if [ -n "${SLACK_APP_TOKEN:-}" ] && { [ -n "${SLACK_BOT_TOKEN:-}" ] || [ -n "${SLACK_CLIENT_ID:-}" ]; }; then
   python -m mulca_discord.slack &
   CHANNELS="$CHANNELS $!"
   echo "Slack channel started"

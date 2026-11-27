@@ -37,6 +37,7 @@ from ..invites import invite_in
 from ..links import Link
 from ..sessions import Scope, SessionRegistry
 from .cards import CardButton, card_view, proposal_embed, why_text
+from .easy_start import GUILD_WELCOME, VOICE_OFFER, VoiceOffer, greeting_channel, voice_channels
 from .texts import mirror_text
 
 if TYPE_CHECKING:
@@ -245,12 +246,13 @@ class CoordinatorBridge:
             channel = found[0]
             await self._say(channel, UNAVAILABLE, f"discord:{getattr(channel, 'id', '')}")
 
-    async def _say(self, channel: Any, text: str, place: str) -> None:
+    async def _say(self, channel: Any, text: str, place: str, view: discord.ui.View | None = None) -> None:
         if not text:
             return
         try:
             # No mentions: Cadence's words never ping anyone.
-            await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+            extra = {"view": view} if view is not None else {}
+            await channel.send(text, allowed_mentions=discord.AllowedMentions.none(), **extra)
             self._follow_ups.answered(place)
         except discord.HTTPException:
             logger.exception("Could not post Cadence's answer in %s", place)
@@ -302,10 +304,21 @@ class CoordinatorBridge:
         acting = SimpleNamespace(channel=channel, channel_id=channel.id, guild_id=guild.id, user=message.author)
         answer = await self.send_command(acting, "link", {"code": code})
         text = answer_text(answer)
+        voices = voice_channels(guild) if answer and answer.get("ok") else []
+        if voices:
+            # One click turns on voice, no command to learn (easy_start.py).
+            await self._say(channel, text + "\n" + VOICE_OFFER, f"discord:{channel.id}", view=VoiceOffer(self, voices))
+            return True
         if answer and answer.get("ok"):
             text += "\n" + LINKED_NEXT
         await self._say(channel, text, f"discord:{channel.id}")
         return True
+
+    async def greet_guild(self, guild: Any) -> None:
+        """Cadence was just added to a server: say in one message how to start (easy_start.py)."""
+        channel = greeting_channel(guild)
+        if channel is not None:
+            await self._say(channel, GUILD_WELCOME, f"discord:{channel.id}")
 
     async def serve_voice(self, interaction: discord.Interaction, voice: Any) -> str:
         """

@@ -52,7 +52,7 @@ async def test_slack_welcome_then_a_pasted_link_links_the_channel(web, coordinat
         link = f"here it is <https://cadence-coordinator.onrender.com/join/{made['inviteCode']}>"
         await hub.on_message({"type": "message", "channel": "C1", "user": CHIARA, "text": link})
         said = slack.posts[-1]["text"]
-        assert "Linked to the web space" in said and "/coordinator plan" in said
+        assert "Linked to the web space" in said
         # The link is a command, not a chat line: the web chat did not get it.
         assert not [e for e in tab.seen if e["type"] == "message" and e["message"].get("channel") == "slack"]
         assert "No charter yet" in await hub.on_command("C1", CHIARA, "plan")
@@ -79,3 +79,12 @@ async def test_discord_a_pasted_link_links_the_channel(web, coordinator_server):
         await tab.ws.close()
         await bot.registry.close_all()
         SessionRegistry.on_coordinator_event = None
+
+
+def test_a_message_from_slack_by_a_web_member_keeps_their_id():
+    from mulca_discord.web.store import Message
+
+    bruno = Message(1, 7, 100_000_002, "slack", "oh nice", 0.0, "Bruno")
+    assert bruno.to_json({})["author"] == {"id": 100_000_002, "name": "Bruno"}
+    chiara = Message(2, 7, None, "discord", "hi", 0.0, "Chiara")
+    assert chiara.to_json({})["author"] == {"id": 0, "name": "Chiara"}

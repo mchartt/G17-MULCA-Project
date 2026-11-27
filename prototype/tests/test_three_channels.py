@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import httpx
 
+from mulca_discord.coordinator.texts import day
 from mulca_discord.coordinator.cards import card_view, proposal_embed
 from mulca_discord.slack import SlackHub
 from mulca_discord.slack.cards import card_blocks
@@ -37,7 +38,7 @@ VIDEO_CARD = {
     "rationale": "Printing the survey results came up, but nobody took it.",
     "payload": {
         "title": "Print the survey results",
-        "due_date": "28 Nov",
+        "due_date": "2026-11-28",
         "owner_id": 100000123,  # a web member: written by name on every channel
         "context": {"strategy_id": "cs5_owner_and_date", "topic": "printing", "evidence": []},
     },
@@ -51,7 +52,7 @@ def test_the_video_card_reads_the_same_on_discord_and_slack():
     assert embed.description == "*Printing the survey results came up, but nobody took it.*"
     assert [(f.name, f.value) for f in embed.fields] == [
         ("Task", "Print the survey results"),
-        ("By", "28 Nov"),
+        ("By", day("2026-11-28")),
         ("Suggested owner", "Ada"),
     ]
     blocks = card_blocks(VIDEO_CARD)
@@ -59,7 +60,7 @@ def test_the_video_card_reads_the_same_on_discord_and_slack():
     assert texts == [
         "*Cadence · Owner and date · Ownership*\n_Printing the survey results came up, but nobody took it._",
         "*Task*\nPrint the survey results",
-        "*By*\n28 Nov",
+        f"*By*\n{day('2026-11-28')}",
         "*Suggested owner*\nAda",
     ]
 
@@ -106,6 +107,9 @@ async def test_a_card_confirmed_on_discord_is_confirmed_on_slack_and_the_web(web
         for tag, said in (("discord", "we also need the results printed for the charts"), ("slack", "anything left for me before Monday?")):
             seen = await tab.wait_for(lambda e, tag=tag: e["type"] == "message" and e["message"].get("channel") == tag)
             assert seen["message"]["text"] == said
+        # Everyone in sync: Discord's line on Slack, Slack's line on Discord, each with its channel.
+        await until(lambda: any("· Discord: we also need the results printed" in (p["text"] or "") for p in slack.posts))
+        await until(lambda: any("· Slack: anything left for me before Monday?" in (line or "") for line in discord_channel.lines))
 
         # Confirmed on Discord: the first valid click wins, everywhere.
         clicker = member(ADA)
@@ -180,3 +184,11 @@ async def test_tasks_and_dependencies_made_on_discord_and_slack_are_on_the_web(w
         await bot.registry.close_all()
         await hub.close()
         SessionRegistry.on_coordinator_event = None
+
+
+def test_dates_read_as_people_write_them():
+    from datetime import datetime
+
+    assert day("2026-11-28", today=datetime(2026, 11, 27)) == "28 Nov"
+    assert day("2027-01-05", today=datetime(2026, 11, 27)) == "5 Jan 2027"
+    assert day("next week") == "next week" and day(None) == ""

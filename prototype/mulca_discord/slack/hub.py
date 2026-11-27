@@ -57,10 +57,6 @@ WELCOME = (
     "2. Talk as usual: when something has no owner, no date or no decision, I post a card to confirm with one click.\n"
     "Ask me anything about the project by writing *Cadence* or @-mentioning me. `/coordinator help` lists the rest."
 )
-LINKED_NEXT = (
-    "Next: talk here as usual and I suggest owners, dates and decisions as cards. "
-    "`/coordinator plan` shows the project, `/coordinator help` lists the rest."
-)
 # Slack has no "typing" for bots: this line stands for it, then becomes the answer.
 THINKING = "_Cadence is thinking…_"
 # A late answer that has not come after this long: the thinking line says so.
@@ -149,10 +145,7 @@ class SlackHub:
         code = invite_in(text)
         if code is not None:
             # A web space's invite link pasted here links the channel (one step, invites.py).
-            answer = await self.on_command(channel, user, f"link {code}")
-            if "Linked" in answer:
-                answer += "\n" + LINKED_NEXT
-            await self._api.post(channel, answer)
+            await self._api.post(channel, await self.on_command(channel, user, f"link {code}"))
             return
         roster = await self._api.roster(channel)
         mentions_bot = f"<@{self._api.bot_user}>" in text or MENTION in text.lower()

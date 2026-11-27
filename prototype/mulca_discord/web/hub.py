@@ -615,9 +615,12 @@ class WebHub:
         text = str(data.get("text", ""))[:MAX_MESSAGE_CHARS]
         if not text:
             return
+        speaker = data.get("speaker")
+        # The same person as a web member here (/coordinator me): theirs, not "a Discord member".
+        member_id = speaker if isinstance(speaker, int) and speaker in self.roster(group_id) else None
         stored = self.store.add_message(
             group_id,
-            None,
+            member_id,
             text,
             channel=str(data.get("channel", "discord"))[:20],
             author_name=_clean(str(data.get("speakerName", "")), 40) or "A member",

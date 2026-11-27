@@ -44,10 +44,7 @@ if TYPE_CHECKING:
     from ..sessions import ScopeSession
 
 # Said in the channel right after a pasted invite link linked it: what to do next, in one line.
-LINKED_NEXT = (
-    "Next: talk here as usual and I suggest owners, dates and decisions as cards. "
-    "In a voice call, `/coordinator voice` lets me listen and keep the transcript. `/coordinator help` lists the rest."
-)
+LINKED_NEXT = "In a voice call, `/coordinator voice` lets me listen and keep the transcript. `/coordinator help` lists the rest."
 
 logger = logging.getLogger(__name__)
 

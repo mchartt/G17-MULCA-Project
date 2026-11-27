@@ -20,6 +20,7 @@ from muca_server.cognition.coordination.settings import CoordinatorSettings
 from muca_server.cognition.coordination.wiring import build_coordinator_factory
 from muca_server.sessions import DefaultSessionComponentsFactory
 
+from mulca_discord.coordinator.texts import day
 from mulca_discord.coordinator.bridge import NO_ANSWER, NOT_LINKED, CoordinatorBridge, answer_text
 from mulca_discord.coordinator.cards import CardButton, card_view, proposal_embed
 from mulca_discord.coordinator.commands import (
@@ -65,7 +66,7 @@ def test_a_pending_card_shows_reason_content_status_and_two_buttons():
     fields = {f.name: f.value for f in embed.fields}
     assert fields["Goal"] == "Ship the coordinator."
     assert fields["Deliverables"] == "• Report\n• Prototype"
-    assert fields["Milestones"] == "• Demo — 2026-12-02\n• Pitch — no date"
+    assert fields["Milestones"] == f"• Demo — {day('2026-12-02')}\n• Pitch — no date"
     assert embed.footer.text.startswith("Waiting for a member to confirm · expires")
     ids = [item.item.custom_id for item in card_view(PENDING).children]
     assert ids == ["coord:confirm:abc123", "coord:reject:abc123"]

@@ -162,7 +162,7 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
         assert "Linked to the web space" in await hub.on_command("C1", CHIARA, f"link {ada['inviteCode']}")
         assert "No charter yet" in await hub.on_command("C1", CHIARA, "plan")
 
-        # Slack -> web; not web -> Slack: chat is copied one way only, into the web space (21/11).
+        # Slack -> web and web -> Slack (27/11, everyone in sync).
         await hub.on_message({"type": "message", "channel": "C1", "user": DARIO, "text": "Lab on Tuesday?"})
         seen = await tab.wait_for(lambda e: e["type"] == "message" and e["message"]["channel"] == "slack")
         assert seen["message"]["author"]["name"] == "Dario" and seen["message"]["text"] == "Lab on Tuesday?"
@@ -172,7 +172,7 @@ async def test_slack_alone_then_linked_to_a_web_space(web, coordinator_server): 
         await tab.send(type="command", command="kickoff", args={"text": "Deliver by 2 Dec."}, requestId="k1")
         await tab.wait_for(lambda e: e["type"] == "reply" and e["requestId"] == "k1" and e["answer"]["ok"])
         await until(lambda: len(slack.cards()) == 1)
-        assert not any("· Web:" in str(p.get("text", "")) for p in slack.posts)
+        assert any(p.get("text") == "*Ada* · Web: Tuesday works" for p in slack.posts)
         card = slack.cards()[0]
         shared = next(e["action_id"] for b in card["blocks"] if b["type"] == "actions" for e in b["elements"] if "confirm" in e["action_id"])
         assert await hub.on_action("C1", CHIARA, shared) == "Confirmed and saved."

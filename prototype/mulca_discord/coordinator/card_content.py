@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from .texts import member_name
+from .texts import day, member_name
 
 # Writes a member id as text for one channel (see card_fields).
 Who = Callable[[int], str]
@@ -126,11 +126,11 @@ def card_fields(kind: str | None, payload: dict, who: Who) -> list[tuple[str, st
             ("Deliverables", _bullets(payload.get("deliverables", []))),
             (
                 "Milestones",
-                _bullets(f"{m.get('title')} — {m.get('due_date') or 'no date'}" for m in payload.get("milestones", [])),
+                _bullets(f"{m.get('title')} — {day(m.get('due_date')) or 'no date'}" for m in payload.get("milestones", [])),
             ),
         ]
     if kind in ("task_owner", "delegation"):
-        fields = [("Task", payload.get("title", "")), ("By", payload.get("due_date") or "no date yet")]
+        fields = [("Task", payload.get("title", "")), ("By", day(payload.get("due_date")) or "no date yet")]
         if kind == "task_owner":
             owner = payload.get("owner_id")
             fields.append(("Suggested owner", who(owner) if owner else "nobody suggested: anyone can take it"))
@@ -156,7 +156,7 @@ def card_fields(kind: str | None, payload: dict, who: Who) -> list[tuple[str, st
                 "\n".join(
                     f"• **{i.get('title')}** — "
                     + (who(i["owner_id"]) if i.get("owner_id") else "anyone")
-                    + (f" · {i['due_date']}" if i.get("due_date") else "")
+                    + (f" · {day(i['due_date'])}" if i.get("due_date") else "")
                     + (f"\n  _{i['reason']}_" if i.get("reason") else "")
                     for i in payload.get("items", [])
                 ) or "—",

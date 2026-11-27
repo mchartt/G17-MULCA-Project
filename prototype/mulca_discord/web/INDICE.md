@@ -78,14 +78,6 @@ browser ── {command} / {click} ─────────> WebHub.command /
   and closes every socket of the group with code 4410. If the server part
   fails, nothing is deleted.
 
-## Add Cadence to Discord / Slack (27/11)
-
-- `connect_routes.py`: `GET /api/connect` tells the Connect dialog which
-  "Add Cadence to …" buttons this server has (`DISCORD_CLIENT_ID`;
-  `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET`). Slack's OAuth comes back to
-  `/api/slack/oauth` (signed, 10-minute state); the workspace's bot token is
-  saved in `slack/installs.py`, never sent to the browser.
-
 ## Accounts, linked channels, catch-up (16/11)
 
 - Accounts (`accounts.py`, `account_routes.py`): register, login, logout,

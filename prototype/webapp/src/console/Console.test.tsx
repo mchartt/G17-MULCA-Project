@@ -186,36 +186,11 @@ test("the brief written while creating the space goes to Cadence once, as the us
   expect(sessionStorage.getItem("cadence.brief:t-brief")).toBeNull();
 });
 
-test("Connect Slack or Discord: one button to add Cadence, then the link to paste; voice is Discord only", async () => {
-  vi.stubGlobal("fetch", async (url: string) =>
-    url.endsWith("/api/connect")
-      ? new Response(JSON.stringify({ discord: "https://discord.com/oauth2/authorize?client_id=1", slack: "/api/slack/install" }), { status: 200 })
-      : new Response("{}", { status: 200 }),
-  );
+test("Connect Slack or Discord explains the bot and the link command", async () => {
   render(<Console token="t" onLeave={() => undefined} />);
   await userEvent.click(screen.getByRole("button", { name: "Connect Slack or Discord" }));
-  const popup = within(screen.getByRole("dialog", { name: "Connect Slack or Discord" }));
-  expect(popup.getByRole("radio", { name: "Discord" })).toHaveAttribute("aria-checked", "true");
-  expect(await popup.findByRole("link", { name: /Add Cadence to Discord/ })).toHaveAttribute("href", "https://discord.com/oauth2/authorize?client_id=1");
-  expect(popup.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
-  expect(popup.getByText(/one click on the voice channel you use/)).toBeInTheDocument();
-
-  await userEvent.click(popup.getByRole("radio", { name: "Slack" }));
-  expect(popup.getByRole("link", { name: /Add Cadence to Slack/ })).toHaveAttribute("href", "/api/slack/install");
-  expect(popup.getByText(/\/invite @Cadence/)).toBeInTheDocument();
-  expect(popup.getByText(/cannot join Slack huddles/)).toBeInTheDocument();
-  vi.unstubAllGlobals();
-});
-
-test("Connect says so when this server has no Discord or Slack app, and the link still works", async () => {
-  vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ discord: null, slack: null }), { status: 200 }));
-  render(<Console token="t" onLeave={() => undefined} />);
-  await userEvent.click(screen.getByRole("button", { name: "Connect Slack or Discord" }));
-  const popup = within(screen.getByRole("dialog", { name: "Connect Slack or Discord" }));
-  expect(await popup.findByText(/Discord is not turned on for this Cadence server yet/)).toBeInTheDocument();
-  expect(popup.queryByRole("link", { name: /Add Cadence/ })).toBeNull();
-  expect(popup.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
-  vi.unstubAllGlobals();
+  const popup = screen.getByRole("dialog", { name: "Connect Slack or Discord" });
+  expect(within(popup).getByText(/Without the bot installed, the command does nothing/)).toBeInTheDocument();
 });
 
 test("Project settings list the documents Cadence reads", async () => {

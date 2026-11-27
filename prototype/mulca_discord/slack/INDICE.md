@@ -21,8 +21,6 @@ Slack (Socket Mode) ── __main__.py ──> hub.py SlackHub ──> SessionRe
 | `cards.py` | 91 | A proposal as Block Kit blocks and buttons; content from `coordinator/card_content.py`. |
 | `commands.py` | 131 | The text after `/coordinator` -> a command (one small parser each), and the plan as text. |
 | `ids.py` | 40 | Slack user ids <-> the integer ids MUCA-Server uses. |
-| `installs.py` | 85 | The workspaces added with "Add to Slack": one bot token each, in SQLite (written by `web/connect_routes.py`). |
-| `workspaces.py` | 140 | One app in many workspaces: a `SlackApi` that picks each channel's workspace token. |
 
 Design patterns used, and why:
 - **Adapter** (`api.py`, `SlackChannel`): the hub and `dispatch.py` see the same small

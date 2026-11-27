@@ -51,20 +51,3 @@ services:
       # The Vercel site that may call the API (production address).
       - key: MULCA_WEB_ALLOWED_ORIGINS
         value: https://cadence-group-coordinator.vercel.app
-      # "Add Cadence to Discord / Slack" buttons (prototype/SLACK_SETUP.md,
-      # TRYING_ON_DISCORD.md). Each one is optional: without it the web app
-      # says that channel is not turned on. Secrets are set in Render only.
-      - key: CADENCE_PUBLIC_URL
-        value: https://cadence-coordinator.onrender.com
-      - key: CADENCE_APP_URL
-        value: https://cadence-group-coordinator.vercel.app
-      - key: DISCORD_CLIENT_ID
-        sync: false
-      - key: DISCORD_BOT_TOKEN
-        sync: false
-      - key: SLACK_CLIENT_ID
-        sync: false
-      - key: SLACK_CLIENT_SECRET
-        sync: false
-      - key: SLACK_APP_TOKEN
-        sync: false

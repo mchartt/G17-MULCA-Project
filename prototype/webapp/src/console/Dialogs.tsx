@@ -3,7 +3,6 @@ import { DOCUMENT_TYPES } from "../lib/documents";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFileLines, faPlug, faPlus, faTrashCan, faUserPen } from "../lib/icons";
 import type { MemberId, ProjectDocument } from "../lib/types";
-import { connectOptions, type ConnectOptions } from "../lib/api";
 import { initials } from "./Chat";
 import { profileFacts, type MemberProfile } from "./space";
 import { TagInput, withPending } from "./TagInput";
@@ -200,21 +199,13 @@ export function DeleteDialog({ open, spaceName, onClose, onDelete }: { open: boo
 }
 
 /**
- * How to bring Cadence into the group's Discord server or Slack workspace, for
- * someone who never set up a bot (DECISIONS.md, 27/11): pick where the group
- * talks, press "Add Cadence to …", paste the space's link in the channel.
- * Voice is one click in Discord after that. Honest when this server has no
- * Discord or Slack app set up (connect_routes.py answers null).
+ * How to bring Cadence into the group's Discord server or Slack workspace.
+ * Honest about the condition: it works only where the Cadence bot is installed.
  */
-type Place = "discord" | "slack";
-const PLACE_NAMES: Record<Place, string> = { discord: "Discord", slack: "Slack" };
-
 export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: boolean; code: string; onClose: () => void; onPersonalCode?: () => Promise<string> }) {
   const command = `/coordinator link ${code}`;
   // The easiest way: the space's invite link, pasted in the channel, links it (mulca_discord/invites.py).
   const inviteLink = `${location.origin}/join/${code}`;
-  const [place, setPlace] = useState<Place>("discord");
-  const [options, setOptions] = useState<ConnectOptions | null>(null);
   const [copied, setCopied] = useState(false);
   // "Be yourself there": the server's answer to the "me" command, shown as it is
   // when it holds no code (a refusal), else as the command to write in the channel.
@@ -222,15 +213,7 @@ export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: b
   const [asking, setAsking] = useState(false);
   const meCommand = mine?.match(/\/coordinator me [A-Z0-9]+/)?.[0] ?? null;
   useEffect(() => {
-    if (!open) {
-      setMine(null); // a code is shown once: the next visit asks for a new one
-      return;
-    }
-    let live = true;
-    void connectOptions().then((found) => live && setOptions(found));
-    return () => {
-      live = false;
-    };
+    if (!open) setMine(null); // a code is shown once: the next visit asks for a new one
   }, [open]);
   const personal = async () => {
     if (!onPersonalCode) return;
@@ -244,69 +227,46 @@ export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: b
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      /* the link stays on screen to copy by hand */
+      /* the command stays on screen to copy by hand */
     }
   };
-  const name = PLACE_NAMES[place];
-  const install = options?.[place] ?? null;
   return (
     <Dialog open={open} title="Connect Slack or Discord" onClose={onClose}>
       <div className="connect">
-        <p className="muted">Keep talking where your group already talks. The plan, the decisions and the cards are the same here and there.</p>
-        <div className="seg connect__places" role="radiogroup" aria-label="Where does your group talk?">
-          {(Object.keys(PLACE_NAMES) as Place[]).map((key) => (
-            <button key={key} type="button" role="radio" aria-checked={place === key} className="seg__item" onClick={() => setPlace(key)}>
-              {PLACE_NAMES[key]}
-            </button>
-          ))}
-        </div>
+        <p className="muted">Keep talking where your group already talks. Cadence reads the linked channel too, and the plan, the decisions and the cards are the same everywhere.</p>
         <ol className="connect__steps">
           <li>
-            <strong>Add Cadence to {name}</strong>
-            {install ? (
-              <>
-                <span className="muted small">
-                  {place === "discord"
-                    ? "Pick your group's server and press Authorize. You need to be allowed to manage that server."
-                    : <>Pick your group's workspace and press Allow. Then, in the channel where your group talks, write <code>/invite @Cadence</code>.</>}
-                </span>
-                <a className="btn btn--primary btn--small connect__add" href={install} target="_blank" rel="noopener noreferrer">
-                  <FontAwesomeIcon icon={faPlug} /> Add Cadence to {name}
-                </a>
-              </>
-            ) : (
-              <span className="muted small">
-                {options === null ? "Checking…" : `${name} is not turned on for this Cadence server yet. If Cadence is already in your ${place === "discord" ? "server" : "workspace"}, go to step 2.`}
-              </span>
-            )}
+            <strong>Install the Cadence bot</strong>
+            <span className="muted small">Whoever manages your Discord server or Slack workspace adds the bot once. Ask your team who has the invite link of the bot.</span>
           </li>
           <li>
-            <strong>Paste this link in your group's channel</strong>
+            <strong>Link the channel to this space</strong>
+            <span className="muted small">Paste this link in the channel where the group talks. Cadence answers there when it is linked.</span>
             <span className="connect__command"><code>{inviteLink}</code><button type="button" className="btn btn--soft btn--small" onClick={() => void copy()}>{copied ? "Copied" : "Copy link"}</button></span>
-            <span className="muted small">Cadence answers there when the channel is linked. That's it: talk as usual.</span>
+            <span className="muted small">Or write <code>{command}</code></span>
           </li>
           <li>
-            <strong>Voice calls</strong>
-            <span className="muted small">
-              {place === "discord"
-                ? "Right after the link, Cadence asks in the channel whether to listen to your calls: one click on the voice channel you use. It keeps the transcript and speaks only when called by name."
-                : "Cadence cannot join Slack huddles. For voice calls, use Discord."}
-            </span>
+            <strong>Be yourself there</strong>
+            <span className="muted small">So your tasks and profile follow you: get your personal code and write it once in that channel. It works once and for 15 minutes. Never share it: whoever uses it acts as you.</span>
+            {meCommand ? (
+              <span className="connect__command"><code>{meCommand}</code></span>
+            ) : (
+              onPersonalCode && <button type="button" className="btn btn--soft btn--small" disabled={asking} onClick={() => void personal()}>{asking ? "Asking…" : "Get my personal code"}</button>
+            )}
+            {mine && !meCommand && <span className="form__error" role="alert">{mine}</span>}
+          </li>
+          <li>
+            <strong>Talk as usual</strong>
+            <span className="muted small">Messages from the channel show here with a Discord or Slack tag, and Cadence's cards show there too.</span>
+          </li>
+          <li>
+            <strong>In a Discord voice call</strong>
+            <span className="muted small">Join the voice channel and write <code>/coordinator voice</code>. Cadence listens, keeps the transcript (here, tagged “Discord voice”) and turns what you decide into cards. It speaks only when called by name.</span>
           </li>
         </ol>
-        <details className="connect__more">
-          <summary>Optional: be yourself there</summary>
-          <p className="muted small">So your tasks and profile follow you: get your personal code and write it once in that channel. It works once and for 15 minutes. Never share it: whoever uses it acts as you.</p>
-          {meCommand ? (
-            <span className="connect__command"><code>{meCommand}</code></span>
-          ) : (
-            onPersonalCode && <button type="button" className="btn btn--soft btn--small" disabled={asking} onClick={() => void personal()}>{asking ? "Asking…" : "Get my personal code"}</button>
-          )}
-          {mine && !meCommand && <span className="form__error" role="alert">{mine}</span>}
-          <p className="muted small">Instead of the link you can also write <code>{command}</code>.</p>
-        </details>
+        <p className="muted small">Without the bot installed, the command does nothing. Nothing is shared until a channel is linked.</p>
         <div className="form__actions">
-          <button type="button" className="btn btn--soft" onClick={onClose}>Done</button>
+          <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>
         </div>
       </div>
     </Dialog>

@@ -99,7 +99,9 @@ class Message:
 
     def to_json(self, names: dict[int, str]) -> dict:
         if self.author_name is not None:
-            author = {"id": 0, "name": self.author_name}
+            # From Discord or Slack: a web member of this space (after /coordinator me)
+            # keeps their id, so the chat shows them with their own avatar.
+            author = {"id": self.member_id or 0, "name": self.author_name}
         elif self.member_id is None:
             author = None  # the coordinator
         else:

@@ -29,6 +29,7 @@ import uuid
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import FollowUps, for_cadence
+from ..invites import invite_in
 from ..coordinator.card_content import why_text
 from ..coordinator.cards import split_action
 from ..coordinator.texts import catchup_text, mirror_text
@@ -50,6 +51,12 @@ USER_MENTION = re.compile(r"<@([A-Z0-9]+)>")
 CHANNEL_ONLY = "The coordinator works in a channel, not in a direct message. Invite it to your group's channel."
 UNAVAILABLE = "The coordinator is not available right now. Try again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in this channel: no need to try again."
+WELCOME = (
+    "*Hi, I'm Cadence, your group's project coordinator.*\n"
+    "1. Paste your web space's invite link here (or `/coordinator link <code>`): plan, tasks and cards become shared.\n"
+    "2. Talk as usual: when something has no owner, no date or no decision, I post a card to confirm with one click.\n"
+    "Ask me anything about the project by writing *Cadence* or @-mentioning me. `/coordinator help` lists the rest."
+)
 # Slack has no "typing" for bots: this line stands for it, then becomes the answer.
 THINKING = "_Cadence is thinking…_"
 # A late answer that has not come after this long: the thinking line says so.
@@ -103,8 +110,10 @@ class SlackHub:
         self._course = course
         self._channels: dict[str, SlackChannel] = {}
         self._waiting: dict[str, asyncio.Future] = {}
-        # proposal id -> timestamp of the Slack message showing its card
-        self._cards: dict[str, str] = {}
+        # (channel, proposal id) -> timestamp of the Slack message showing the
+        # card there. Per channel: two Slack channels linked to the same web
+        # space each show their own copy of a group's card.
+        self._cards: dict[tuple[str, str], str] = {}
         # proposal id -> the last proposal seen, for "Why?" (this run only)
         self._proposals: dict[str, dict] = {}
         # Messages for Cadence (addressing.for_cadence, as on the web app):
@@ -132,6 +141,11 @@ class SlackHub:
         channel, user = event.get("channel", ""), event.get("user", "")
         text = (event.get("text") or "").strip()
         if not channel or not user or user == self._api.bot_user or not text:
+            return
+        code = invite_in(text)
+        if code is not None:
+            # A web space's invite link pasted here links the channel (one step, invites.py).
+            await self._api.post(channel, await self.on_command(channel, user, f"link {code}"))
             return
         roster = await self._api.roster(channel)
         mentions_bot = f"<@{self._api.bot_user}>" in text or MENTION in text.lower()
@@ -169,6 +183,26 @@ class SlackHub:
             await self._run(channel, action)
         except (ConnectionError, OSError, MucaConnectionLost):
             logger.exception("MUCA-Server unreachable; Slack message not delivered")
+
+    async def on_joined(self, event: dict) -> None:
+        """
+        Slack "member_joined_channel": when Cadence itself is added to a
+        channel, it says in two lines how to start (and opens the channel's
+        session, so cards of a linked project reach it).
+        """
+        if event.get("user") != self._api.bot_user or not event.get("channel"):
+            return
+        channel = event["channel"]
+        await self._api.post(channel, WELCOME)
+        try:
+            roster = await self._api.roster(channel)
+
+            async def action(client) -> None:
+                await client.send_participants(_participants(roster), modality="text")
+
+            await self._run(channel, action)
+        except Exception:
+            logger.exception("Could not open the session of Slack channel %s", channel)
 
     async def _answer_in_channel(self, channel: str, user: str, question: str, maybe: bool, said: str = "") -> None:
         """
@@ -251,7 +285,7 @@ class SlackHub:
         proposal_id = match["proposal_id"]
         if message_ts:
             # Also after a restart: now we know which message shows this card.
-            self._cards.setdefault(proposal_id, message_ts)
+            self._cards.setdefault((channel, proposal_id), message_ts)
         if match["action"] == "why":
             return await self._why(channel, user, proposal_id)
         action, option = split_action(match["action"])
@@ -347,11 +381,41 @@ class SlackHub:
         """Update the card if we know its message; otherwise post it while it is pending."""
         proposal_id = proposal.get("proposal_id", "")
         self._proposals[proposal_id] = proposal
-        ts = self._cards.get(proposal_id)
+        ts = self._cards.get((channel, proposal_id))
         if ts is not None:
             await self._api.update(channel, ts, card_text(proposal), card_blocks(proposal))
         elif proposal.get("status") == "pending":
-            self._cards[proposal_id] = await self._api.post(channel, card_text(proposal), card_blocks(proposal))
+            self._cards[(channel, proposal_id)] = await self._api.post(channel, card_text(proposal), card_blocks(proposal))
+
+    async def warm_up(self) -> list[str]:
+        """
+        Open the session of every channel the bot is in, at start.
+
+        The server sends a card to the sessions of a linked group that are
+        open *now* (LiveGroups). Without this, after a restart a Slack channel
+        heard nothing until someone wrote in it: a card fired on Discord or on
+        the web was confirmed there and never showed on Slack. Opening the
+        session sends only the roster: no message, no model call of ours.
+        Returns the channels opened; one that fails is logged and skipped.
+        """
+        try:
+            channels = await self._api.channels()
+        except Exception:
+            logger.exception("Could not list the Slack channels the bot is in")
+            return []
+        opened = []
+        for channel in channels:
+            try:
+                roster = await self._api.roster(channel)
+
+                async def action(client, roster=roster) -> None:
+                    await client.send_participants(_participants(roster), modality="text")
+
+                await self._run(channel, action)
+                opened.append(channel)
+            except Exception:
+                logger.exception("Could not open the session of Slack channel %s", channel)
+        return opened
 
     async def close(self) -> None:
         await self.registry.close_all()

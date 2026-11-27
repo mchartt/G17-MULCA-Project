@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from mulca_discord.coordinator.texts import day
 from mulca_discord.coordinator.cards import card_view, proposal_embed
 from mulca_discord.coordinator.commands import CoordinatorGroup, state_embed
 
@@ -48,7 +49,7 @@ BLOCKER = {"proposal_id": "e3", "kind": "blocker", "status": "pending", "rationa
 
 def test_plan_card_lists_owners_and_reasons_and_is_confirmed_at_once():
     fields = {f.name: f.value for f in proposal_embed(PLAN).fields}
-    assert fields["Tasks"] == "• **Server** — <@7> · 2026-11-28\n  _Python skills_\n• **Slides** — anyone"
+    assert fields["Tasks"] == f"• **Server** — <@7> · {day('2026-11-28')}\n  _Python skills_\n• **Slides** — anyone"
     assert ids(card_view(PLAN)) == ["coord:confirm:b1", "coord:reject:b1"]
 
 

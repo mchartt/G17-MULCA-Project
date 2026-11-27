@@ -23,14 +23,17 @@ channel only ever gets the cards themselves (project rule: no walls of text).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import uuid
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import discord
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import FollowUps, for_cadence
+from ..invites import invite_in
 from ..links import Link
 from ..sessions import Scope, SessionRegistry
 from .cards import CardButton, card_view, proposal_embed, why_text
@@ -39,6 +42,9 @@ from .texts import mirror_text
 if TYPE_CHECKING:
     from ..runtime import BotManager, BotRuntime
     from ..sessions import ScopeSession
+
+# Said in the channel right after a pasted invite link linked it: what to do next, in one line.
+LINKED_NEXT = "In a voice call, `/coordinator voice` lets me listen and keep the transcript. `/coordinator help` lists the rest."
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +69,10 @@ class CoordinatorBridge:
         self._manager = manager
         # request id -> future woken by the server's answer
         self._waiting: dict[str, asyncio.Future] = {}
-        # proposal id -> the Discord message showing its card (this run only)
-        self._cards: dict[str, discord.Message] = {}
+        # (conversation id, proposal id) -> the Discord message showing the card
+        # there (this run only). Per channel: two Discord channels linked to the
+        # same web space each show their own copy of a group's card.
+        self._cards: dict[tuple[str, str], discord.Message] = {}
         # proposal id -> the last proposal seen, for "Why?" (this run only)
         self._proposals: dict[str, dict] = {}
         # Bot clients whose card buttons are registered (see _register_buttons).
@@ -280,6 +288,60 @@ class CoordinatorBridge:
         logger.info("coordinator: now serving channel %s (first /coordinator command there)", channel.id)
         return ""
 
+    async def invite(self, message: Any) -> bool:
+        """
+        A web space's invite link pasted in a channel (invites.py): the channel
+        is served and linked to that space at once, and Cadence says so in the
+        channel, so everyone sees it worked. True when the message was one.
+        """
+        code = invite_in(getattr(message, "content", "") or "")
+        guild = getattr(message, "guild", None)
+        if code is None or guild is None:
+            return False
+        channel = message.channel
+        acting = SimpleNamespace(channel=channel, channel_id=channel.id, guild_id=guild.id, user=message.author)
+        answer = await self.send_command(acting, "link", {"code": code})
+        text = answer_text(answer)
+        if answer and answer.get("ok"):
+            text += "\n" + LINKED_NEXT
+        await self._say(channel, text, f"discord:{channel.id}")
+        return True
+
+    async def serve_voice(self, interaction: discord.Interaction, voice: Any) -> str:
+        """
+        /coordinator voice: the group's voice call joins this channel's
+        project. The bot joins the call when someone is in it; every spoken
+        turn is transcribed by MUCA-Server, kept as Cadence's context, shown
+        in the web space ("Discord voice") and can become a card here.
+        "ambient": every turn is judged (the wake modes judge only after
+        "MULCA start", so nothing said before would ever become a card). The
+        lab's unsolicited strategies stay silent in the call (server R12);
+        Cadence speaks only when addressed. Returns the sentence for the member.
+        """
+        channel = getattr(interaction, "channel", None)
+        found = self._manager.link_for_channel(getattr(channel, "id", 0) or 0)
+        if found is None:
+            problem = await self._serve(interaction)
+            if problem:
+                return problem
+            found = self._manager.link_for_channel(channel.id)
+            if found is None:
+                return NOT_LINKED
+        bot, link = found
+        updated = dataclasses.replace(link, voice_channel_id=voice.id, listening_mode="ambient")
+        problems = bot.store.conflicts(updated)
+        if problems:
+            return "Cadence cannot listen to that call: " + " ".join(problems)
+        previous = bot.store.save(updated, created_by=getattr(interaction.user, "id", None))
+        await bot.apply_link(updated, previous)
+        logger.info("coordinator: %s now listens to voice channel %s", link.conversation_id, voice.id)
+        return (
+            f"Cadence now listens to {getattr(voice, 'mention', 'the voice call')}: it joins when someone is there. "
+            "What is said is transcribed and saved in the project (also on the web, as “Discord voice”); "
+            "a decision or a task said aloud becomes a card to confirm here. "
+            "`/coordinator transcript` shows the last hour. Cadence speaks only if you call it by name."
+        )
+
     async def _send_to(self, channel_id: int, request_id: str, message, *, errors_as_notice: bool = False) -> dict | None:
         """
         The server's answer; None when it did not come in time. A failure is
@@ -316,6 +378,36 @@ class CoordinatorBridge:
             return {"event": "coordinator_notice", "ok": False, "text": UNAVAILABLE} if errors_as_notice else None
         finally:
             self._waiting.pop(request_id, None)
+
+    async def warm_up(self, bot) -> int:
+        """
+        Open the session of each channel this bot serves, once it is ready.
+
+        The server sends a card to the sessions of a linked group that are
+        open *now* (LiveGroups): without this, after a restart a Discord
+        channel heard nothing until someone wrote in it, so a card made on
+        the web or on Slack never showed here. Only the roster is sent: no
+        message, no model call of ours. A paused bot opens nothing. Returns
+        how many sessions were opened; a channel that fails is logged and skipped.
+        """
+        if getattr(bot, "paused", False):
+            return 0
+        self._register_buttons(bot.client)
+        opened = 0
+        for link in bot.links():
+            channel = bot.client.get_channel(link.text_channel_id)
+            if channel is None:
+                continue
+
+            async def action(client, link=link) -> None:
+                await client.send_participants(bot.roster_text(link), modality="text")
+
+            try:
+                await bot.registry.run(scope_for(bot, link), action, reply_channel=channel, retry_once=False)
+                opened += 1
+            except Exception:
+                logger.exception("Could not open the session of %s", link.conversation_id)
+        return opened
 
     def _register_buttons(self, client) -> None:
         """
@@ -364,7 +456,8 @@ class CoordinatorBridge:
         proposal_id = proposal.get("proposal_id", "")
         self._proposals[proposal_id] = proposal
         embed, view = proposal_embed(proposal), card_view(proposal)
-        existing = self._cards.get(proposal_id)
+        key = (getattr(getattr(session, "scope", None), "conversation_id", ""), proposal_id)
+        existing = self._cards.get(key)
         try:
             if existing is not None:
                 await existing.edit(embed=embed, view=view)
@@ -372,7 +465,7 @@ class CoordinatorBridge:
             channel = session.replies.channel
             if channel is None or proposal.get("status") != "pending":
                 return  # nothing to show where no card was ever posted
-            self._cards[proposal_id] = await channel.send(
+            self._cards[key] = await channel.send(
                 embed=embed, view=view or discord.utils.MISSING
             )
         except discord.HTTPException:

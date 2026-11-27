@@ -16,6 +16,7 @@ from muca_server.cognition.coordination.proposals import ProposalService
 from muca_server.cognition.coordination.store import CoordinationStore
 from muca_server.cognition.memory.sqlite import db_path_for
 
+from mulca_discord.coordinator.texts import day
 from mulca_discord.coordinator.bridge import CoordinatorBridge
 from mulca_discord.coordinator.cards import (
     CUSTOM_ID_PATTERN,
@@ -72,7 +73,7 @@ def test_delegation_card_never_names_an_owner_and_offers_take():
 
 def test_task_owner_card_suggests_with_a_mention_and_can_be_confirmed():
     fields = {f.name: f.value for f in proposal_embed(TASK).fields}
-    assert fields["Suggested owner"] == "<@42>" and fields["By"] == "2026-11-27"
+    assert fields["Suggested owner"] == "<@42>" and fields["By"] == day("2026-11-27")
     assert ids(card_view(TASK))[:3] == ["coord:confirm:a1", "coord:take:a1", "coord:reject:a1"]
     no_owner = dict(TASK, payload=dict(TASK["payload"], owner_id=None))
     assert "coord:confirm:a1" not in ids(card_view(no_owner))
@@ -93,7 +94,7 @@ def test_decision_card_has_one_button_per_option_then_why_and_not_now_on_row_two
 
 def test_a_snoozed_card_says_so_and_has_no_buttons():
     snoozed = dict(DELEGATION, status="snoozed")
-    assert proposal_embed(snoozed).footer.text.startswith("Not now")
+    assert proposal_embed(snoozed).footer.text.startswith("◷ Not now")
     assert card_view(snoozed) is None
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-CHANNEL_NAMES = {"web": "Web", "discord": "Discord", "slack": "Slack"}
+CHANNEL_NAMES = {"web": "Web", "discord": "Discord", "discord_voice": "Discord voice", "slack": "Slack"}
 # Which channel a member id comes from, by its size:
 #   web      [1e8, 1e9)        (web/store.py)
 #   Discord  snowflakes, today around 1e18, below 2**62 until about 2049
@@ -19,6 +19,22 @@ WEB_ID_MIN, WEB_ID_MAX = 100_000_000, 999_999_999
 SLACK_ID_BASE = 1 << 62
 MAX_LINES = 12  # per channel, so the answer stays one readable message
 MAX_CHARS = 1900  # Discord's limit for one message is 2000
+
+
+def day(value: str | None, today=None) -> str:
+    """
+    A date as people write it: "2026-11-28" -> "28 Nov" (with the year when it
+    is not this year's). Anything that is not an ISO date is shown as it is.
+    The web app writes dates the same way on its cards.
+    """
+    if not value:
+        return ""
+    try:
+        when = datetime.strptime(str(value)[:10], "%Y-%m-%d")
+    except ValueError:
+        return str(value)
+    this_year = (today or datetime.now()).year
+    return f"{when.day} {when:%b}" + ("" if when.year == this_year else f" {when.year}")
 
 
 def channel_name(channel: str) -> str:

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 import discord
 from discord import app_commands
 
+from ..slack.commands import Usage, waits_on as parse_waits_on
 from .bridge import CoordinatorBridge, answer_text
 from .cards import CardButton
 from .texts import catchup_text, owner_text
@@ -31,6 +32,16 @@ if TYPE_CHECKING:
     from ..runtime import BotManager
 
 ENABLED_ENV_VAR = "MULCA_COORDINATOR_ENABLED"
+VOICE_WHERE = "Join the group's voice channel first, then run `/coordinator voice` again (or pick the channel in the command)."
+HELP_TEXT = (
+    "**Cadence in three steps**\n"
+    "1. **Link this channel** to your project: paste the web space's invite link here (or `/coordinator link <code>`).\n"
+    "2. **Talk as usual.** When something has no owner, no date or no decision, I post a card: one click to confirm.\n"
+    "3. **In a call**, join the voice channel and run `/coordinator voice`: I listen, keep the transcript "
+    "(`/coordinator transcript`) and turn what you decide into cards.\n"
+    "Ask me anything about the project by writing **Cadence** or @-mentioning me. Everything is saved in the web space too.\n\n"
+    "More: `/coordinator plan` · `newtask` · `task` · `checkin` · `why` · `catchup` · `me` (same person here and on the web)"
+)
 TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
 
 
@@ -54,6 +65,9 @@ def install_coordinator(
     manager.coordinator_chat = bridge
     for bot in manager.bots:
         bot.coordinator_chat = bridge
+        # Every linked channel listens from the start (bridge.warm_up), so a
+        # card made on the web or on Slack also shows on Discord.
+        bot.after_ready.append(bridge.warm_up)
     # Like the lab's add_view: no API call, just the custom_id -> class mapping,
     # so cards posted before a restart answer again at once.
     manager.primary.client.add_dynamic_items(CardButton)
@@ -112,15 +126,73 @@ class CoordinatorGroup(app_commands.Group):
         answer = await self._bridge.send_command(interaction, "checkin")
         await interaction.followup.send(answer_text(answer), ephemeral=True)
 
-    @app_commands.command(name="task", description="Update a task: its number in /coordinator plan and the new status.")
-    @app_commands.describe(task="The task's number in /coordinator plan", status="The new status")
+    @app_commands.command(name="task", description="Update a task: its number in /coordinator plan, then what changes.")
+    @app_commands.describe(
+        task="The task's number in /coordinator plan",
+        status="The new status",
+        waits_on="Numbers of the tasks it waits on, e.g. 1, 2 (or: nothing)",
+        due="The new date, YYYY-MM-DD",
+    )
     @app_commands.choices(
         status=[app_commands.Choice(name=s, value=s) for s in ("todo", "doing", "done", "blocked")]
     )
-    async def task(self, interaction: discord.Interaction, task: app_commands.Range[int, 1, 99], status: str) -> None:
+    async def task(
+        self,
+        interaction: discord.Interaction,
+        task: app_commands.Range[int, 1, 99],
+        status: str | None = None,
+        waits_on: str | None = None,
+        due: str | None = None,
+    ) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
-        answer = await self._bridge.send_command(interaction, "task", {"task": str(task), "status": status})
+        args, problem = task_args(task, status, waits_on, due)
+        if problem:
+            await interaction.followup.send(problem, ephemeral=True)
+            return
+        answer = await self._bridge.send_command(interaction, "task", args)
         await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="newtask", description="Add a task to the plan (shared with the web app and Slack).")
+    @app_commands.describe(
+        title="The task in a few words, e.g. Print the survey results",
+        waits_on="Numbers of the tasks it waits on, e.g. 1, 2",
+        due="Its date, YYYY-MM-DD",
+    )
+    async def newtask(
+        self,
+        interaction: discord.Interaction,
+        title: str,
+        waits_on: str | None = None,
+        due: str | None = None,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        args, problem = task_args(None, None, waits_on, due)
+        if problem:
+            await interaction.followup.send(problem, ephemeral=True)
+            return
+        answer = await self._bridge.send_command(interaction, "task", {"add": title, **args})
+        await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="voice", description="Let Cadence listen to the group's voice call: transcript and cards.")
+    @app_commands.describe(channel="The voice channel (default: the one you are in now)")
+    async def voice(self, interaction: discord.Interaction, channel: discord.VoiceChannel | None = None) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        channel = channel or getattr(getattr(interaction.user, "voice", None), "channel", None)
+        if channel is None:
+            await interaction.followup.send(VOICE_WHERE, ephemeral=True)
+            return
+        await interaction.followup.send(await self._bridge.serve_voice(interaction, channel), ephemeral=True)
+
+    @app_commands.command(name="help", description="How to use Cadence here, in three steps.")
+    async def help(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(HELP_TEXT, ephemeral=True)
+
+    @app_commands.command(name="transcript", description="What was said in the voice call lately (transcribed), only for you.")
+    @app_commands.describe(minutes="How far back, in minutes (default 60)")
+    async def transcript(self, interaction: discord.Interaction, minutes: app_commands.Range[int, 1, 1440] = 60) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "transcript", {"minutes": minutes})
+        await interaction.followup.send(answer_text(answer)[:1900], ephemeral=True)
 
     @app_commands.command(name="why", description="Ask why the group decided something: the answer cites the decision log.")
     @app_commands.describe(question="e.g. Why did we drop the notifications?")
@@ -200,3 +272,24 @@ def state_embed(state: dict) -> discord.Embed:
         value = "\n".join(f"• {line}" for line in lines)[:1000] or "—"
         embed.add_field(name=name, value=value, inline=False)
     return embed
+
+
+def task_args(task: int | None, status: str | None, waits_on: str | None, due: str | None) -> tuple[dict, str]:
+    """
+    The options of /coordinator task and newtask as the server's "task"
+    arguments (the same as Slack's `task ...`, slack/commands.py), or the
+    sentence that says what is wrong.
+    """
+    args: dict = {} if task is None else {"task": str(task)}
+    if status:
+        args["status"] = status
+    if waits_on is not None:
+        try:
+            args["depends_on"] = parse_waits_on(waits_on)
+        except Usage:
+            return {}, "Write the numbers of the tasks it waits on, e.g. `1, 2`, or `nothing`."
+    if due:
+        args["due"] = due.strip()
+    if task is not None and len(args) == 1:
+        return {}, "Say what changes: a status, what it waits on, or a date."
+    return args, ""

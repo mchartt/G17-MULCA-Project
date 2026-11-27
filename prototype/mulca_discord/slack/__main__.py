@@ -38,6 +38,8 @@ async def handle(hub: SlackHub, api: SdkSlackApi, kind: str, payload: dict) -> N
         event = payload.get("event", {})
         if event.get("type") == "message":
             await hub.on_message(event)
+        elif event.get("type") == "member_joined_channel":
+            await hub.on_joined(event)
     elif kind == "slash_commands":
         channel, user = payload.get("channel_id", ""), payload.get("user_id", "")
         is_dm = payload.get("channel_name") == "directmessage"
@@ -77,6 +79,10 @@ async def run() -> None:
     socket.socket_mode_request_listeners.append(on_request)
     await socket.connect()
     logger.info("Cadence is connected to Slack as %s", api.bot_user)
+    # Every channel the bot is in listens from now on, so a card made on the web
+    # or on Discord shows here too even if nobody wrote on Slack yet.
+    opened = await hub.warm_up()
+    logger.info("Cadence is listening in %d Slack channel(s)", len(opened))
     try:
         await asyncio.Event().wait()  # until Ctrl+C
     finally:

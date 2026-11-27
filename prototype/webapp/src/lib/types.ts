@@ -7,7 +7,7 @@ export type Group = { id: number; name: string; inviteCode: string };
 export type ChatMessage = {
   id: number;
   author: Person | null; // null = written by the coordinator
-  channel: "web" | "discord" | "slack" | "calendar";
+  channel: "web" | "discord" | "discord_voice" | "slack" | "calendar";
   text: string;
   ts: number;
 };

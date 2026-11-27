@@ -1,0 +1,204 @@
+{
+  "discord": [
+    {
+      "kind": "text",
+      "who": "Ada",
+      "text": "http://127.0.0.1:8190/join/262TU3M3Y8",
+      "at": 1795790765.0911078
+    },
+    {
+      "kind": "text",
+      "who": "Cadence",
+      "text": "Linked to the web space: plan, tasks, decisions and cards are now shared. Each channel keeps its own chat. Next: ask Cadence what the project is about, and if you use the web app too, write `/coordinator me` with your personal code so you are the same member here.\nIn a voice call, `/coordinator voice` lets me listen and keep the transcript. `/coordinator help` lists the rest.",
+      "at": 1795790765.1561866
+    },
+    {
+      "kind": "text",
+      "who": "Chiara",
+      "text": "class 3B gave us 25 paper forms back",
+      "at": 1795790769.4461668
+    },
+    {
+      "kind": "text",
+      "who": "Chiara",
+      "text": "typing them into the sheet now",
+      "at": 1795790769.453932
+    },
+    {
+      "kind": "text",
+      "who": "Bruno",
+      "text": "not me, I'm finishing the sources",
+      "at": 1795790769.4578085
+    },
+    {
+      "kind": "text",
+      "who": "Ada",
+      "text": "we also need the results printed for the charts",
+      "at": 1795790769.4669356
+    },
+    {
+      "kind": "text",
+      "who": "Cadence",
+      "text": "**Bruno** · Slack: the 3 sources are final, links in the doc",
+      "at": 1795790769.4842093
+    },
+    {
+      "kind": "card",
+      "who": "Cadence",
+      "text": "",
+      "at": 1795790769.6020274,
+      "embed": {
+        "footer": {
+          "text": "✓ Confirmed by Ada"
+        },
+        "fields": [
+          {
+            "inline": false,
+            "name": "Task",
+            "value": "Print the survey results"
+          },
+          {
+            "inline": false,
+            "name": "By",
+            "value": "28 Nov"
+          },
+          {
+            "inline": false,
+            "name": "Suggested owner",
+            "value": "Ada"
+          }
+        ],
+        "flags": 0,
+        "color": 3066993,
+        "type": "rich",
+        "description": "*Printing the survey results came up, but nobody took it.*",
+        "title": "Cadence · Owner and date · Ownership"
+      },
+      "buttons": []
+    },
+    {
+      "kind": "text",
+      "who": "Cadence",
+      "text": "**Bruno** · Slack: anything left for me before Monday?",
+      "at": 1795790769.6885931
+    },
+    {
+      "kind": "text",
+      "who": "Chiara",
+      "text": "all 25 paper forms are in the sheet",
+      "at": 1795790770.519706
+    },
+    {
+      "kind": "text",
+      "who": "Cadence",
+      "text": "**Bruno** · Slack: oh nice, Ada took it on Discord 👍",
+      "at": 1795790770.526747
+    }
+  ],
+  "slack": [
+    {
+      "who": "Bruno",
+      "text": "http://127.0.0.1:8190/join/262TU3M3Y8",
+      "blocks": null,
+      "at": 1795790765.169223
+    },
+    {
+      "who": "Cadence",
+      "text": "Linked to the web space: plan, tasks, decisions and cards are now shared. Each channel keeps its own chat. Next: ask Cadence what the project is about, and if you use the web app too, write `/coordinator me` with your personal code so you are the same member here.",
+      "blocks": null,
+      "at": 1795790765.2622447
+    },
+    {
+      "who": "Bruno",
+      "text": "the 3 sources are final, links in the doc",
+      "blocks": null,
+      "at": 1795790769.4432464
+    },
+    {
+      "who": "Cadence",
+      "text": "*Chiara* · Discord: class 3B gave us 25 paper forms back",
+      "blocks": null,
+      "at": 1795790769.44961
+    },
+    {
+      "who": "Cadence",
+      "text": "*Chiara* · Discord: typing them into the sheet now",
+      "blocks": null,
+      "at": 1795790769.4703782
+    },
+    {
+      "who": "Cadence",
+      "text": "*Bruno* · Discord: not me, I'm finishing the sources",
+      "blocks": null,
+      "at": 1795790769.4940405
+    },
+    {
+      "who": "Cadence",
+      "text": "*Ada* · Discord: we also need the results printed for the charts",
+      "blocks": null,
+      "at": 1795790769.5045476
+    },
+    {
+      "who": "Cadence",
+      "text": "Cadence · Owner and date · Ownership: Printing the survey results came up, but nobody took it.",
+      "blocks": [
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*Cadence · Owner and date · Ownership*\n_Printing the survey results came up, but nobody took it._"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*Task*\nPrint the survey results"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*By*\n28 Nov"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*Suggested owner*\nAda"
+          }
+        },
+        {
+          "type": "context",
+          "elements": [
+            {
+              "type": "mrkdwn",
+              "text": "✓ Confirmed by Ada"
+            }
+          ]
+        }
+      ],
+      "at": 1795790769.6024125
+    },
+    {
+      "who": "Bruno",
+      "text": "anything left for me before Monday?",
+      "blocks": null,
+      "at": 1795790769.6782832
+    },
+    {
+      "who": "Bruno",
+      "text": "oh nice, Ada took it on Discord 👍",
+      "blocks": null,
+      "at": 1795790770.5171642
+    },
+    {
+      "who": "Cadence",
+      "text": "*Chiara* · Discord: all 25 paper forms are in the sheet",
+      "blocks": null,
+      "at": 1795790770.5278914
+    }
+  ]
+}

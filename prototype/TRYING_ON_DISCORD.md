@@ -14,6 +14,10 @@
 >    cards. `/coordinator transcript` shows the last hour. It speaks only when
 >    called by name.
 >
+> **Bot avatar:** Developer portal → your application → *General Information*
+> → App Icon: upload `webapp/public/brand/cadence-icon-512.png`; on the *Bot*
+> page set the username to **Cadence**.
+>
 > `/coordinator help` repeats this in Discord. The rest of this guide is the
 > lab's MULCA voice setup and checks.
 

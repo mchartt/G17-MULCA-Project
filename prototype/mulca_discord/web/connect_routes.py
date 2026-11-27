@@ -17,7 +17,8 @@ to, so the button is the bot's invite address (client id + the permissions
 the coordinator and the voice call need).
 
 Environment (all optional; a missing one only hides its button):
-    DISCORD_CLIENT_ID     the Discord application's id (Developer Portal, General Information)
+    DISCORD_CLIENT_ID     the Discord application's id; not needed when
+                          DISCORD_BOT_TOKEN is set (read from it, discord_client_id)
     SLACK_CLIENT_ID       the Slack app's Client ID  (Basic Information)
     SLACK_CLIENT_SECRET   its Client Secret          (never sent to the browser)
     CADENCE_PUBLIC_URL    this server's public address, for Slack's redirect URL
@@ -27,6 +28,7 @@ Environment (all optional; a missing one only hides its button):
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import html
@@ -65,6 +67,26 @@ STATE_SECONDS = 600  # the member has ten minutes on Slack's page
 
 # code, redirect_uri -> Slack's oauth.v2.access answer (a dict)
 Exchange = Callable[[str, str], Awaitable[dict]]
+
+
+def discord_client_id(env: Mapping[str, str]) -> str:
+    """
+    DISCORD_CLIENT_ID, else read from DISCORD_BOT_TOKEN: a bot token starts
+    with the bot's user id in base64, and a bot's user id is its application
+    id. So a server that already runs the Discord bot needs nothing more.
+    Only the id is used; the token never leaves this function.
+    """
+    explicit = env.get("DISCORD_CLIENT_ID", "").strip()
+    if explicit:
+        return explicit
+    first = env.get("DISCORD_BOT_TOKEN", "").strip().split(".", 1)[0]
+    if not first:
+        return ""
+    try:
+        decoded = base64.b64decode(first + "=" * (-len(first) % 4)).decode("ascii")
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    return decoded if decoded.isdigit() else ""
 
 
 def discord_install_url(client_id: str) -> str:
@@ -134,7 +156,7 @@ def add_connect_routes(
 
     @app.get("/api/connect")
     async def connect() -> dict:
-        client_id = env.get("DISCORD_CLIENT_ID", "").strip()
+        client_id = discord_client_id(env)
         return {
             "discord": discord_install_url(client_id) if client_id else None,
             "slack": "/api/slack/install" if slack_ready() else None,

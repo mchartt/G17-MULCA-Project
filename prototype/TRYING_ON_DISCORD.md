@@ -13,8 +13,8 @@
 >    called by name. `/coordinator voice` still works, e.g. after a restart.
 >
 > **Once, for whoever runs the server:** one Discord application for
-> everyone. Set `DISCORD_BOT_TOKEN` (Bot page, *Reset Token*) and
-> `DISCORD_CLIENT_ID` (General Information, *Application ID*) in Render; turn
+> everyone. Set `DISCORD_BOT_TOKEN` (Bot page, *Reset Token*); the button reads the bot id from it (`DISCORD_CLIENT_ID` only to override:
+> General Information, *Application ID*) in Render; turn
 > on **Message Content Intent** and **Server Members Intent**. The web app's
 > button is the bot's invite address with the permissions the coordinator
 > and the voice call need (`mulca_discord/web/connect_routes.py`).

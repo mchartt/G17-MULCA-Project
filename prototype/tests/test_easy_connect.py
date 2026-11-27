@@ -52,6 +52,20 @@ def test_the_discord_button_asks_for_what_the_coordinator_and_voice_need():
     assert int(query["permissions"][0]) == 1024 + 2048 + 16384 + 65536 + 1048576 + 2097152 + 33554432
 
 
+def test_the_discord_button_needs_only_the_bot_token_already_set():
+    import base64
+
+    token = base64.b64encode(b"1573774500464562309").decode().rstrip("=") + ".GxYz12.not-a-real-secret"
+    from mulca_discord.web.connect_routes import discord_client_id
+
+    assert discord_client_id({"DISCORD_BOT_TOKEN": token}) == "1573774500464562309"
+    assert discord_client_id({"DISCORD_CLIENT_ID": "42", "DISCORD_BOT_TOKEN": token}) == "42"
+    assert discord_client_id({"DISCORD_BOT_TOKEN": "garbage"}) == ""
+    assert discord_client_id({}) == ""
+    offered = client({"DISCORD_BOT_TOKEN": token}).get("/api/connect").json()
+    assert "client_id=1573774500464562309" in offered["discord"] and "not-a-real-secret" not in offered["discord"]
+
+
 def test_connect_offers_only_what_this_server_has():
     assert client({}).get("/api/connect").json() == {"discord": None, "slack": None}
     offered = client(ENV).get("/api/connect").json()

@@ -1,5 +1,22 @@
 # Trying MULCA on Discord
 
+> **Cadence (the group coordinator) in three steps**, once the bot runs with
+> `MULCA_COORDINATOR_ENABLED=true`:
+> 1. In the group's text channel, **paste the web space's invite link** (the
+>    web app shows it under *Connect Slack or Discord*). Cadence answers
+>    "Linked to the web space". No `/mulca link` needed.
+> 2. **Talk as usual.** Cards (owner and date, decision, blocker…) appear in
+>    the channel, on the web and on a linked Slack channel; one click confirms
+>    everywhere. Write *Cadence* or @-mention the bot to ask about the project.
+> 3. **Voice call:** join the voice channel and run **`/coordinator voice`**.
+>    Cadence joins, transcribes every turn (`gpt-4o-transcribe`), shows it on
+>    the web as "Discord voice", and turns decisions and tasks said aloud into
+>    cards. `/coordinator transcript` shows the last hour. It speaks only when
+>    called by name.
+>
+> `/coordinator help` repeats this in Discord. The rest of this guide is the
+> lab's MULCA voice setup and checks.
+
 This guide takes you from nothing to MULCA talking in a Discord voice channel. It uses a private test server, linked to your own bot from Discord, so nobody else's setup is touched.
 
 ## 1. One-time setup (about 15 min)

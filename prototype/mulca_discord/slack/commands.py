@@ -29,7 +29,8 @@ from .ids import who
 
 HELP = (
     "*Cadence commands*\n"
-    "• `/coordinator link <invite code>`: work here on a project created in the web app\n"
+    "Start: paste your web space's invite link in this channel. Then talk as usual: cards appear here to confirm.\n"
+    "• `/coordinator link <invite code>`: the same as pasting the link\n"
     "• `/coordinator me <personal code>`: be the same member here as on the web or on Discord (with no code: get one here)\n"
     "• `/coordinator kickoff <assignment text>`: propose the project charter (in a linked channel)\n"
     "• `/coordinator planning <task>; <task>; …`: suggest who takes each task\n"

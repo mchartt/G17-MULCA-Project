@@ -971,6 +971,12 @@ class BotRuntime:
                 course=self.course_for(linked.guild_id),
             )
         else:
+            # A web space's invite link pasted in any channel links it (one
+            # step, coordinator/bridge.py invite). The main bot only, once.
+            coordinator = self.coordinator_chat
+            if self.is_primary and coordinator is not None and hasattr(coordinator, "invite"):
+                if await coordinator.invite(message):
+                    return
             link = self.link_for_channel(message.channel.id)
             if link is None:
                 # Not a channel linked to this bot.

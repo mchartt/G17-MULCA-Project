@@ -38,6 +38,7 @@ settings:
     bot_events:
       - message.channels
       - message.groups
+      - member_joined_channel   # Cadence greets a channel it is added to
   interactivity:
     is_enabled: true        # the buttons on the cards
   socket_mode_enabled: true
@@ -66,11 +67,22 @@ channel when the two tokens are set.
 ## 4. Try it
 
 1. In Slack, invite the bot to your group's channel: `/invite @Cadence`.
-2. `/coordinator plan` shows the (empty) project, only to you.
-3. `/coordinator link <invite code>` with the invite code of your web space.
-   From now on the plan, the decisions and the cards are shared, and messages
-   written on Slack show in the web chat (and the other way round).
-4. Write `@Cadence` in the channel to ask the coordinator something.
+   Cadence greets the channel with the two steps below.
+2. **Paste the web space's invite link** in the channel (the web app shows it
+   under *Connect Slack or Discord*), or `/coordinator link <invite code>`.
+   From now on the plan, the tasks, the decisions and the cards are shared,
+   and messages written on Slack show in the web chat.
+3. Talk as usual: cards appear here, on the web and on a linked Discord
+   channel; one click confirms everywhere. Write `Cadence` or `@Cadence` to
+   ask about the project.
+4. `/coordinator task add <title>`, `task 3 waits on 1, 2`, `task 2 done`:
+   the plan changes for everyone.
+
+## App icon
+
+Basic Information → Display Information → App icon: upload
+`webapp/public/brand/cadence-icon-512.png` (the Cadence mark, 512×512), and
+background colour `#2E2A5A`.
 
 `/coordinator help` lists every command.
 

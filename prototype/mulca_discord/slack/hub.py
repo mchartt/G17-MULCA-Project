@@ -29,6 +29,7 @@ import uuid
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import FollowUps, for_cadence
+from ..invites import invite_in
 from ..coordinator.card_content import why_text
 from ..coordinator.cards import split_action
 from ..coordinator.texts import catchup_text, mirror_text
@@ -50,6 +51,16 @@ USER_MENTION = re.compile(r"<@([A-Z0-9]+)>")
 CHANNEL_ONLY = "The coordinator works in a channel, not in a direct message. Invite it to your group's channel."
 UNAVAILABLE = "The coordinator is not available right now. Try again in a minute."
 NO_ANSWER = "The coordinator is still working. If it succeeds, the card appears in this channel: no need to try again."
+WELCOME = (
+    "*Hi, I'm Cadence, your group's project coordinator.*\n"
+    "1. Paste your web space's invite link here (or `/coordinator link <code>`): plan, tasks and cards become shared.\n"
+    "2. Talk as usual: when something has no owner, no date or no decision, I post a card to confirm with one click.\n"
+    "Ask me anything about the project by writing *Cadence* or @-mentioning me. `/coordinator help` lists the rest."
+)
+LINKED_NEXT = (
+    "Next: talk here as usual and I suggest owners, dates and decisions as cards. "
+    "`/coordinator plan` shows the project, `/coordinator help` lists the rest."
+)
 # Slack has no "typing" for bots: this line stands for it, then becomes the answer.
 THINKING = "_Cadence is thinking…_"
 # A late answer that has not come after this long: the thinking line says so.
@@ -135,6 +146,14 @@ class SlackHub:
         text = (event.get("text") or "").strip()
         if not channel or not user or user == self._api.bot_user or not text:
             return
+        code = invite_in(text)
+        if code is not None:
+            # A web space's invite link pasted here links the channel (one step, invites.py).
+            answer = await self.on_command(channel, user, f"link {code}")
+            if "Linked" in answer:
+                answer += "\n" + LINKED_NEXT
+            await self._api.post(channel, answer)
+            return
         roster = await self._api.roster(channel)
         mentions_bot = f"<@{self._api.bot_user}>" in text or MENTION in text.lower()
         # "<@U123>" means nothing to the model: write the person's name.
@@ -171,6 +190,26 @@ class SlackHub:
             await self._run(channel, action)
         except (ConnectionError, OSError, MucaConnectionLost):
             logger.exception("MUCA-Server unreachable; Slack message not delivered")
+
+    async def on_joined(self, event: dict) -> None:
+        """
+        Slack "member_joined_channel": when Cadence itself is added to a
+        channel, it says in two lines how to start (and opens the channel's
+        session, so cards of a linked project reach it).
+        """
+        if event.get("user") != self._api.bot_user or not event.get("channel"):
+            return
+        channel = event["channel"]
+        await self._api.post(channel, WELCOME)
+        try:
+            roster = await self._api.roster(channel)
+
+            async def action(client) -> None:
+                await client.send_participants(_participants(roster), modality="text")
+
+            await self._run(channel, action)
+        except Exception:
+            logger.exception("Could not open the session of Slack channel %s", channel)
 
     async def _answer_in_channel(self, channel: str, user: str, question: str, maybe: bool, said: str = "") -> None:
         """

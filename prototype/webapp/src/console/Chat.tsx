@@ -9,7 +9,8 @@ import { ProposalCard } from "./ProposalCard";
 import { useNow } from "./useNow";
 import { dotFor, nameOf, type Space } from "./space";
 
-const CHANNEL_NAMES: Record<string, string> = { web: "Web", discord: "Discord", slack: "Slack", calendar: "Calendar" };
+// "discord_voice": a line said in the Discord voice call, transcribed by MUCA-Server.
+const CHANNEL_NAMES: Record<string, string> = { web: "Web", discord: "Discord", discord_voice: "Discord voice", slack: "Slack", calendar: "Calendar" };
 
 type Props = {
   space: Space;

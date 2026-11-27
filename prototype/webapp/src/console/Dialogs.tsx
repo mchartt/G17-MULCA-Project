@@ -204,6 +204,8 @@ export function DeleteDialog({ open, spaceName, onClose, onDelete }: { open: boo
  */
 export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: boolean; code: string; onClose: () => void; onPersonalCode?: () => Promise<string> }) {
   const command = `/coordinator link ${code}`;
+  // The easiest way: the space's invite link, pasted in the channel, links it (mulca_discord/invites.py).
+  const inviteLink = `${location.origin}/join/${code}`;
   const [copied, setCopied] = useState(false);
   // "Be yourself there": the server's answer to the "me" command, shown as it is
   // when it holds no code (a refusal), else as the command to write in the channel.
@@ -221,7 +223,7 @@ export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: b
   };
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(command);
+      await navigator.clipboard.writeText(inviteLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -239,8 +241,9 @@ export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: b
           </li>
           <li>
             <strong>Link the channel to this space</strong>
-            <span className="muted small">In the channel where the group talks, write:</span>
-            <span className="connect__command"><code>{command}</code><button type="button" className="btn btn--soft btn--small" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button></span>
+            <span className="muted small">Paste this link in the channel where the group talks. Cadence answers there when it is linked.</span>
+            <span className="connect__command"><code>{inviteLink}</code><button type="button" className="btn btn--soft btn--small" onClick={() => void copy()}>{copied ? "Copied" : "Copy link"}</button></span>
+            <span className="muted small">Or write <code>{command}</code></span>
           </li>
           <li>
             <strong>Be yourself there</strong>
@@ -255,6 +258,10 @@ export function ConnectDialog({ open, code, onClose, onPersonalCode }: { open: b
           <li>
             <strong>Talk as usual</strong>
             <span className="muted small">Messages from the channel show here with a Discord or Slack tag, and Cadence's cards show there too.</span>
+          </li>
+          <li>
+            <strong>In a Discord voice call</strong>
+            <span className="muted small">Join the voice channel and write <code>/coordinator voice</code>. Cadence listens, keeps the transcript (here, tagged “Discord voice”) and turns what you decide into cards. It speaks only when called by name.</span>
           </li>
         </ol>
         <p className="muted small">Without the bot installed, the command does nothing. Nothing is shared until a channel is linked.</p>

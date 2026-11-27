@@ -38,6 +38,8 @@ async def handle(hub: SlackHub, api: SdkSlackApi, kind: str, payload: dict) -> N
         event = payload.get("event", {})
         if event.get("type") == "message":
             await hub.on_message(event)
+        elif event.get("type") == "member_joined_channel":
+            await hub.on_joined(event)
     elif kind == "slash_commands":
         channel, user = payload.get("channel_id", ""), payload.get("user_id", "")
         is_dm = payload.get("channel_name") == "directmessage"

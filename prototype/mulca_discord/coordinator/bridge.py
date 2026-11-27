@@ -23,14 +23,17 @@ channel only ever gets the cards themselves (project rule: no walls of text).
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import uuid
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import discord
 from muca_server.protocol import CoordinatorCommandMessage, ProposalResponseMessage
 
 from ..addressing import FollowUps, for_cadence
+from ..invites import invite_in
 from ..links import Link
 from ..sessions import Scope, SessionRegistry
 from .cards import CardButton, card_view, proposal_embed, why_text
@@ -39,6 +42,12 @@ from .texts import mirror_text
 if TYPE_CHECKING:
     from ..runtime import BotManager, BotRuntime
     from ..sessions import ScopeSession
+
+# Said in the channel right after a pasted invite link linked it: what to do next, in one line.
+LINKED_NEXT = (
+    "Next: talk here as usual and I suggest owners, dates and decisions as cards. "
+    "In a voice call, `/coordinator voice` lets me listen and keep the transcript. `/coordinator help` lists the rest."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +290,60 @@ class CoordinatorBridge:
         await bot.apply_link(link, previous)
         logger.info("coordinator: now serving channel %s (first /coordinator command there)", channel.id)
         return ""
+
+    async def invite(self, message: Any) -> bool:
+        """
+        A web space's invite link pasted in a channel (invites.py): the channel
+        is served and linked to that space at once, and Cadence says so in the
+        channel, so everyone sees it worked. True when the message was one.
+        """
+        code = invite_in(getattr(message, "content", "") or "")
+        guild = getattr(message, "guild", None)
+        if code is None or guild is None:
+            return False
+        channel = message.channel
+        acting = SimpleNamespace(channel=channel, channel_id=channel.id, guild_id=guild.id, user=message.author)
+        answer = await self.send_command(acting, "link", {"code": code})
+        text = answer_text(answer)
+        if answer and answer.get("ok"):
+            text += "\n" + LINKED_NEXT
+        await self._say(channel, text, f"discord:{channel.id}")
+        return True
+
+    async def serve_voice(self, interaction: discord.Interaction, voice: Any) -> str:
+        """
+        /coordinator voice: the group's voice call joins this channel's
+        project. The bot joins the call when someone is in it; every spoken
+        turn is transcribed by MUCA-Server, kept as Cadence's context, shown
+        in the web space ("Discord voice") and can become a card here.
+        "ambient": every turn is judged (the wake modes judge only after
+        "MULCA start", so nothing said before would ever become a card). The
+        lab's unsolicited strategies stay silent in the call (server R12);
+        Cadence speaks only when addressed. Returns the sentence for the member.
+        """
+        channel = getattr(interaction, "channel", None)
+        found = self._manager.link_for_channel(getattr(channel, "id", 0) or 0)
+        if found is None:
+            problem = await self._serve(interaction)
+            if problem:
+                return problem
+            found = self._manager.link_for_channel(channel.id)
+            if found is None:
+                return NOT_LINKED
+        bot, link = found
+        updated = dataclasses.replace(link, voice_channel_id=voice.id, listening_mode="ambient")
+        problems = bot.store.conflicts(updated)
+        if problems:
+            return "Cadence cannot listen to that call: " + " ".join(problems)
+        previous = bot.store.save(updated, created_by=getattr(interaction.user, "id", None))
+        await bot.apply_link(updated, previous)
+        logger.info("coordinator: %s now listens to voice channel %s", link.conversation_id, voice.id)
+        return (
+            f"Cadence now listens to {getattr(voice, 'mention', 'the voice call')}: it joins when someone is there. "
+            "What is said is transcribed and saved in the project (also on the web, as “Discord voice”); "
+            "a decision or a task said aloud becomes a card to confirm here. "
+            "`/coordinator transcript` shows the last hour. Cadence speaks only if you call it by name."
+        )
 
     async def _send_to(self, channel_id: int, request_id: str, message, *, errors_as_notice: bool = False) -> dict | None:
         """

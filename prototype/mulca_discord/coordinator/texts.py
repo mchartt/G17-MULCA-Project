@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-CHANNEL_NAMES = {"web": "Web", "discord": "Discord", "slack": "Slack"}
+CHANNEL_NAMES = {"web": "Web", "discord": "Discord", "discord_voice": "Discord voice", "slack": "Slack"}
 # Which channel a member id comes from, by its size:
 #   web      [1e8, 1e9)        (web/store.py)
 #   Discord  snowflakes, today around 1e18, below 2**62 until about 2049

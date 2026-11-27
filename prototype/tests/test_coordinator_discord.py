@@ -140,7 +140,7 @@ def test_on_installs_the_group_the_buttons_and_the_event_hook():
     assert bot.after_ready == [bridge.warm_up]  # linked channels listen from the start
     (group,) = groups
     assert isinstance(group, CoordinatorGroup) and group.name == "coordinator"
-    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "kickoff", "link", "me", "newtask", "plan", "planning", "profile", "task", "unlink", "why"]
+    assert sorted(c.name for c in group.commands) == ["ask", "catchup", "checkin", "help", "kickoff", "link", "me", "newtask", "plan", "planning", "profile", "task", "transcript", "unlink", "voice", "why"]
     CardButton.bridge = None
     SessionRegistry.on_coordinator_event = None
 

@@ -32,6 +32,16 @@ if TYPE_CHECKING:
     from ..runtime import BotManager
 
 ENABLED_ENV_VAR = "MULCA_COORDINATOR_ENABLED"
+VOICE_WHERE = "Join the group's voice channel first, then run `/coordinator voice` again (or pick the channel in the command)."
+HELP_TEXT = (
+    "**Cadence in three steps**\n"
+    "1. **Link this channel** to your project: paste the web space's invite link here (or `/coordinator link <code>`).\n"
+    "2. **Talk as usual.** When something has no owner, no date or no decision, I post a card: one click to confirm.\n"
+    "3. **In a call**, join the voice channel and run `/coordinator voice`: I listen, keep the transcript "
+    "(`/coordinator transcript`) and turn what you decide into cards.\n"
+    "Ask me anything about the project by writing **Cadence** or @-mentioning me. Everything is saved in the web space too.\n\n"
+    "More: `/coordinator plan` · `newtask` · `task` · `checkin` · `why` · `catchup` · `me` (same person here and on the web)"
+)
 TRUE_WORDS = frozenset({"1", "true", "yes", "on"})
 
 
@@ -162,6 +172,27 @@ class CoordinatorGroup(app_commands.Group):
             return
         answer = await self._bridge.send_command(interaction, "task", {"add": title, **args})
         await interaction.followup.send(answer_text(answer), ephemeral=True)
+
+    @app_commands.command(name="voice", description="Let Cadence listen to the group's voice call: transcript and cards.")
+    @app_commands.describe(channel="The voice channel (default: the one you are in now)")
+    async def voice(self, interaction: discord.Interaction, channel: discord.VoiceChannel | None = None) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        channel = channel or getattr(getattr(interaction.user, "voice", None), "channel", None)
+        if channel is None:
+            await interaction.followup.send(VOICE_WHERE, ephemeral=True)
+            return
+        await interaction.followup.send(await self._bridge.serve_voice(interaction, channel), ephemeral=True)
+
+    @app_commands.command(name="help", description="How to use Cadence here, in three steps.")
+    async def help(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(HELP_TEXT, ephemeral=True)
+
+    @app_commands.command(name="transcript", description="What was said in the voice call lately (transcribed), only for you.")
+    @app_commands.describe(minutes="How far back, in minutes (default 60)")
+    async def transcript(self, interaction: discord.Interaction, minutes: app_commands.Range[int, 1, 1440] = 60) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        answer = await self._bridge.send_command(interaction, "transcript", {"minutes": minutes})
+        await interaction.followup.send(answer_text(answer)[:1900], ephemeral=True)
 
     @app_commands.command(name="why", description="Ask why the group decided something: the answer cites the decision log.")
     @app_commands.describe(question="e.g. Why did we drop the notifications?")
